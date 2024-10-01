@@ -9,6 +9,20 @@ It incorporates the whole pipeline post base-calling/sequencing including
 - Generation of machine learning datasets and baseline models from DEL data (TODO)
 - various digestible reports to understand the DEL results (TODO)
 
+## Why not a compiled language
+DELi is written in python for 2 reason:
+1. We wrote the first versions of it in python (we are grad students not software devs)
+2. Python is the langauge most scientist in our feild know, so it makes contributions from other DEL experts easier
+
+It is true that DELi would likly be faster as a compiled C++ or Rust program, but we utilize Numba to help 
+keep things fast enough to be usable for most academic settings. DELi can handle calling around 10 million 
+reads in 1-2 hours on a (built in 2022) 32 core machine. If you have billions of reads, you DELi will need
+more cores to have good runtimes
+
+We are interested in writing the calling code of DELi into a faster language, probably Rust cause it sounds
+like a fun language to learn. But we (the orginal authors) are too bust trying to get PhDs to spend enough 
+time to write something good. If your are interested in do it for us, please reach out.
+
 ## Installing DELi
 To install DELi,
 first clone the repo and then set up a virtual environment
