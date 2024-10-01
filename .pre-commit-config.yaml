@@ -1,0 +1,34 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: check-yaml
+        args: ['--unsafe']
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-added-large-files
+      - id: check-merge-conflict
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.5.6
+    hooks:
+      - id: ruff
+        args: ["--config", "pyproject.toml", "--fix"]
+      - id: ruff-format
+        args: ["--config", "pyproject.toml"]
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.11.1
+    hooks:
+      - id: mypy
+
+  - repo: local
+    hooks:
+      - id: pytest-unit
+        name: pytest-unit
+        entry: cd backend && python -m pytest
+        stages: [push]
+        language: system
+        types: [python]
+        pass_filenames: false
+        always_run: true

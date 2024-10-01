@@ -1,0 +1,2 @@
+- [ ] make the match ignore tailing sections (as an option)
+- [ ] make align code into jit for better speed

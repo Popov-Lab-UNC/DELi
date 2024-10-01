@@ -1,0 +1,21 @@
+[arrangement]
+name = "CICBDD_custom_index"
+kit = "cicbdd_index"
+
+mask1_front = ""
+mask1_rear = "CCTTGGCACCCGAGAATTCCA"
+mask2_front = ""
+mask2_rear = ""
+
+# Barcode sequences
+barcode1_pattern = "cicbdd_index%02i"
+first_index = 1
+last_index = 20
+
+## Scoring options
+[scoring]
+min_soft_barcode_threshold = 0.2
+min_hard_barcode_threshold = 0.2
+min_soft_flank_threshold = 0.3
+min_hard_flank_threshold = 0.3
+min_barcode_score_dist = 0.1

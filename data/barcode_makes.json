@@ -1,0 +1,153 @@
+{
+  "MAKE_1": {
+    "DEL_BARCODE_LENGTH": {
+      "index": 10,
+      "primer": 20,
+      "lib_barcode": 7,
+      "lib_barcode_toe": 2,
+      "bb1": 8,
+      "bb1_toe": 2,
+      "bb2": 8,
+      "bb2_toe": 2,
+      "bb3": 8,
+      "bb3_toe": 2,
+      "closing_primer": 10,
+      "umi": 7
+    },
+    "DEL_BARCODE_PATTERN": {
+      "index": [0, 10],
+      "primer": [10, 30],
+      "lib_barcode": [30, 37],
+      "lib_barcode_toe": [37, 39],
+      "bb1": [39, 47],
+      "bb1_toe": [47, 49],
+      "bb2": [49, 57],
+      "bb2_toe": [57, 59],
+      "bb3": [59, 67],
+      "bb3_toe": [67, 69],
+      "closing_primer": [69, 79],
+      "umi": [79, 86]
+    },
+    "DEL_BARCODE_SECTIONS": {
+      "index": "NNNNNNNNNN",
+      "primer": "TGACTCCCCTGGCGACCGAT",
+      "lib_barcode": "NNNNNNN",
+      "lib_barcode_toe": "AG",
+      "bb1": "NNNNNNNN",
+      "bb1_toe": "GT",
+      "bb2": "NNNNNNNN",
+      "bb2_toe": "GA",
+      "bb3": "NNNNNNNN",
+      "bb3_toe": "TT",
+      "closing_primer": "ACGGTCATGC",
+      "umi": "NNNNNNN"
+    },
+    "BARCODE_SEQUENCE":
+    "NNNNNNNNNNTGACTCCCCTGGCGACCGATNNNNNNNAGNNNNNNNNGTNNNNNNNNGANNNNNNNNTTACGGTCATGCNNNNNNN",
+    "REVCOMP_BARCODE_SEQUENCE":
+    "NNNNNNNGCATGACCGTAANNNNNNNNTCNNNNNNNNACNNNNNNNNCTNNNNNNNNATCGGTCGCCAGGGGAGTCANNNNNNNNNN",
+    "BARCODE_FULL_SEQUENCE":
+    "NNNNNNNNNNTGACTCCCCTGGCGACCGATNNNNNNNAGNNNNNNNNGTNNNNNNNNGANNNNNNNNTTACGGTCATGCNNNNNNNGCTAGTCCGTCAGTAGCC",
+    "REVCOMP_BARCODE_FULL_SEQUENCE":
+    "GGATACTGACGGACTAGCNNNNNNNGCATGACCGTAANNNNNNNNTCNNNNNNNNACNNNNNNNNCTNNNNNNNNATCGGTCGCCAGGGGAGTCANNNNNNNNNN",
+    "full":
+    ".{10}CCTTGGCACCCGAGAATTCCA.{8}AG.{5}GT.{5}GA.{5}TTAATGCCAGTACG.{11}GATCGTCGGACTGTAGAACTCTGAAC",
+    "minimal":
+    ".{10}CCTTGGCACCCGAGAATTCCA.{8}AG.{5}GT.{5}GA.{5}TTAATGCCAGTACG.{11}",
+    "double_barcode":
+    ".{10}CCTTGGCACCCGAGAATTCCA.+?.{11}GATCGTCGGACTGTAGAACTCTGAAC",
+    "strict_single_barcode":
+    ".{10}TGACTCCCCTGGCGACCGAT.{75}",
+    "single_barcode":
+    ".{10}TGACTCCCCTGGCGACCGAT.{57}",
+    "full_error":
+    ".{10}(?:CCTTGGCACCCGAGAATTCCA.{8}AG.{5}GT.{5}GA.{5}TTAATGCCAGTACG.{11}GATCGTCGGACTGTAGAACTCTGAAC){e<=ERR}",
+    "minimal_error":
+    ".{10}(?:CCTTGGCACCCGAGAATTCCA.{8}AG.{5}GT.{5}GA.{5}TTAATGCCAGTACG){e<=ERR}.{11}",
+    "double_barcode_error":
+    ".{10}(?:CCTTGGCACCCGAGAATTCCA){e<=ERR}.+?(?:GATCGTCGGACTGTAGAACTCTGAAC){e<=ERR}.{11}",
+    "strict_single_barcode_error":
+    ".{10}(?:TGACTCCCCTGGCGACCGAT){e<=ERR}.{75}",
+    "single_barcode_error":
+    ".{10}(?:TGACTCCCCTGGCGACCGAT){e<=ERR}.{57}",
+    "CYCLE_A_NAME": "BBA",
+    "CYCLE_B_NAME": "BBB",
+    "CYCLE_C_NAME": "BBC",
+    "TOE_SIZE": 2
+  },
+  "MAKE_2": {},
+    "DEL_BARCODE_LENGTH": {
+      "index": 10,
+      "primer": 21,
+      "lib_barcode": 8,
+      "lib_barcode_toe": 2,
+      "bb1": 5,
+      "bb1_toe": 2,
+      "bb2": 5,
+      "bb2_toe": 2,
+      "bb3": 5,
+      "bb3_toe": 2,
+      "closing_primer": 12,
+      "umi": 11
+    },
+    "DEL_BARCODE_PATTERN": {
+      "index": [0, 10],
+      "primer": [10, 31],
+      "lib_barcode": [31, 39],
+      "lib_barcode_toe": [39, 41],
+      "bb1": [41, 46],
+      "bb1_toe": [46, 48],
+      "bb2": [48, 53],
+      "bb2_toe": [53, 55],
+      "bb3": [55, 60],
+      "bb3_toe": [60, 62],
+      "closing_primer": [62, 74],
+      "umi": [74, 85]
+    },
+    "DEL_BARCODE_SECTIONS": {
+      "index": "NNNNNNNNNN",
+      "primer": "CCTTGGCACCCGAGAATTCCA",
+      "lib_barcode": "NNNNNNNN",
+      "lib_barcode_toe": "AG",
+      "bb1": "NNNNN",
+      "bb1_toe": "GT",
+      "bb2": "NNNNN",
+      "bb2_toe": "GA",
+      "bb3": "NNNNN",
+      "bb3_toe": "TT",
+      "closing_primer": "AATGCCAGTACG",
+      "umi": "NNNNNNNNNNN"
+    },
+    "BARCODE_SEQUENCE":
+    "NNNNNNNNNNCCTTGGCACCCGAGAATTCCANNNNNNNNAGNNNNNGTNNNNNGANNNNNTTAATGCCAGTACGNNNNNNNNNNN",
+    "REVCOMP_BARCODE_SEQUENCE":
+    "NNNNNNNNNNCGTACTGGCATTAANNNNNTCNNNNNACNNNNNCTNNNNNNNNTGGAATTCTCGGGTGCCAAGGNNNNNNNNNN",
+    "BARCODE_FULL_SEQUENCE":
+    "NNNNNNNNNNCCTTGGCACCCGAGAATTCCANNNNNNNNAGNNNNNGTNNNNNGANNNNNTTAATGCCAGTACGNNNNNNNNNNNGATCGTCGGACTGTAGAACTCTGAAC",
+    "REVCOMP_BARCODE_FULL_SEQUENCE":
+    "GTTCAGAGTTCTACAGTCCGACGATCNNNNNNNNNNNCGTACTGGCATTAANNNNNTCNNNNNACNNNNNCTNNNNNNNNTGGAATTCTCGGGTGCCAAGGNNNNNNNNNN",
+    "full":
+    ".{10}CCTTGGCACCCGAGAATTCCA.{8}AG.{5}GT.{5}GA.{5}TTAATGCCAGTACG.{11}GATCGTCGGACTGTAGAACTCTGAAC",
+    "minimal":
+    ".{10}CCTTGGCACCCGAGAATTCCA.{8}AG.{5}GT.{5}GA.{5}TTAATGCCAGTACG.{11}",
+    "double_barcode":
+    ".{10}CCTTGGCACCCGAGAATTCCA.+?.{11}GATCGTCGGACTGTAGAACTCTGAAC",
+    "strict_single_barcode":
+    ".{10}CCTTGGCACCCGAGAATTCCA.{75}",
+    "single_barcode":
+    ".{10}CCTTGGCACCCGAGAATTCCA.{55}",
+    "full_error":
+    ".{10}(?:CCTTGGCACCCGAGAATTCCA.{8}AG.{5}GT.{5}GA.{5}TTAATGCCAGTACG.{11}GATCGTCGGACTGTAGAACTCTGAAC){e<=ERR}",
+    "minimal_error":
+    ".{10}(?:CCTTGGCACCCGAGAATTCCA.{8}AG.{5}GT.{5}GA.{5}TTAATGCCAGTACG){e<=ERR}.{11}",
+    "double_barcode_error":
+    ".{10}(?:CCTTGGCACCCGAGAATTCCA){e<=ERR}.+?(?:GATCGTCGGACTGTAGAACTCTGAAC){e<=ERR}.{11}",
+    "strict_single_barcode_error":
+    ".{10}(?:CCTTGGCACCCGAGAATTCCA){e<=ERR}.{75}",
+    "single_barcode_error":
+    ".{10}(?:CCTTGGCACCCGAGAATTCCA){e<=ERR}.{55}",
+    "CYCLE_A_NAME": "BBA",
+    "CYCLE_B_NAME": "BBB",
+    "CYCLE_C_NAME": "BBC",
+    "TOE_SIZE": 2
+  }

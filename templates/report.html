@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FASTQ Report</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+
+        h1, h2 {
+            color: #333;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .chart-container {
+            margin-top: 20px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            padding: 20px;
+            background-color: #fff;
+        }
+
+        .chart-container img {
+            max-width: 100%;
+            height: auto;
+            display: block;
+            margin: 0 auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 8px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        th {
+            background-color: #f2f2f2;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>DELi Report</h1>
+        <h5>Reading basecalled sequences from {{ file }}</h5>
+        <h5>Searching for pattern match {{ pattern }}} with error tolerance of {{ error }}</h5>
+        <h5>Barcoding with libraries {{ libs }} and indexes {{ idx }}</h5>
+        <div class="chart-container">
+            <h3>Sequence Lengths</h3>
+            <h5>Total sequences: {{ numseq }}</h5>
+            {{ hist }}
+        </div>
+        <div class="chart-container">
+            <h3>Barcode Calling</h3>
+            {{ pie }}
+        </div>
+        <div>
+            <div class="chart-container" style="float: left">
+                <h3>Called index</h3>
+                {{ indexpie }}
+            </div>
+            <div class="chart-container" style="float: left">
+                <h3>Called libs</h3>
+                {{ libpie }}
+            </div>
+        </div>
+    </div>
+</body>
+</html>

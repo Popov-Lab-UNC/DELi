@@ -1,0 +1,29 @@
+{
+    "id": "My_Library_1",
+    "library_tag": "AGCTAGCT",
+    "barcode_schema": "MyBarcode",
+    "bb_sets": [
+        "BB_A",
+        "BB_C",
+        "BB_D"
+    ],
+    "scaffold": "C1CC(Cl)CCC1",
+    "reactions": [
+        {
+            "cycle_id_1": "BB_A",
+            "cycle_id_2": "scaffold",
+            "reaction": "[C:1]Cl.[C:2]O>>[C:1]O[C:2]"
+        },
+        {
+            "cycle_id_1": "BB_B",
+            "cycle_id_2": "BB_A",
+            "reaction": "(C(=O)O).(OCC)>>C(=O)OCC.O"
+        },
+        {
+            "cycle_id_1": "BB_B",
+            "cycle_id_2": "BB_C",
+            "reaction": "[C:1]Cl.[C:2]O>>[C:1]O[C:2]"
+        }
+    ],
+    "dna_barcode_on": "scaffold"
+}
