@@ -19,6 +19,25 @@ def validate_file_path(
         ]] = None) -> Callable:
 
     def build_path(file_path: Union[str, PathLike]) -> Path:
+        """
+        Check for file existence
+        Notes
+        -----
+        First asks if file exists, if not will ask if a file
+        with that name exists in the DELI_DATA_DIR
+        Parameters
+        ----------
+        filepath: str
+            name of file if in DELI_DATA_DIR,
+            OR path to file
+        sub_dir: "building_blocks", "libraries", "indexes", or "barcodes"
+            name of sub-directory in DELI_DATA_DIR to search for file in
+            if None, look in DELI_DATA_DIR
+        Returns
+        -------
+        str
+            absolute path to file
+        """
         file_path = Path(file_path)
         if not file_path.exists():
             if DELI_DATA_DIR is not None:
