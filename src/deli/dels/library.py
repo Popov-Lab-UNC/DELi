@@ -1,6 +1,9 @@
 """defines DEL library functions and classes"""
+
 import json
-from typing import Iterator, List, Optional, Self
+from typing import Iterator, List, Optional, Self, Union
+
+from Levenshtein import distance
 
 from .barcode import BarcodeSchema
 from .building_block import BuildingBlockSet
@@ -14,12 +17,9 @@ class LibraryBuildError(Exception):
 
 
 class Reaction:
-    def __init__(
-            self,
-            cycle_id_1: str,
-            cycle_id_2: str,
-            reaction: str
-    ):
+    """struct to contain info on DEL reactions"""
+
+    def __init__(self, cycle_id_1: str, cycle_id_2: str, reaction: str):
         self.cycle_id_1 = cycle_id_1
         self.bb_set_id_2 = cycle_id_2
         self.reaction = reaction
@@ -43,7 +43,7 @@ class DELibrary:
         library_dna_tag: str,
         barcode_schema: BarcodeSchema,
         bb_sets: List[BuildingBlockSet],
-        reactions: List[Reaction    ],
+        reactions: List[Reaction],
         dna_barcode_on: str,
         scaffold: Optional[str] = None,
     ):
@@ -117,19 +117,47 @@ class DELibrary:
                 raise LibraryBuildError("no scaffold to attach DNA barcode to")
 
     @classmethod
+    def from_dict(cls, lib_dict: dict) -> Self:
+        """
+        Load a DEL from a dict
+
+        Parameters
+        ----------
+        lib_dict: dict
+            DEL info as a dictionary
+
+        Returns
+        -------
+        DELibrary
+        """
+        return cls(
+            library_id=lib_dict["library_id"],
+            library_dna_tag=lib_dict["library_tag"],
+            dna_barcode_on=lib_dict["dna_barcode_on"],
+            barcode_schema=BarcodeSchema.load_from_json(lib_dict["barcode_schema"]),
+            bb_sets=[BuildingBlockSet.from_csv(bb) for bb in lib_dict["bb_sets"]],
+            reactions=[Reaction(**react) for react in lib_dict["reactions"]],
+            scaffold=lib_dict["scaffold"],
+        )
+
+    @classmethod
     def read_json(cls, path: str) -> Self:
+        """
+        Load a DEL from a json file
+
+        Parameters
+        ----------
+        path: str
+            path to file with DEL json
+
+        Returns
+        -------
+        DELibrary
+        """
         path = check_file_path(path, "libraries")
         data = json.load(open(path))
 
-        return cls(
-            library_id=data["library_id"],
-            library_dna_tag=data["library_tag"],
-            dna_barcode_on=data["dna_barcode_on"],
-            barcode_schema=BarcodeSchema.load_from_json(data["barcode_schema"]),
-            bb_sets=[BuildingBlockSet.from_csv(bb) for bb in data["bb_sets"]],
-            reactions=[Reaction(**react) for react in data["reactions"]],
-            scaffold=data["scaffold"]
-        )
+        return cls.from_dict(data)
 
     def iter_bb_sets(self) -> Iterator[BuildingBlockSet]:
         """
@@ -144,24 +172,68 @@ class DELibrary:
                 yield bb_set
 
 
-def get_min_index_distance(included_index: list[DELibrary]) -> int:
+class MegaDELibrary:
+    """A set of many DELibraries"""
+
+    def __init__(self, libraries: List[DELibrary]):
+        """
+        Initialize a MegaDELibrary object
+
+        Parameters
+        ----------
+        libraries: List[DELibrary]
+            libraries to include in the mega library
+        """
+        self.libraries = libraries
+
+    def __len__(self) -> int:
+        """Return number of libraries in the mega library"""
+        return len(self.libraries)
+
+    def __iter__(self) -> Iterator[DELibrary]:
+        """Iterate through all libraries in the mega library"""
+        return iter(self.libraries)
+
+    @classmethod
+    def read_json(cls, path: str) -> Self:
+        """
+        Read a mega library from a json file
+
+        Parameters
+        ----------
+        path: str
+            path to mega library json
+
+        Returns
+        -------
+        MegaDELibrary
+        """
+        path = check_file_path(path, "libraries")
+        data = json.load(open(path))
+
+        return cls(libraries=[DELibrary.from_dict(d) for d in data])
+
+
+def get_min_library_tag_distance(
+    included_libraries: Optional[Union[list[DELibrary], MegaDELibrary]],
+) -> int:
     """
-    Given a list of index IDs, determine the minimum Levenshtein distance between all of them
+    Determine the minimum Levenshtein distance between all library tags
 
     Parameters
     ----------
-    included_index: list[Index]
-        the index_ids to use
+    included_libraries: list[DELibrary] or MegaDELibrary
+        the libraries to use
 
     Returns
     -------
     min_distance: int
-        the minimum Levenshtein distance between the passed indexes
+        the minimum Levenshtein distance between the passed library's tag
     """
     # if only one index just give it a constant threshold
-    if len(included_index) == 1:
-        return MAX_INDEX_RISK_DIST_THRESHOLD
-    if included_index is None:
+    if included_libraries is None or len(included_libraries) == 1:
         return 0
-    _index_sequences = [i.dna_tag for i in included_index]
-    return min([distance(s1, s2) for s1 in _index_sequences for s2 in _index_sequences if s1 != s2])
+    _lib_dna_sequences = [i.library_tag for i in included_libraries]
+    return min(
+        [distance(s1, s2) for s1 in _lib_dna_sequences for s2 in _lib_dna_sequences if s1 != s2]
+    )
