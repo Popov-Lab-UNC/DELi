@@ -1,6 +1,5 @@
 """matching sequences to DEL barcode schemas"""
 
-import enum
 from itertools import count
 from typing import Iterable, List, Tuple
 
@@ -288,24 +287,6 @@ class BarcodeMatch(MatchOutcome):
 #             return ([_errors[i] for i in _sort_mask], [_error_types[i] for i in _sort_mask])
 
 
-class MatchModes(enum.Enum):
-    """
-    Enum for matching mode settings
-
-    Notes
-    -----
-    The string values attached to this MUST match the
-    string values used to define that section in the
-    schema format. See the schema docs for more info
-    """
-
-    preindex = "pre-index"
-    primer = "primer"
-    overhang = "_overhang"
-    preumi = "pre-umi"
-    closing_primer = "closing_primer"
-
-
 class BarcodeMatchPatternError(Exception):
     """Exception for failure to create a matching pattern"""
 
@@ -328,63 +309,53 @@ class BarcodeMatcher:
     - variable patterns
     - static patterns
 
-    static patterns are based on static regions of
+    static patterns are based on static sections of
     the barcode. Variable patterns are based on size of
-    the variable region and match any character
+    the variable section and match any character
 
-    So a barcode with a primer region of "AGCTGCT" and
-    3 building block tag regions of size 5 each, you might
+    So a barcode with a primer section of "AGCTGCT" and
+    3 building block tag sections of size 5 each, you might
     have a pattern of:
 
     "AGCTGCT.{5}.{5}.{5}"
 
-    Any static region from the barcode schema not used in
-    pattern will be treated as a variable region
+    Any static section from the barcode schema not used in
+    pattern will be treated as a variable section
 
-    There are several matching modes that can be used.
-    Multiple modes can be used, and they will just be combined
-    - pre-index:
-        this mode will look for the static pre-index region in
-        the barcode schema
-    - primer:
-        this mode will look for the static primer region in
-        the barcode schema
-    - overhang:
-        this mode will look for the overhang regions of all
-        DEL tag regions in the barcode schema
-    - pre-umi:
-        this mode will look for the static pre-umi region in
-        the barcode schema
-    - closing_primer:
-        this mode will look for the static closing_primer region in
-        the barcode schema
-    - all:
-        use all the modes at once. This will return FullMatch results
-        and can be used to do quick but unforgiving calling
+    You can ask the matcher to match any of the sections
+    included in the barcode schema passed to the matcher.
+    If you list variables ones, it will just ignore them.
 
-    It should be noted that the more modes you use, the more static
-    regions are looked for. This could be good or bad depending on
-    how you are doing your calling.
-    Generally, if you are using the align ment caller, you want only
-    1 or 2 modes (fewer is better).
-    If you are using the match caller you want as many modes as
-    possible.
+    Setting `full_match` to `True` will ignore any the sections
+    passed to `match_sections` and will try to match all sections.
+    This is not recommend (see below for more details)
+
+    It should be noted that if you do not pass any
+    static sections, the matcher will fail to be
+    initialized, as there is nothing to match but
+    wildcards.
+
+    Ideally, you will only try and match to one or maybe two
+    static sections. The point of the matcher is to weed out
+    junk reads and find roughly the region that needs to be
+    align from the read. Its okay if the match isn't perfect,
+    the caller will do the heavier lifting of determining
+    which sections are which part of the sequence.
 
     Matching also has the options for exact or error tolerate matching
-    If using exact matching, no base errors in the static regions
-    are tolerated, exact matches are needed. If not using exact matching
-    you can specify the amount of error you will tolerate in the static
-    regions. Errors include insertion, deletion and substitution.
+    You can use exact matching by setting `error_tolerance` to `0`.
+    Otherwise, some errors (indels and SNPs) will be tolerated during
+    matching. This will slow things down, but dramatically increase
+    read depth
 
     There is no way to specify insert or deletion errors in the variable
-    regions of the pattern; they are covered with error tolerance in
-    the static regions OR the padding
+    sections of the pattern; they are covered with error tolerance in
+    the static sections OR the padding
 
     Padding is used to add "junk" DNA to the front and end of the
     sequence. This can prevent the patter from failing to match
-    because a variable region is looking for more DNA than exists
-    at the head or tail. If not using exact matching, its recommend
-    to use padding.
+    because a variable section is looking for more DNA than exists
+    at the head or tail. Padding is recommend for all runs
     """
 
     def __init__(
@@ -410,7 +381,7 @@ class BarcodeMatcher:
             will override any passed match_sections
         error_tolerance: int, default=3
             if not exact_match, how many error are tolerated in
-            static regions
+            static sections
         padding: int, default=5
             if not exact_match, add padding to the being or end
             to prevent unintentional trimming of the start/end
@@ -446,7 +417,7 @@ class BarcodeMatcher:
                 )
 
         if len({"A", "G", "C", "T"}.intersection(set(_pattern))) == 0:
-            raise BarcodeMatchPatternError(f"pattern contains no static regions:\n{_pattern}")
+            raise BarcodeMatchPatternError(f"pattern contains no static sections:\n{_pattern}")
 
         return _pattern
 
