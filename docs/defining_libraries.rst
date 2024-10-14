@@ -164,3 +164,59 @@ I can define another one without a scaffold with
         ],
         "dna_barcode_on": "BB_B"
     }
+
+Defining Mega-Libraries
+=======================
+Some DEL libraries are made of a mixture of many sub-libraries,
+each of which requires a different definition.
+In DELi, we call these "mega libraries", and can be loaded using the
+MegaDELibrary class.
+
+To define a mega library in a file, you follow the same definition
+for libraries, except you encapsulate them in a list
+::
+    [
+        {
+            "id": My_Library_1,
+            "bb_sets": [
+                "BB_B",
+                "BB_E"
+            ],
+            "scaffold": null
+            "reactions": [
+                {
+                    "cycle_id_1": "BB_B"
+                    "cycle_id_2": "BB_E"
+                    "reaction": "(C(=O)O).(OCC)>>C(=O)OCC.O"
+                }
+            ],
+            "dna_barcode_on": "BB_B"
+        },
+        {
+            "id": My_Library_2,
+            "bb_sets": [
+                "BB_A",
+                "BB_C",
+                "BB_D"
+            ],
+            "scaffold": "C1CC(Cl)CCC1"
+            "reactions": [
+                {
+                    "cycle_id_1": "BB_A"
+                    "cycle_id_2": "scaffold"
+                    "reaction": "[C:1]Cl.[C:2]O>>[C:1]O[C:2]"
+                },
+                {
+                    "cycle_id_1": "BB_B"
+                    "cycle_id_2": "BB_A"
+                    "reaction": "(C(=O)O).(OCC)>>C(=O)OCC.O"
+                },
+                {
+                    "cycle_id_1": "BB_B"
+                    "cycle_id_2": "BB_C"
+                    "reaction": "[C:1]Cl.[C:2]O>>[C:1]O[C:2]"
+                }
+            ],
+            "dna_barcode_on": "scaffold"
+        }
+    ]
