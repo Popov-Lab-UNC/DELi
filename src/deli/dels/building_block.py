@@ -1,6 +1,7 @@
 """define building block classes"""
 
 import abc
+import os
 from typing import List, Optional
 
 from deli.constants import BB_MASK
@@ -134,8 +135,7 @@ class MaskedBuildingBlock(BaseBuildingBlock):
 class BuildingBlock(BaseBuildingBlock):
     """define building block class"""
 
-    def __init__(self, bb_id: str, smiles: Optional[str] = None,
-                 tag: Optional[str] = None):
+    def __init__(self, bb_id: str, smiles: Optional[str] = None, tag: Optional[str] = None):
         """
         Initialize the building block
 
@@ -230,7 +230,32 @@ class BuildingBlockSet:
 
     @classmethod
     def from_csv(cls, path: str, set_id: Optional[str] = None):
+        """
+        Read a building block set from a csv file
+
+        Notes
+        -----
+        if `set_id` is not passed, will use the file name as the set id
+
+        Parameters
+        ----------
+        path: str
+            path to csv file
+        set_id: Optional[str]
+            name of the building block set
+
+        Returns
+        -------
+        BuildingBlockSet
+        """
         path = check_file_path(path, "building_blocks")
+
+        # get set id name from file name if None
+        if set_id is None:
+            _set_id = os.path.basename(path).split(".")[0]
+        else:
+            _set_id = set_id
+
         _building_blocks = []
         with open(path, "r") as f:
             header = f.readline()
@@ -242,12 +267,8 @@ class BuildingBlockSet:
                 _id = splits[_id_col_idx]
                 _smiles = splits[_smi_col_idx]
                 _dna = splits[_dna_col_idx]
-                _building_blocks.append(BuildingBlock(
-                    bb_id = _id,
-                    smiles = _smiles,
-                    tag = _dna
-                ))
-        return cls(set_id, _building_blocks)
+                _building_blocks.append(BuildingBlock(bb_id=_id, smiles=_smiles, tag=_dna))
+        return cls(_set_id, _building_blocks)
 
     def __len__(self):
         """Get the number of building blocks in the set"""
