@@ -5,8 +5,6 @@ from typing import Iterator, List, Optional, Self, Union
 
 from Levenshtein import distance
 
-from deli.constants import MAX_INDEX_RISK_DIST_THRESHOLD
-
 
 class Index:
     """
@@ -98,9 +96,7 @@ def get_min_index_distance(included_index: Optional[Union[list[Index], IndexSet]
         the minimum Levenshtein distance between the passed indexes
     """
     # if only one index just give it a constant threshold
-    if len(included_index) == 1:
-        return MAX_INDEX_RISK_DIST_THRESHOLD
-    if included_index is None:
+    if included_index is None or len(included_index) == 1:
         return 0
     _index_sequences = [i.dna_tag for i in included_index]
     return min(
