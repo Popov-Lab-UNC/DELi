@@ -100,7 +100,7 @@ def get_min_index_distance(included_index: Optional[Union[list[Index], IndexSet]
         the minimum Levenshtein distance between the passed indexes
     """
     # if only one index just give it a constant threshold
-    if included_index is None or len(included_index) == 1:
+    if included_index is None or len(included_index) <= 1:
         return 0
     _index_sequences = [i.dna_tag for i in included_index]
     return min(

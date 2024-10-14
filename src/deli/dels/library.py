@@ -235,7 +235,7 @@ def get_min_library_tag_distance(
         the minimum Levenshtein distance between the passed library's tag
     """
     # if only one index just give it a constant threshold
-    if included_libraries is None or len(included_libraries) == 1:
+    if included_libraries is None or len(included_libraries) <= 1:
         return 0
     _lib_dna_sequences = [i.library_tag for i in included_libraries]
     return min(
