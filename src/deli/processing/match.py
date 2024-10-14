@@ -10,7 +10,6 @@ import regex
 from deli.dels import BarcodeSchema
 from deli.sequence import FastqSequence
 from deli.sequence.fasta import FastaSequence
-from deli.constants import FAST_MATCH_PADDING
 
 
 # global match_id value
@@ -282,14 +281,12 @@ class FullBarcodeMatch(FastBarcodeMatch):
 
         if normalize:
             return (
-                [_errors[i]-self.match_span[0] for i in _sort_mask],
-                [_error_types[i] for i in _sort_mask]
+                [_errors[i] - self.match_span[0] for i in _sort_mask],
+                [_error_types[i] for i in _sort_mask],
             )
         else:
-            return (
-                [_errors[i] for i in _sort_mask],
-                [_error_types[i] for i in _sort_mask]
-            )
+            return ([_errors[i] for i in _sort_mask], [_error_types[i] for i in _sort_mask])
+
 
 class MatchModes(enum.Enum):
     """
@@ -436,12 +433,17 @@ class BarcodeMatcher:
         self.rev_comp = rev_comp
 
         # if full match, set match modes to all modes:
-        self.match_modes = [
-            MatchModes.preindex, MatchModes.primer,
-            MatchModes.overhang, MatchModes.closing_primer,
-            MatchModes.preumi
-        ] if self.full_match else match_modes
-
+        self.match_modes = (
+            [
+                MatchModes.preindex,
+                MatchModes.primer,
+                MatchModes.overhang,
+                MatchModes.closing_primer,
+                MatchModes.preumi,
+            ]
+            if self.full_match
+            else match_modes
+        )
 
         if self.match_index and (not self.barcode_scheme.has_index()):
             raise ValueError("`match_index` cannot be `True` when `barcode_scheme` lacks index")
@@ -449,7 +451,7 @@ class BarcodeMatcher:
         self.pattern = self._make_pattern()
 
     def _check_modes(self):
-        """check to see if chosen modes are present in barcode"""
+        """Check to see if chosen modes are present in barcode"""
         pass
 
     def _make_pattern(self):
@@ -461,8 +463,7 @@ class BarcodeMatcher:
                 _pattern += self.barcode_scheme[section_name]
             else:
                 _pattern += (
-                    f"(?:{self.barcode_scheme[section_name]})" 
-                    f"{{e<={self.error_tolerance}}}"
+                    f"(?:{self.barcode_scheme[section_name]})" f"{{e<={self.error_tolerance}}}"
                 )
             return _pattern
 
@@ -580,20 +581,15 @@ class BarcodeMatcher:
                                 sequence=sequence,
                                 match_span=(
                                     hit.regs[0][0] - self.padding,
-                                    hit.regs[0][1] - self.padding + (
-                                            len(hit.fuzzy_changes[1]) -
-                                            len(hit.fuzzy_changes[2])
-                                    )
+                                    hit.regs[0][1]
+                                    - self.padding
+                                    + (len(hit.fuzzy_changes[1]) - len(hit.fuzzy_changes[2])),
                                 ),
                                 substitute_error_idx=[
                                     x - self.padding for x in hit.fuzzy_changes[0]
                                 ],
-                                insert_error_idx=[
-                                    x - self.padding for x in hit.fuzzy_changes[1]
-                                ],
-                                delete_error_idx=[
-                                    x - self.padding for x in hit.fuzzy_changes[2]
-                                ],
+                                insert_error_idx=[x - self.padding for x in hit.fuzzy_changes[1]],
+                                delete_error_idx=[x - self.padding for x in hit.fuzzy_changes[2]],
                             )
                         )
                     # fast match is exact matching is not used
@@ -602,9 +598,9 @@ class BarcodeMatcher:
                             FastBarcodeMatch(
                                 sequence=sequence,
                                 match_span=(
-                                    hit.regs[0][0] - self.padding - FAST_MATCH_PADDING,
-                                    hit.regs[0][1] - self.padding + FAST_MATCH_PADDING
-                                )
+                                    hit.regs[0][0] - self.padding,
+                                    hit.regs[0][1] + self.padding,
+                                ),
                             )
                         )
                 else:
