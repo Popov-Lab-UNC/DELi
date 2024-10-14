@@ -194,6 +194,10 @@ class MegaDELibrary:
         """Iterate through all libraries in the mega library"""
         return iter(self.libraries)
 
+    def __getitem__(self, index: int) -> DELibrary:
+        """Get the library at the passed index from the mega library"""
+        return self.libraries[index]
+
     @classmethod
     def read_json(cls, path: str) -> Self:
         """

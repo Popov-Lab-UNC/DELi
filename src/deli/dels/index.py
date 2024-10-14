@@ -54,6 +54,10 @@ class IndexSet:
         """Iterate all indexes in the IndexSet"""
         return iter(self.index_set)
 
+    def __getitem__(self, index: int) -> Index:
+        """Get the Index at the passed index from the set"""
+        return self.index_set[index]
+
     @classmethod
     def from_json(cls, path: str) -> Self:
         """
