@@ -7,12 +7,13 @@ from typing import Dict, Optional, Self, Tuple
 
 from deli.dels.configure import check_file_path
 
+
 # id: (required, static)
 VALID_BARCODE_SECTIONS = {
     "pre-index": (False, True),
     "index": (False, False),
     "primer": (True, True),
-    "library_tag": (True, False),
+    "library_tag": (False, False),
     "library_overhang": (False, True),
     "bb1_tag": (True, False),
     "bb1_overhang": (False, True),
@@ -142,6 +143,16 @@ class BarcodeSchema:
         """
         return self.barcode_sections.get("index") is not None
 
+    def has_library_tag(self) -> bool:
+        """
+        Return true if schema include and index region
+
+        Returns
+        -------
+        bool
+        """
+        return self.barcode_sections.get("library_tag") is not None
+
     def get_del_tags(self) -> OrderedDict[str, Dict[str, Optional[str]]]:
         """
         get the DEL tags and their respective tag and overhang region
@@ -205,9 +216,7 @@ class BarcodeSchema:
         def _is_variable(seq: str) -> bool:
             return all([i == "N" for i in seq])
 
-        _required_sections = set(
-            [key for key, (val, _) in VALID_BARCODE_SECTIONS.items() if val]
-        )
+        _required_sections = set([key for key, (val, _) in VALID_BARCODE_SECTIONS.items() if val])
         _seen_sections = set()
         for key, val in self.barcode_sections.copy().items():
             if not any([re.match(valid_key, key) for valid_key in VALID_BARCODE_SECTIONS.keys()]):
@@ -239,8 +248,15 @@ class BarcodeSchema:
         if self.barcode_sections.get("pre-index") is not None:
             if self.barcode_sections.get("index") is None:
                 raise BarcodeSchemaError(
-                    "pre-index cannot be defined if index is null;"
+                    "pre-index cannot be defined if index is not set;"
                     " set index or use primer section instead"
+                )
+
+        # library_overhang cannot be present if library_tag is not:
+        if self.barcode_sections.get("library_overhang") is not None:
+            if self.barcode_sections.get("library_tag") is None:
+                raise BarcodeSchemaError(
+                    "library_overhang cannot be defined if library_tag is not set"
                 )
 
         # a bb_overhang cannot be present if the bb_tag is not
