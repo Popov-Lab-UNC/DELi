@@ -1,10 +1,11 @@
 """define building block classes"""
 
 import abc
-from typing import List, Optional
+from os import PathLike
+from typing import List, Optional, Union
 
 from deli.constants import BB_MASK
-from deli.dels.configure import check_file_path
+from deli.dels.configure import validate_file_path
 
 
 class BaseBuildingBlock(abc.ABC):
@@ -229,10 +230,10 @@ class BuildingBlockSet:
     #     )
 
     @classmethod
-    def from_csv(cls, path: str, set_id: Optional[str] = None):
-        path = check_file_path(path, "building_blocks")
+    @validate_file_path(sub_dir='building_blocks')
+    def from_csv(cls, file_path: Union[str, PathLike], set_id: Optional[str] = None):
         _building_blocks = []
-        with open(path, "r") as f:
+        with open(file_path, "r") as f:
             header = f.readline()
             _id_col_idx = header.index("id")
             _smi_col_idx = header.index("smiles")

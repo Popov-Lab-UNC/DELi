@@ -1,10 +1,11 @@
 """defines DEL library functions and classes"""
 import json
-from typing import Iterator, List, Optional, Self
+from os import PathLike
+from typing import Iterator, List, Optional, Self, Union
 
 from .barcode import BarcodeSchema
 from .building_block import BuildingBlockSet
-from .configure import check_file_path
+from .configure import validate_file_path
 
 
 class LibraryBuildError(Exception):
@@ -117,10 +118,10 @@ class DELibrary:
                 raise LibraryBuildError("no scaffold to attach DNA barcode to")
 
     @classmethod
-    def read_json(cls, path: str) -> Self:
-        path = check_file_path(path, "libraries")
-        data = json.load(open(path))
-
+    @validate_file_path(sub_dir='libraries')
+    def read_json(cls, file_path: str) -> Self:
+        with open(file_path) as file:
+            data = json.load(file)
         return cls(
             library_id=data["library_id"],
             library_dna_tag=data["library_tag"],

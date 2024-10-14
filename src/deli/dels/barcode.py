@@ -1,11 +1,12 @@
 """define barcode functionality"""
 
 import json
+from os import PathLike
 import re
 from collections import OrderedDict
-from typing import Dict, Optional, Self, Tuple
+from typing import Dict, Optional, Self, Tuple, Union
 
-from deli.dels.configure import check_file_path
+from deli.dels.configure import validate_file_path
 
 # id: (required, static)
 VALID_BARCODE_SECTIONS = {
@@ -114,7 +115,8 @@ class BarcodeSchema:
         )
 
     @classmethod
-    def load_from_json(cls, file_path: str) -> Self:
+    @validate_file_path(sub_dir='barcodes')
+    def load_from_json(cls, file_path: Union[str, PathLike]) -> Self:
         """
         load a schema from a json file
 
@@ -128,8 +130,8 @@ class BarcodeSchema:
         BarcodeSchema
             the loaded schema
         """
-        file_path = check_file_path(file_path, "barcodes")
-        data = json.load(open(file_path))
+        with open(file_path) as file:
+            data = json.load(file)
         return cls(data["id"], data["sections"], data["order"])
 
     def has_index(self) -> bool:

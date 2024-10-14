@@ -165,7 +165,7 @@ def yield_fastq(fastq_file: str) -> Iterator[FastqSequence]:
         for line in file:
             if line.startswith("@"):
                 seq = file.readline().strip()
-                _ = file.readline()  # junk line
+                next(file)
                 quality = file.readline().strip()
                 yield FastqSequence(
                     read_tag=line.strip(), read_id=_id_counter, sequence=seq, quality=quality
