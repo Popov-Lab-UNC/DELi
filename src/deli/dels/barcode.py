@@ -11,7 +11,7 @@ from deli.dels.configure import check_file_path
 VALID_BARCODE_SECTIONS = {
     "pre-index": (False, True),
     "index": (False, False),
-    "primer": (False, True),
+    "primer": (True, True),
     "library_tag": (True, False),
     "library_overhang": (False, True),
     "bb1_tag": (True, False),
