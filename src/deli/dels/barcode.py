@@ -274,6 +274,11 @@ class BarcodeSchema:
 
         self.num_cycles = len(self.get_bb_regions())
 
+        if self.num_cycles < 2:
+            raise BarcodeSchemaError(
+                f"number of bb cycles must be at least 2; found {self.num_cycles}"
+            )
+
     @classmethod
     def load_from_json(cls, file_path: str) -> Self:
         """
