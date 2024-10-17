@@ -113,6 +113,15 @@ class BarcodeSection:
         else:
             return len(self.section_tag)
 
+    def __eq__(self, other):
+        """Return true if two sections are the same"""
+        if isinstance(other, BarcodeSection):
+            if self.section_tag == other.section_tag:
+                if self.overhang_tag == other.overhang_tag:
+                    if self.section_name == other.section_name:
+                        return True
+        return False
+
     def _check_trait_validity(self):
         """Helper func to make sure there are no trait conflicts"""
         _has_static_trait = self.has_trait(BarcodeSectionTrait.STATIC)
@@ -208,40 +217,6 @@ class BarcodeSection:
         return _pattern
 
 
-# class StaticBarcodeSection(BarcodeSection):
-#     def __init__(self, section_name: str, section_tag: str, overhang_tag: Optional[str] = None):
-#         super().__init__(section_name, section_tag, overhang_tag)
-#
-#         if not self.has_trait(BarcodeSectionTrait.STATIC):
-#             raise BarcodeSchemaError(
-#                 "barcode section {self.section_name} "
-#                 "lacks 'STATIC' trait"
-#             )
-#
-#         if self.has_variable_regions():
-#             raise BarcodeSchemaError(
-#                 f"static barcode section {self.section_name} "
-#                 f"has variable nucleotides: {self.section_tag}"
-#             )
-#
-#
-# class VariableBarcodeSection(BarcodeSection):
-#     def __init__(self, section_name: str, section_tag: str, overhang_tag: Optional[str] = None):
-#         super().__init__(section_name, section_tag, overhang_tag)
-#
-#         if self.has_trait(BarcodeSectionTrait.STATIC):
-#             raise BarcodeSchemaError(
-#                 "variable barcode section {self.section_name} "
-#                 "cannot have 'STATIC' trait"
-#             )
-#
-#         if not self.has_variable_regions():
-#             raise BarcodeSchemaError(
-#                 f"variable barcode section {self.section_name} "
-#                 f"appears static: {self.section_tag}"
-#             )
-
-
 class BarcodeSchema:
     """
     contains data and metadata about a barcode schema
@@ -335,6 +310,14 @@ class BarcodeSchema:
     def __getitem__(self, item: str) -> Optional[BarcodeSection]:
         """Return the barcode section; None if not present"""
         return self.barcode_sections.get(item)
+
+    def __eq__(self, other):
+        """Return true if all sections AND the order of them are equal"""
+        if isinstance(other, BarcodeSchema):
+            if self.schema_id == other.schema_id:
+                if self.barcode_sections == other.barcode_sections:
+                    return True
+        return False
 
     def _check_barcode_sections(self):
         """Check barcode sections for errors and standardize text"""
