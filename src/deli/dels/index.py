@@ -81,7 +81,7 @@ class IndexSet:
         return cls(index_set=[Index(**d) for d in data])
 
 
-def get_min_index_distance(included_index: Optional[Union[list[Index], IndexSet]]) -> int:
+def get_min_index_distance(included_indexes: Optional[Union[list[Index], IndexSet]]) -> int:
     """
     Determine the minimum Levenshtein distance between all Indexes
 
@@ -91,7 +91,7 @@ def get_min_index_distance(included_index: Optional[Union[list[Index], IndexSet]
 
     Parameters
     ----------
-    included_index: list[Index] or IndexSet
+    included_indexes: list[Index] or IndexSet
         the index_ids to use
 
     Returns
@@ -100,9 +100,9 @@ def get_min_index_distance(included_index: Optional[Union[list[Index], IndexSet]
         the minimum Levenshtein distance between the passed indexes
     """
     # if only one index just give it a constant threshold
-    if included_index is None or len(included_index) <= 1:
+    if included_indexes is None or len(included_indexes) <= 1:
         return 0
-    _index_sequences = [i.dna_tag for i in included_index]
+    _index_sequences = [i.dna_tag for i in included_indexes]
     return min(
         [distance(s1, s2) for s1 in _index_sequences for s2 in _index_sequences if s1 != s2]
     )
