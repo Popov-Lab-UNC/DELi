@@ -209,24 +209,7 @@ class BuildingBlockSet:
         self.bb_set_id = bb_set_id
         self.building_blocks = building_blocks
 
-    # @classmethod
-    # def from_json(cls, path: str):
-    #     """
-    #     Initialize the building block set from a json file
-    #
-    #     Parameters
-    #     ----------
-    #     path: str
-    #         path to json file
-    #
-    #     Returns
-    #     -------
-    #     BuildingBlockSet
-    #     """
-    #     data = json.load(open(path))
-    #     return cls(
-    #         data["id"], [BuildingBlock.from_dict(bb_data) for bb_data in data["building_blocks"]]
-    #     )
+        self._dna_lookup_table = {bb.tag: i for i, bb in enumerate(self.building_blocks)}
 
     @classmethod
     def from_csv(cls, path: str, set_id: Optional[str] = None):
@@ -277,3 +260,29 @@ class BuildingBlockSet:
     def __iter__(self):
         """Iterate over the building blocks"""
         return iter(self.building_blocks)
+
+    def search_tags(self, query: str) -> Optional[BuildingBlock]:
+        """
+        Given a query DNA tag, search for corresponding BB with that tag
+
+        Notes
+        -----
+        Will return `None` if no matching building block is found
+
+        Parameters
+        ----------
+        query: str
+            DNA tag to query
+
+        Returns
+        -------
+        Optional[BuildingBlock]
+            will be `None` if no matching building block is found
+            else the matching BuildingBlock object
+
+        """
+        _idx = self._dna_lookup_table.get(query, None)
+        if _idx is None:
+            return None
+        else:
+            return self.building_blocks[_idx]
