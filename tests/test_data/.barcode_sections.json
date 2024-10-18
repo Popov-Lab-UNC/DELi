@@ -1,0 +1,10 @@
+{
+    "^pre-index$": ["STATIC"],
+    "^index$": ["STATIC"],
+    "^primer$": ["STATIC", "REQUIRED"],
+    "^library$": [],
+    "^bb[1-9][0-9]*$": [],
+    "pre-umi": ["STATIC"],
+    "umi": ["REQUIRED"],
+    "closing": ["STATIC"]
+}
