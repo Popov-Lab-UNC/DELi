@@ -1,6 +1,7 @@
 """define building block classes"""
 
 import abc
+import json
 import os
 from typing import List, Optional
 
@@ -212,13 +213,58 @@ class BuildingBlockSet:
         self._dna_lookup_table = {bb.tag: i for i, bb in enumerate(self.building_blocks)}
 
     @classmethod
-    def from_csv(cls, path: str, set_id: Optional[str] = None):
+    def from_csv(cls, path: str, set_id: Optional[str] = None, no_smiles: bool = False):
         """
         Read a building block set from a csv file
 
         Notes
         -----
         if `set_id` is not passed, will use the file name as the set id
+
+        Parameters
+        ----------
+        path: str
+            path to csv file
+        set_id: Optional[str]
+            name of the building block set
+        no_smiles: bool, default False
+            set to true if bb_set lacks a smiles column
+
+        Returns
+        -------
+        BuildingBlockSet
+        """
+        path = check_file_path(path, "building_blocks")
+
+        # get set id name from file name if None
+        if set_id is None:
+            _set_id = os.path.basename(path).split(".")[0]
+        else:
+            _set_id = set_id
+
+        _building_blocks = []
+        with open(path, "r") as f:
+            header = f.readline().strip().split(",")
+            _id_col_idx = header.index("id")
+            _smi_col_idx = header.index("smiles") if not no_smiles else None
+            _dna_col_idx = header.index("tag")
+            for line in f:
+                splits = line.strip().split(",")
+                _id = splits[_id_col_idx]
+                _smiles = splits[_smi_col_idx] if _smi_col_idx is not None else None
+                _dna = splits[_dna_col_idx]
+                _building_blocks.append(BuildingBlock(bb_id=_id, smiles=_smiles, tag=_dna))
+        return cls(_set_id, _building_blocks)
+
+    @classmethod
+    def from_json(cls, path: str, set_id: Optional[str] = None):
+        """
+        Read a building block set from a json file
+
+        Notes
+        -----
+        if `set_id` is not passed, will use the file name as the set id
+        json format assumes a mapping of DNA tag -> BB ID
 
         Parameters
         ----------
@@ -239,18 +285,11 @@ class BuildingBlockSet:
         else:
             _set_id = set_id
 
+        _data = json.load(open(path, "r"))
+
         _building_blocks = []
-        with open(path, "r") as f:
-            header = f.readline()
-            _id_col_idx = header.index("id")
-            _smi_col_idx = header.index("smiles")
-            _dna_col_idx = header.index("tag")
-            for line in f:
-                splits = line.strip().split(",")
-                _id = splits[_id_col_idx]
-                _smiles = splits[_smi_col_idx]
-                _dna = splits[_dna_col_idx]
-                _building_blocks.append(BuildingBlock(bb_id=_id, smiles=_smiles, tag=_dna))
+        for dna_tag, bb_id in _data.items():
+            _building_blocks.append(BuildingBlock(bb_id=bb_id, smiles=dna_tag))
         return cls(_set_id, _building_blocks)
 
     def __len__(self):
