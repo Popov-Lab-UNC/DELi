@@ -78,7 +78,7 @@ class IndexSet:
 
         """
         data = json.load(open(path))
-        return cls(index_set=[Index(**d) for d in data])
+        return cls(index_set=[Index(index_id=key, dna_tag=val) for key, val in data.items()])
 
 
 def get_min_index_distance(included_indexes: Optional[Union[list[Index], IndexSet]]) -> int:

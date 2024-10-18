@@ -104,7 +104,7 @@ class BarcodeSection:
 
     def __str__(self):
         """Coverts the section to just the DNA part"""
-        return self.section_tag + self.overhang_tag if self.overhang_tag else ""
+        return self.section_tag + (self.overhang_tag if self.overhang_tag else "")
 
     def __len__(self, include_overhang: bool = True):
         """Gets the full length of the barcode section including the overhang"""
@@ -226,6 +226,7 @@ class BarcodeSchema:
         self,
         schema_id: str,
         barcode_sections: List[BarcodeSection],
+        use_overhang_in_spans: bool = False,
     ):
         """
         Initialize the barcode schema
@@ -236,11 +237,15 @@ class BarcodeSchema:
             name/id of the barcode schema
         barcode_sections: Dict[str, Optional[str]]
             Dictionary of barcode sections (see barcode schema docs for more info)
+        use_overhang_in_spans: bool, default=False
+            consider overhang regions in all sections as part of that sections barcode
         """
         self.schema_id = schema_id
         self.barcode_sections = OrderedDict(
             {barcode_section.section_name: barcode_section for barcode_section in barcode_sections}
         )
+
+        self._use_overhang_in_spans = use_overhang_in_spans
 
         self._check_barcode_sections()
 
@@ -355,7 +360,11 @@ class BarcodeSchema:
         prev = 0
         for key, val in self.barcode_sections.items():
             _length = len(val)
-            _barcode_spans[key] = (prev, _length + prev)
+            if self._use_overhang_in_spans:
+                _section_length = _length
+            else:
+                _section_length = len(val.section_tag)
+            _barcode_spans[key] = (prev, _section_length + prev)
             prev += _length
         return _barcode_spans
 

@@ -131,11 +131,11 @@ class DELibrary:
         DELibrary
         """
         return cls(
-            library_id=lib_dict["library_id"],
+            library_id=lib_dict["id"],
             library_dna_tag=lib_dict["library_tag"],
             dna_barcode_on=lib_dict["dna_barcode_on"],
             barcode_schema=BarcodeSchema.load_from_json(lib_dict["barcode_schema"]),
-            bb_sets=[BuildingBlockSet.from_csv(bb) for bb in lib_dict["bb_sets"]],
+            bb_sets=[BuildingBlockSet.from_csv(bb, no_smiles=True) for bb in lib_dict["bb_sets"]],
             reactions=[Reaction(**react) for react in lib_dict["reactions"]],
             scaffold=lib_dict["scaffold"],
         )
@@ -156,6 +156,9 @@ class DELibrary:
         """
         path = check_file_path(path, "libraries")
         data = json.load(open(path))
+
+        if "scaffold" not in data.keys():
+            data["scaffold"] = None
 
         return cls.from_dict(data)
 
