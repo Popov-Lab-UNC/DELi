@@ -1,38 +1,42 @@
 """DNA sequence alignment"""
 
-from typing import List, Optional, Self, Tuple
-
-from numba import njit
+from typing import Dict, List, Self, Tuple
 
 
 class SemiGlobalAlignment:
-    """
-    Contains the global alignment of two sequences.
-
-    Parameters
-    ----------
-    seq1: str
-        first sequence from alignment
-    seq2: str
-        second sequence from alignment
-    alignment: List[Tuple[Optional[int], Optional[int]]]
-        the alignment of the two squences
-
-    Notes
-    -----
-    This class should never be manually instantiated, it should be
-    generated using the class method `globally_align`
-    """
+    """Contains the global alignment of two sequences."""
 
     def __init__(
         self,
         seq1: str,
         seq2: str,
-        alignment: List[Tuple[Optional[int], Optional[int]]],
+        alignment: List[Tuple[int, int]],
+        alignment_lookup: Dict[int, int],
     ):
+        """
+        Initialize the global alignment
+
+        Notes
+        -----
+        This class should never be manually instantiated, it should be
+        generated using the class method `globally_align`
+
+        Parameters
+        ----------
+        seq1: str
+            first sequence from alignment
+        seq2: str
+            second sequence from alignment
+        alignment: List[Tuple[Optional[int], Optional[int]]]
+            the alignment of the two squences
+        alignment_lookup: Dict[int, int]
+            a lookup table to get the most recent non-null
+            alignment of seq2 from a given seq1 index
+        """
         self.seq1 = seq1
         self.seq2 = seq2
         self.alignment = alignment
+        self.alignment_lookup = alignment_lookup
 
     def __iter__(self):
         """Iterate over the alignment indexes"""
@@ -86,19 +90,19 @@ class SemiGlobalAlignment:
         >>> my_alignment = SemiGlobalAlignment.globally_align(seq_1, seq_2)
         [(0, 0), (1, None), (2, 1), (3, 2), (None, 3)]
         """
-        return cls(seq1, seq2, _semi_global_align(seq1, seq2))
+        return cls(seq1, seq2, *_semi_global_align(seq1, seq2))
 
     def __str__(self) -> str:
         """Render the alignment as a a readable formatted string"""
         return (
-            "".join("-" if i is None else self.seq1[i] for i, _ in self.alignment)
+            "".join("-" if i == -1 else self.seq1[i] for i, _ in self.alignment)
             + "\n"
-            + "".join("-" if j is None else self.seq2[j] for _, j in self.alignment)
+            + "".join("-" if j == -1 else self.seq2[j] for _, j in self.alignment)
         )
 
 
-@njit()
-def _semi_global_align(seq1: str, seq2: str) -> List[Tuple[Optional[int], Optional[int]]]:
+# @njit()
+def _semi_global_align(seq1: str, seq2: str) -> Tuple[List[Tuple[int, int]], Dict[int, int]]:
     """
     Numba accelerated semi-global alignment implementation
 
@@ -125,8 +129,8 @@ def _semi_global_align(seq1: str, seq2: str) -> List[Tuple[Optional[int], Option
             )
             table[i, j], direction_table[i, j] = max(zip(choice, ((-1, -1), (-1, 0), (0, -1))))
 
-    alignment: List[Tuple[Optional[int], Optional[int]]] = []
-    element: Tuple[Optional[int], Optional[int]]
+    alignment: List[Tuple[int, int]] = []
+    element: Tuple[int, int]
 
     # Find the maximum score at the last row or column (semi-global alignment)
     last_row_scores = [table[n - 1, j] for j in range(m)]
@@ -138,22 +142,50 @@ def _semi_global_align(seq1: str, seq2: str) -> List[Tuple[Optional[int], Option
     else:
         i, j = last_col_scores.index(max(last_col_scores)), m - 1
 
+    # this bit of code will also add tailing Gap matches
+    # not sure if that is really needed and would slow
+    # down the alignment. for not we won't use it
+
+    # while i < n - 1:
+    #     alignment.insert(0, (n - 1, -1))
+    #     n -= 1
+    # while j < m - 1:
+    #     alignment.insert(0, (-1, m - 1))
+    #     m -= 1
+
     while i >= 0 and j >= 0:
         direction = direction_table[i, j]
         if direction == (-1, -1):
             element = i, j
         elif direction == (-1, 0):
-            element = i, None
+            element = i, -1
         else:
-            element = None, j
+            element = -1, j
         alignment.insert(0, element)
         di, dj = direction
         i, j = i + di, j + dj
     while i >= 0:
-        alignment.insert(0, (i, None))
+        alignment.insert(0, (i, -1))
         i -= 1
     while j >= 0:
-        alignment.insert(0, (None, j))
+        alignment.insert(0, (-1, j))
         j -= 1
 
-    return alignment
+    # this chunk will make the alignment into a lookup table
+    alignment_lookup: Dict[int, int] = {}
+    _last_non_null: int = 0
+
+    # this helps numba
+    max_seq1_idx: int = 0
+
+    for seq1_idx, seq2_idx in alignment:
+        if seq1_idx != -1:
+            if seq2_idx != -1:
+                _last_non_null = seq2_idx
+            alignment_lookup[seq1_idx] = _last_non_null
+            max_seq1_idx = seq1_idx
+
+    # need to add a ghost lookup at the end cause indexing from 0
+    alignment_lookup[max_seq1_idx + 1] = _last_non_null + 1
+
+    return alignment, alignment_lookup
