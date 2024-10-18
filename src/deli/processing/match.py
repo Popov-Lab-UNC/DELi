@@ -1,7 +1,8 @@
 """matching sequences to DEL barcode schemas"""
 
+import warnings
 from itertools import count
-from typing import Iterable, List, Tuple
+from typing import Iterable, List, Tuple, Union
 
 import regex
 
@@ -424,8 +425,8 @@ class BarcodeMatcher:
     def match(
         self,
         sequences: List[FastqSequence],
-        min_sequence_size: int = 75,
-        max_sequence_size: int = 1000,
+        min_sequence_size: Union[int, float] = float("-inf"),
+        max_sequence_size: Union[int, float] = float("inf"),
     ) -> List[MatchOutcome]:
         """
         Given a set of sequence and a pattern, find all matches of the pattern in the sequence
@@ -475,23 +476,52 @@ class BarcodeMatcher:
         all_matches = []
         num_passed_seqs = len(sequences)
 
-        # if self.rev_comp:
-        #     sequences.extend([sequence.revcomp() for sequence in sequences])
+        # adjust min match size to size of barcode if left as -inf
+        if min_sequence_size == float("-inf"):
+            min_sequence_size = len(self.barcode_scheme.full_barcode)
+
+        if len(self.barcode_scheme.full_barcode) > min_sequence_size:
+            warnings.warn(
+                f"min match size: {min_sequence_size} "
+                f"is smaller than the barcode size: {len(self.barcode_scheme.full_barcode)}; "
+                f"setting min match size to {len(self.barcode_scheme.full_barcode)}",
+                stacklevel=0,
+            )
+            min_sequence_size = len(self.barcode_scheme.full_barcode)
+
+        if len(self.barcode_scheme.full_barcode) >= max_sequence_size:
+            warnings.warn(
+                f"max match size: {max_sequence_size} "
+                f"is smaller than the barcode size: {len(self.barcode_scheme.full_barcode)}; "
+                f"setting max match size to {len(self.barcode_scheme.full_barcode) + 1}",
+                stacklevel=0,
+            )
+            max_sequence_size = len(self.barcode_scheme.full_barcode) + 1
+
+        # we can pick up speed by only looking for rev in seqs that
+        # don't have a fwd match. This can loose matches for nanopore
+        # because it can read in a fwd and rev as the same seq,
+        # but odds of this being a different UMI is low
+
+        if self.rev_comp:
+            sequences.extend([sequence.revcomp() for sequence in sequences])
 
         for i, sequence in enumerate(sequences):
+            _matches: List[MatchOutcome] = list()
+
+            # check sequence for correct size
+            if len(sequence) > max_sequence_size:
+                _matches = [SequenceTooBig(sequence=sequence)]
+                continue
+            if len(sequence) < min_sequence_size:
+                _matches = [SequenceTooSmall(sequence=sequence)]
+                continue
+
             # add padding to both ends of sequence
             if self.padding > 0:
                 _sequence = "X" * self.padding + sequence.sequence + "X" * self.padding
             else:
                 _sequence = sequence.sequence
-
-            _matches: List[MatchOutcome] = list()
-
-            # check sequence for correct size
-            if len(_sequence) > max_sequence_size:
-                _matches = [SequenceTooBig(sequence=sequence)]
-            if len(_sequence) < min_sequence_size:
-                _matches = [SequenceTooSmall(sequence=sequence)]
 
             # loop until sequence is too small or no matches found
             _found_a_match: bool = False
@@ -508,8 +538,8 @@ class BarcodeMatcher:
                         BarcodeMatch(
                             sequence=sequence,
                             match_span=(
-                                hit.regs[0][0] - self.padding,
-                                hit.regs[0][1] - self.padding,
+                                max(hit.regs[0][0] - self.padding - 5, 0),
+                                min(hit.regs[0][1] - self.padding + 5, len(sequence)),
                             ),
                         )
                     )
@@ -517,7 +547,8 @@ class BarcodeMatcher:
                     # only add the revcomp if the first pass failed
                     if not _found_a_match:
                         if i < num_passed_seqs - 1:
-                            sequences.append(sequence.revcomp())
+                            pass
+                            # sequences.append(sequence.revcomp())
                     break  # exit loop if no matches
 
             # if no matches found in sequence add a no match object
