@@ -116,7 +116,9 @@ class DeliDataNotFound(Exception):
 
 def accept_deli_data(
     sub_dir: Literal["building_blocks", "libraries", "indexes", "barcodes"], extension: str
-) -> Callable[[Callable[Concatenate[str, P], R]], Callable[Concatenate[str, DeliConfig, P], R]]:
+) -> Callable[
+    [Callable[Concatenate[Any, str, P], R]], Callable[Concatenate[Any, str, DeliConfig, P], R]
+]:
     """
     Decorator to allow load functions to take name of DELi data object
 
@@ -153,11 +155,11 @@ def accept_deli_data(
     """
 
     def _decorator(
-        func: Callable[Concatenate[str, P], R],
-    ) -> Callable[Concatenate[str, DeliConfig, P], R]:
+        func: Callable[Concatenate[Any, str, P], R],
+    ) -> Callable[Concatenate[Any, str, DeliConfig, P], R]:
         @functools.wraps(func)
         def _inner_func(
-            name_or_path: str, deli_config: DeliConfig, *args: P.args, **kwargs: P.kwargs
+            cls: Any, name_or_path: str, deli_config: DeliConfig, *args: P.args, **kwargs: P.kwargs
         ) -> R:
             # check if passed name_or_path is a valid path
             if not (os.path.exists(name_or_path) and name_or_path.endswith(f".{extension}")):
@@ -182,7 +184,7 @@ def accept_deli_data(
             else:
                 _path = name_or_path
 
-            return func(_path, *args, **kwargs)
+            return func(cls, _path, *args, **kwargs)
 
         return _inner_func
 
