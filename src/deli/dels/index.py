@@ -5,6 +5,10 @@ from typing import Iterator, List, Optional, Self, Union
 
 from Levenshtein import distance
 
+from deli.configure import accept_deli_data
+
+from .base import DeliDataLoadableMixin
+
 
 class Index:
     """
@@ -26,7 +30,7 @@ class Index:
         self.dna_tag = dna_tag
 
 
-class IndexSet:
+class IndexSet(DeliDataLoadableMixin):
     """
     Holds a set of indexes
 
@@ -57,6 +61,36 @@ class IndexSet:
     def __getitem__(self, index: int) -> Index:
         """Get the Index at the passed index from the set"""
         return self.index_set[index]
+
+    @classmethod
+    @accept_deli_data("indexes", "json")
+    def load(cls, path: str) -> Self:
+        """
+        Load a index set from the DELi data directory
+
+        Notes
+        -----
+        This is decorated by `accept_deli_data`
+        which makes this function actually take
+          path_or_name: str
+          deli_config: DeliConfig
+
+        `path_or_name` can be the full path to the file
+        or it can be the name of the object to load
+
+        See `Storing DEL info` in docs for more details
+
+
+        Parameters
+        ----------
+        path: str
+            path of the index set to load
+
+        Returns
+        -------
+        IndexSet
+        """
+        return cls.from_json(path)
 
     @classmethod
     def from_json(cls, path: str) -> Self:

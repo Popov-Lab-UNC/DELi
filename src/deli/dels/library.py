@@ -5,9 +5,11 @@ from typing import Iterator, List, Optional, Self, Union
 
 from Levenshtein import distance
 
+from deli.configure import accept_deli_data
+
 from .barcode import BarcodeSchema
+from .base import DeliDataLoadableMixin
 from .building_block import BuildingBlockSet
-from .configure import check_file_path
 
 
 class LibraryBuildError(Exception):
@@ -25,7 +27,7 @@ class Reaction:
         self.reaction = reaction
 
 
-class DELibrary:
+class DELibrary(DeliDataLoadableMixin):
     """
     Contains information about a DNA-encoded library
 
@@ -117,6 +119,36 @@ class DELibrary:
                 raise LibraryBuildError("no scaffold to attach DNA barcode to")
 
     @classmethod
+    @accept_deli_data("libraries", ".json")
+    def load(cls, path: str) -> Self:
+        """
+        Load a library from the DELi data directory
+
+        Notes
+        -----
+        This is decorated by `accept_deli_data`
+        which makes this function actually take
+          path_or_name: str
+          deli_config: DeliConfig
+
+        `path_or_name` can be the full path to the file
+        or it can be the name of the object to load
+
+        See `Storing DEL info` in docs for more details
+
+
+        Parameters
+        ----------
+        path: str
+            path of the library to load
+
+        Returns
+        -------
+        DELibrary
+        """
+        return cls.read_json(path)
+
+    @classmethod
     def from_dict(cls, lib_dict: dict) -> Self:
         """
         Load a DEL from a dict
@@ -135,7 +167,9 @@ class DELibrary:
             library_dna_tag=lib_dict["library_tag"],
             dna_barcode_on=lib_dict["dna_barcode_on"],
             barcode_schema=BarcodeSchema.load_from_json(lib_dict["barcode_schema"]),
-            bb_sets=[BuildingBlockSet.from_csv(bb, no_smiles=True) for bb in lib_dict["bb_sets"]],
+            bb_sets=[
+                BuildingBlockSet.load_from_csv(bb, no_smiles=True) for bb in lib_dict["bb_sets"]
+            ],
             reactions=[Reaction(**react) for react in lib_dict["reactions"]],
             scaffold=lib_dict["scaffold"],
         )
@@ -154,7 +188,6 @@ class DELibrary:
         -------
         DELibrary
         """
-        path = check_file_path(path, "libraries")
         data = json.load(open(path))
 
         if "scaffold" not in data.keys():
@@ -202,6 +235,36 @@ class MegaDELibrary:
         return self.libraries[index]
 
     @classmethod
+    @accept_deli_data("libraries", ".json")
+    def load(cls, path: str) -> Self:
+        """
+        Load a mega library from the DELi data directory
+
+        Notes
+        -----
+        This is decorated by `accept_deli_data`
+        which makes this function actually take
+          path_or_name: str
+          deli_config: DeliConfig
+
+        `path_or_name` can be the full path to the file
+        or it can be the name of the object to load
+
+        See `Storing DEL info` in docs for more details
+
+
+        Parameters
+        ----------
+        path: str
+            path of the mega library to load
+
+        Returns
+        -------
+        MegaDELibrary
+        """
+        return cls.read_json(path)
+
+    @classmethod
     def read_json(cls, path: str) -> Self:
         """
         Read a mega library from a json file
@@ -215,7 +278,6 @@ class MegaDELibrary:
         -------
         MegaDELibrary
         """
-        path = check_file_path(path, "libraries")
         data = json.load(open(path))
 
         return cls(libraries=[DELibrary.from_dict(d) for d in data])

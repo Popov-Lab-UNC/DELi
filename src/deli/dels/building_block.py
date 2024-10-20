@@ -1,12 +1,14 @@
 """define building block classes"""
 
 import abc
-import json
 import os
-from typing import List, Optional
+import warnings
+from typing import List, Optional, Self
 
+from deli.configure import accept_deli_data
 from deli.constants import BB_MASK
-from deli.dels.configure import check_file_path
+
+from .base import DeliDataLoadableMixin
 
 
 class BaseBuildingBlock(abc.ABC):
@@ -26,17 +28,6 @@ class BaseBuildingBlock(abc.ABC):
         bool
         """
         raise NotImplementedError
-
-    # @abc.abstractmethod
-    # def is_null(self) -> bool:
-    #     """
-    #     check if building block is a null building block or not
-    #
-    #     Returns
-    #     -------
-    #     bool
-    #     """
-    #     raise NotImplementedError
 
     def is_real(self) -> bool:
         """
@@ -96,43 +87,6 @@ class MaskedBuildingBlock(BaseBuildingBlock):
         return self.__class__()
 
 
-# class NullBuildingBlock(BaseBuildingBlock):
-#     """
-#     Defines a Null Building Block
-#
-#     Notes
-#     -----
-#     A masked building block is a place holder used to specify that
-#     there was no building block here. This is used when trying to
-#     force a 2 cycle library into a 3 cycle library
-#
-#     Attributes
-#     ----------
-#     bb_id : str = BB_NULL
-#         always set to the constant BB_NULL
-#     """
-#
-#     def __init__(self):
-#         super().__init__()
-#         self.bb_id = BB_NULL
-#
-#     def is_mask(self) -> bool:
-#         """Masked BBs are never masks"""
-#         return False
-#
-#     def is_null(self) -> bool:
-#         """Masked BBs are always null"""
-#         return True
-#
-#     def __eq__(self, other):
-#         """Null BB can never be equal to another BB"""
-#         return False
-#
-#     def __copy__(self):
-#         """Return a new null BB object"""
-#         return self.__class__()
-
-
 class BuildingBlock(BaseBuildingBlock):
     """define building block class"""
 
@@ -186,7 +140,7 @@ class BuildingBlock(BaseBuildingBlock):
         return self.__class__(self.bb_id, self.smiles)
 
 
-class BuildingBlockSet:
+class BuildingBlockSet(DeliDataLoadableMixin):
     """
     Define a set of building blocks
     """
@@ -213,7 +167,37 @@ class BuildingBlockSet:
         self._dna_lookup_table = {bb.tag: i for i, bb in enumerate(self.building_blocks)}
 
     @classmethod
-    def from_csv(cls, path: str, set_id: Optional[str] = None, no_smiles: bool = False):
+    @accept_deli_data(sub_dir="building_blocks", extension="csv")
+    def load(cls, path: str) -> Self:
+        """
+        Load a building block set from the DELi data directory
+
+        Notes
+        -----
+        This is decorated by `accept_deli_data`
+        which makes this function actually take
+          path_or_name: str
+          deli_config: DeliConfig
+
+        `path_or_name` can be the full path to the file
+        or it can be the name of the object to load
+
+        See `Storing DEL info` in docs for more details
+
+
+        Parameters
+        ----------
+        path: str
+            path of the building block set to load
+
+        Returns
+        -------
+        BuildingBlockSet
+        """
+        return cls.load_from_csv(path)
+
+    @classmethod
+    def load_from_csv(cls, path: str, set_id: Optional[str] = None, no_smiles: bool = False):
         """
         Read a building block set from a csv file
 
@@ -234,8 +218,6 @@ class BuildingBlockSet:
         -------
         BuildingBlockSet
         """
-        path = check_file_path(path, "building_blocks")
-
         # get set id name from file name if None
         if set_id is None:
             _set_id = os.path.basename(path).split(".")[0]
@@ -246,50 +228,25 @@ class BuildingBlockSet:
         with open(path, "r") as f:
             header = f.readline().strip().split(",")
             _id_col_idx = header.index("id")
-            _smi_col_idx = header.index("smiles") if not no_smiles else None
             _dna_col_idx = header.index("tag")
+
+            if not no_smiles:
+                if "smiles" not in header:
+                    warnings.warn(
+                        f"building block file {path} missing 'smiles' column in header; "
+                        f"set `no_smiles` to `True` to turn off this message",
+                        stacklevel=0,
+                    )
+                no_smiles = True
+
+            _smi_col_idx = header.index("smiles") if not no_smiles else None
+
             for line in f:
                 splits = line.strip().split(",")
                 _id = splits[_id_col_idx]
                 _smiles = splits[_smi_col_idx] if _smi_col_idx is not None else None
                 _dna = splits[_dna_col_idx]
                 _building_blocks.append(BuildingBlock(bb_id=_id, smiles=_smiles, tag=_dna))
-        return cls(_set_id, _building_blocks)
-
-    @classmethod
-    def from_json(cls, path: str, set_id: Optional[str] = None):
-        """
-        Read a building block set from a json file
-
-        Notes
-        -----
-        if `set_id` is not passed, will use the file name as the set id
-        json format assumes a mapping of DNA tag -> BB ID
-
-        Parameters
-        ----------
-        path: str
-            path to csv file
-        set_id: Optional[str]
-            name of the building block set
-
-        Returns
-        -------
-        BuildingBlockSet
-        """
-        path = check_file_path(path, "building_blocks")
-
-        # get set id name from file name if None
-        if set_id is None:
-            _set_id = os.path.basename(path).split(".")[0]
-        else:
-            _set_id = set_id
-
-        _data = json.load(open(path, "r"))
-
-        _building_blocks = []
-        for dna_tag, bb_id in _data.items():
-            _building_blocks.append(BuildingBlock(bb_id=bb_id, smiles=dna_tag))
         return cls(_set_id, _building_blocks)
 
     def __len__(self):

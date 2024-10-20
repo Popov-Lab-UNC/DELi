@@ -1,6 +1,7 @@
 """Hold generic mixin and abstract classes for use by DEL objects"""
 
 import abc
+from typing import Self
 
 from deli.configure import accept_deli_data
 
@@ -11,7 +12,7 @@ class DeliDataLoadableMixin(abc.ABC):
     @classmethod
     @accept_deli_data("barcodes", ".json")
     @abc.abstractmethod
-    def load(cls, path: str):
+    def load(cls, path: str) -> Self:
         """
         Load in an object from Deli Data
         """
