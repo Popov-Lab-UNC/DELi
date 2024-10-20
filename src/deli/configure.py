@@ -18,30 +18,30 @@ class DeliConfig:
 
     Attributes
     ----------
-    DELI_DATA_DIR : str
+    deli_data_dir : str
         where the DELi data directory is located
         default location is `~/.deli/data`
         should follow format specific in 'Storing DEL info'
-    BB_MASK: str
+    bb_mask: str
         the 3 char long token to replace any masked building blocks
         masked building blocks result from synthon-based analysis
-    BB_NULL: str
+    bb_null: str
         the 3 char long token to replace any null building blocks
-    MAX_INDEX_RISK_DIST_THRESHOLD: int
+    max_index_risk_dist_threshold: int
         the maximum risk willing to make in an index call
         if risk is above this number will fail the call
-    MAX_LIBRARY_RISK_DIST_THRESHOLD: int
+    max_library_risk_dist_threshold: int
         the maximum risk willing to make in a library call
         if risk is above this number will fail the call
     """
 
-    DELI_DATA_DIR: str
+    deli_data_dir: str
 
-    BB_MASK: str
-    BB_NULL: str
+    bb_mask: str
+    bb_null: str
 
-    MAX_INDEX_RISK_DIST_THRESHOLD: int
-    MAX_LIBRARY_RISK_DIST_THRESHOLD: int
+    max_index_risk_dist_threshold: int
+    max_library_risk_dist_threshold: int
 
     def __post_init__(self):
         """Validate the passed DELi config parameters"""
@@ -60,15 +60,15 @@ class DeliConfig:
 
         # clean up the params
         _clean_settings: dict[str, Any] = {
-            "DELI_DATA_DIR": os.path.normpath(settings["DELI_DATA_DIR"]),
-            "MAX_INDEX_RISK_DIST_THRESHOLD": int(settings["MAX_INDEX_RISK_DIST_THRESHOLD"]),
-            "MAX_LIBRARY_RISK_DIST_THRESHOLD": int(settings["MAX_LIBRARY_RISK_DIST_THRESHOLD"]),
+            "deli_data_dir": os.fspath(os.path.expanduser(settings["deli_data_dir"])),
+            "max_index_risk_dist_threshold": int(settings["max_index_risk_dist_threshold"]),
+            "max_library_risk_dist_threshold": int(settings["max_library_risk_dist_threshold"]),
         }
         for key, val in settings.items():
             if key not in _clean_settings.keys():
                 _clean_settings[key] = val
 
-        return settings
+        return _clean_settings
 
     @classmethod
     def load_defaults(cls) -> Self:
@@ -167,7 +167,7 @@ def accept_deli_data(
 
                 name_or_path = os.path.basename(name_or_path)
 
-                _sub_path = os.path.join(os.path.abspath(deli_config.DELI_DATA_DIR), sub_dir)
+                _sub_path = os.path.join(os.path.abspath(deli_config.deli_data_dir), sub_dir)
                 if not os.path.exists(_sub_path):
                     raise DeliDataNotFound(
                         f"cannot find DELi data subdirectory at `{_sub_path}`; "
@@ -176,7 +176,7 @@ def accept_deli_data(
                 _path = os.path.join(_sub_path, name_or_path + "." + extension)
 
                 # check that a file with the correct name exists
-                if os.path.exists(_path):
+                if not os.path.exists(_path):
                     raise DeliDataNotFound(
                         f"cannot find file '{name_or_path}.{extension}' in {_sub_path}"
                     )
