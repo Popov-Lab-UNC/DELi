@@ -3,9 +3,8 @@
 import configparser
 import dataclasses
 import functools
-import inspect
 import os
-from typing import Any, Callable, Literal, ParamSpec, Self, TypeVar
+from typing import Any, Callable, Concatenate, Literal, ParamSpec, Self, TypeVar
 
 
 P = ParamSpec("P")
@@ -115,16 +114,31 @@ class DeliDataNotFound(Exception):
     pass
 
 
-def validate_deli_data_path(
+def accept_deli_data(
     sub_dir: Literal["building_blocks", "libraries", "indexes", "barcodes"], extension: str
-) -> Callable[[Callable[P, R]], Callable[P, R]]:
+) -> Callable[[Callable[Concatenate[str, P], R]], Callable[Concatenate[str, DeliConfig, P], R]]:
     """
-    Decorator to validate a given DELi object file exists
+    Decorator to allow load functions to take name of DELi data object
 
     Notes
     -----
+    This should be used decorate the `load` function of any
+    class that has the `DeliDataLoadableMixin` mixin
+
+    It will result in the function taking in, rather than a full path,
+    the name of the object (e.g. "MyMegaLibrary") and the
+    DELi config object that defines where DELI_DATA_DIR is
+
     Set the sub-dir (libraries, indexes, building_blocks, barcodes)
-    when assigning the decorator
+    when assigning the decorator based on where the data should be
+    See `Storing DEL info` in docs for more details
+
+    Also set the file `extension` so that the write file loaders
+    can be used and file type checked
+
+    Not all DEL objects use the same file format.
+    DocStrings of a given object will define which
+    file formats can be used
 
     Parameters
     ----------
@@ -138,36 +152,37 @@ def validate_deli_data_path(
     decorated_function: Callable[P, R]
     """
 
-    def _decorator(func: Callable[P, R]) -> Callable[P, R]:
+    def _decorator(
+        func: Callable[Concatenate[str, P], R],
+    ) -> Callable[Concatenate[str, DeliConfig, P], R]:
         @functools.wraps(func)
-        def _inner_func(*args: P.args, **kwargs: P.kwargs) -> R:
-            def _get_arg(arg_name: str) -> Any:
-                if arg_name in kwargs:
-                    target_arg_value = kwargs[arg_name]
-                else:
-                    signature = inspect.signature(func)
-                    pos = list(signature.parameters.keys()).index(arg_name)
-                    target_arg_value = args[pos]
-                return target_arg_value
+        def _inner_func(
+            name_or_path: str, deli_config: DeliConfig, *args: P.args, **kwargs: P.kwargs
+        ) -> R:
+            # check if passed name_or_path is a valid path
+            if not (os.path.exists(name_or_path) and name_or_path.endswith(f".{extension}")):
+                # check for valid subdir
 
-            deli_config: DeliConfig = _get_arg("deli_config")
-            name: str = _get_arg("name")
+                name_or_path = os.path.basename(name_or_path)
 
-            _sub_path = os.path.join(os.path.abspath(deli_config.DELI_DATA_DIR), sub_dir)
-            if os.path.exists(_sub_path):
-                _file_path = os.path.join(_sub_path, name)
-
-                if os.path.exists(os.path.join(_sub_path, name) + "." + extension):
-                    return func(*args, **kwargs)
-                else:
+                _sub_path = os.path.join(os.path.abspath(deli_config.DELI_DATA_DIR), sub_dir)
+                if not os.path.exists(_sub_path):
                     raise DeliDataNotFound(
-                        f"cannot find file named '{name}.{extension}' in {_sub_path}"
+                        f"cannot find DELi data subdirectory at `{_sub_path}`; "
+                        f"did you check that DELI_DATA_DIR is set correctly?"
                     )
+                _path = os.path.join(_sub_path, name_or_path + "." + extension)
+
+                # check that a file with the correct name exists
+                if os.path.exists(_path):
+                    raise DeliDataNotFound(
+                        f"cannot find file '{name_or_path}.{extension}' in {_sub_path}"
+                    )
+            # name_or_path was a valid path
             else:
-                raise DeliDataNotFound(
-                    f"cannot find DELi data subdirectory at `{_sub_path}`; "
-                    f"did you check that DELI_DATA_DIR is set correctly?"
-                )
+                _path = name_or_path
+
+            return func(_path, *args, **kwargs)
 
         return _inner_func
 
