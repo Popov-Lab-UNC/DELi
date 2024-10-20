@@ -261,7 +261,7 @@ class BarcodeSchema(DeliDataLoadableMixin):
 
     @classmethod
     @accept_deli_data(sub_dir="barcodes", extension="json")
-    def load(cls, path: str):
+    def load(cls, path: str) -> Self:
         """
         Load a barcode schema from the DELi data directory
 
