@@ -2,12 +2,13 @@
 
 import enum
 import json
-import os
 import re
 from collections import OrderedDict
 from typing import List, Optional, Self
 
-from deli.configure import DeliConfig, validate_deli_data_path
+from deli.configure import accept_deli_data
+
+from .base import DeliDataLoadableMixin
 
 
 class BarcodeSectionTrait(enum.Enum):
@@ -218,10 +219,8 @@ class BarcodeSection:
         return _pattern
 
 
-class BarcodeSchema:
-    """
-    contains data and metadata about a barcode schema
-    """
+class BarcodeSchema(DeliDataLoadableMixin):
+    """contains data and metadata about a barcode schema"""
 
     def __init__(
         self,
@@ -261,37 +260,34 @@ class BarcodeSchema:
             )
 
     @classmethod
-    @validate_deli_data_path(sub_dir="barcodes", extension="json")
-    def load_barcode(cls, name: str, deli_config: DeliConfig):
+    @accept_deli_data(sub_dir="barcodes", extension="json")
+    def load(cls, path: str):
         """
         Load a barcode schema from the DELi data directory
 
         Notes
         -----
-        `name` should just be the name of the barcode
-        all barcodes should be saved as '[name].json'
-        and saved in the DELI_DATA_DIR
+        This is decorated by `accept_deli_data`
+        which makes this function actually take
+          path_or_name: str
+          deli_config: DeliConfig
 
-        To load this way, it requires that
-        DELI_DATA_DIR is specified in .deli/.deli
-        or the DELI_DATA_DIR environment variable is
-        set
+        `path_or_name` can be the full path to the file
+        or it can be the name of the object to load
+
+        See `Storing DEL info` in docs for more details
+
 
         Parameters
         ----------
-        name: str
-            name of the barcode to load
-        deli_config: DeliConfig
-            the DeliConfig object with the DELi
-            settings loaded
+        path: str
+            path of the barcode to load
 
         Returns
         -------
         BarcodeSchema
         """
-        return cls.load_from_json(
-            os.path.join(deli_config.DELI_DATA_DIR, "barcodes", name + ".json")
-        )
+        return cls.load_from_json(path)
 
     @classmethod
     def load_from_json(cls, file_path: str) -> Self:
