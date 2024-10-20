@@ -2,11 +2,12 @@
 
 import enum
 import json
+import os
 import re
 from collections import OrderedDict
 from typing import List, Optional, Self
 
-from deli.dels.configure import check_file_path
+from deli.configure import DeliConfig, validate_deli_data_path
 
 
 class BarcodeSectionTrait(enum.Enum):
@@ -260,6 +261,39 @@ class BarcodeSchema:
             )
 
     @classmethod
+    @validate_deli_data_path(sub_dir="barcodes", extension="json")
+    def load_barcode(cls, name: str, deli_config: DeliConfig):
+        """
+        Load a barcode schema from the DELi data directory
+
+        Notes
+        -----
+        `name` should just be the name of the barcode
+        all barcodes should be saved as '[name].json'
+        and saved in the DELI_DATA_DIR
+
+        To load this way, it requires that
+        DELI_DATA_DIR is specified in .deli/.deli
+        or the DELI_DATA_DIR environment variable is
+        set
+
+        Parameters
+        ----------
+        name: str
+            name of the barcode to load
+        deli_config: DeliConfig
+            the DeliConfig object with the DELi
+            settings loaded
+
+        Returns
+        -------
+        BarcodeSchema
+        """
+        return cls.load_from_json(
+            os.path.join(deli_config.DELI_DATA_DIR, "barcodes", name + ".json")
+        )
+
+    @classmethod
     def load_from_json(cls, file_path: str) -> Self:
         """
         load a schema from a json file
@@ -274,7 +308,6 @@ class BarcodeSchema:
         BarcodeSchema
             the loaded schema
         """
-        file_path = check_file_path(file_path, "barcodes")
         data = json.load(open(file_path))
 
         # load the id
