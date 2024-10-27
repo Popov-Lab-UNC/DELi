@@ -5,9 +5,15 @@ from typing import Iterator, List, Optional, Self, Union
 
 from Levenshtein import distance
 
-from deli.configure import accept_deli_data
+from deli.configure import accept_deli_data_name
 
 from .base import DeliDataLoadableMixin
+
+
+class DELIndexError(Exception):
+    """exception for issues when load indexes"""
+
+    pass
 
 
 class Index:
@@ -29,6 +35,15 @@ class Index:
         self.index_id = index_id
         self.dna_tag = dna_tag
 
+    def __len__(self):
+        """Gets the length of the index DNA tag"""
+        return len(self.dna_tag)
+
+    def __eq__(self, other):
+        """Two indexes are equal if they have the same id and DNA tag"""
+        if isinstance(other, Index):
+            return (self.index_id == other.index_id) and (self.dna_tag == other.dna_tag)
+
 
 class IndexSet(DeliDataLoadableMixin):
     """
@@ -49,6 +64,7 @@ class IndexSet(DeliDataLoadableMixin):
             the index objects that make up the index set
         """
         self.index_set = index_set
+        self._check_validity()
 
     def __len__(self) -> int:
         """Return the number of indexes in the IndexSet"""
@@ -62,8 +78,15 @@ class IndexSet(DeliDataLoadableMixin):
         """Get the Index at the passed index from the set"""
         return self.index_set[index]
 
+    def __add__(self, other) -> Self:
+        """Merge two index sets together"""
+        if not isinstance(other, self.__class__):
+            raise TypeError(f"cannot add type {type(other)} to {self.__class__}")
+
+        return self.__class__(self.index_set + other.index_set)
+
     @classmethod
-    @accept_deli_data("indexes", "json")
+    @accept_deli_data_name("indexes", "json")
     def load(cls, path: str) -> Self:
         """
         Load a index set from the DELi data directory
@@ -113,6 +136,32 @@ class IndexSet(DeliDataLoadableMixin):
         """
         data = json.load(open(path))
         return cls(index_set=[Index(index_id=key, dna_tag=val) for key, val in data.items()])
+
+    def _check_validity(self):
+        """Checks that there are no duplicate or conflicts in index set"""
+        _ids = []
+        _tags = []
+        for index in self.index_set:
+            # check id uniqueness
+            if index.index_id in _ids:
+                if index.dna_tag == self.index_set[_ids.index(index.index_id)]:
+                    raise DELIndexError("identical indexes found in index set")
+                else:
+                    raise DELIndexError(
+                        "multiple indexes have the same id; index_ids must be unique"
+                    )
+            else:
+                _ids.append(index.index_id)
+
+            # check the tag uniqueness
+            if index.dna_tag in _tags:
+                _idx = _tags.index(index.dna_tag)
+                raise DELIndexError(
+                    f"index {index.index_id} and index {self.index_set[_idx]} "
+                    f"have the same dna tag: {index.dna_tag}"
+                )
+            else:
+                _tags.append(index.index_id)
 
 
 def get_min_index_distance(included_indexes: Optional[Union[list[Index], IndexSet]]) -> int:

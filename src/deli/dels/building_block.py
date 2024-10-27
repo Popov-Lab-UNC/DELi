@@ -5,7 +5,7 @@ import os
 import warnings
 from typing import List, Optional, Self
 
-from deli.configure import accept_deli_data
+from deli.configure import accept_deli_data_name
 from deli.constants import BB_MASK
 
 from .base import DeliDataLoadableMixin
@@ -167,7 +167,7 @@ class BuildingBlockSet(DeliDataLoadableMixin):
         self._dna_lookup_table = {bb.tag: i for i, bb in enumerate(self.building_blocks)}
 
     @classmethod
-    @accept_deli_data(sub_dir="building_blocks", extension="csv")
+    @accept_deli_data_name(sub_dir="building_blocks", extension="csv")
     def load(cls, path: str) -> Self:
         """
         Load a building block set from the DELi data directory

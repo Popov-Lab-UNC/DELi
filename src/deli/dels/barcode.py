@@ -6,7 +6,7 @@ import re
 from collections import OrderedDict
 from typing import List, Optional, Self
 
-from deli.configure import accept_deli_data
+from deli.configure import accept_deli_data_name
 
 from .base import DeliDataLoadableMixin
 
@@ -16,13 +16,18 @@ class BarcodeSectionTrait(enum.Enum):
 
     REQUIRED: str = "REQUIRED"
     STATIC: str = "STATIC"
+    BEFORE_BB: str = "BEFORE_BB"
 
 
 VALID_BARCODE_SECTIONS = {
-    r"^pre-index$": [BarcodeSectionTrait.STATIC],
-    r"^index$": [],
-    r"^primer$": [BarcodeSectionTrait.STATIC, BarcodeSectionTrait.REQUIRED],
-    r"^library$": [],
+    r"^pre-index$": [BarcodeSectionTrait.STATIC, BarcodeSectionTrait.BEFORE_BB],
+    r"^index$": [BarcodeSectionTrait.BEFORE_BB],
+    r"^primer$": [
+        BarcodeSectionTrait.STATIC,
+        BarcodeSectionTrait.REQUIRED,
+        BarcodeSectionTrait.BEFORE_BB,
+    ],
+    r"^library$": [BarcodeSectionTrait.BEFORE_BB],
     r"^bb[1-9][0-9]*$": [],
     r"^pre-umi$": [BarcodeSectionTrait.STATIC],
     r"^umi$": [BarcodeSectionTrait.REQUIRED],
@@ -116,7 +121,7 @@ class BarcodeSection:
             return len(self.section_tag)
 
     def __eq__(self, other):
-        """Return true if two sections are the same"""
+        """Return true if two sections are the same or None"""
         if isinstance(other, BarcodeSection):
             if self.section_tag == other.section_tag:
                 if self.overhang_tag == other.overhang_tag:
@@ -260,22 +265,16 @@ class BarcodeSchema(DeliDataLoadableMixin):
             )
 
     @classmethod
-    @accept_deli_data(sub_dir="barcodes", extension="json")
+    @accept_deli_data_name(sub_dir="barcodes", extension="json")
     def load(cls, path: str) -> Self:
         """
         Load a barcode schema from the DELi data directory
 
         Notes
         -----
-        This is decorated by `accept_deli_data`
-        which makes this function actually take
-          path_or_name: str
-          deli_config: DeliConfig
-
-        `path_or_name` can be the full path to the file
-        or it can be the name of the object to load
-
-        See `Storing DEL info` in docs for more details
+        Call also just pass the name of the file
+        (with or without the file extension)
+        and as long as DELI_DATA_DIR is set
 
 
         Parameters
@@ -353,12 +352,21 @@ class BarcodeSchema(DeliDataLoadableMixin):
                     return True
         return False
 
-    def _check_barcode_sections(self):
+    def _check_barcode_sections(self) -> None:
         """Check barcode sections for errors and standardize text"""
         _seen_sections = set()
 
         # loop through all passed barcode section and check them all
+        _seen_bb_section: bool = False
         for barcode_section_name, _ in self.barcode_sections.items():
+            if re.match(r"^bb[1-9][0-9]*$", barcode_section_name):
+                _seen_bb_section = True
+            if BarcodeSectionTrait.BEFORE_BB in _get_valid_section_traits(barcode_section_name):
+                if _seen_bb_section:
+                    raise BarcodeSchemaError(
+                        f"section {barcode_section_name} must come before all BB sections"
+                    )
+
             if barcode_section_name not in _seen_sections:
                 _seen_sections.add(barcode_section_name)
             else:
@@ -368,7 +376,6 @@ class BarcodeSchema(DeliDataLoadableMixin):
                 )
 
         # check that all required sections are present
-
         _required_sections = set(
             [
                 key
@@ -440,3 +447,109 @@ class BarcodeSchema(DeliDataLoadableMixin):
         List[str]
         """
         return list(self.barcode_sections.keys())
+
+    def get_position(self, section_name: str) -> Optional[int]:
+        """
+        Gets the position of the given section in the barcode (starts at 0)
+
+        Notes
+        -----
+        Will return `None` if the section is not in the barcode
+
+        Parameters
+        ----------
+        section_name: str
+            name of the section to query
+
+        Returns
+        -------
+        int or None
+        """
+        if section_name in self.barcode_sections.keys():
+            return list(self.barcode_sections.keys()).index("library")
+        else:
+            return None
+
+    def is_library_compatible(self, other: Self) -> bool:
+        """
+        Return True if the schema is library calling compatible with the other
+
+        Notes
+        -----
+        Library calling compatible ("library compatible" for short)
+        means two schema share the same index, primer and library regions
+
+        This is all that is need in order to call the library.
+
+        See "Advanced Barcoding" for more details
+
+        Parameters
+        ----------
+        other: BarcodeSchema
+            BarcodeSchema to compare to
+
+        Returns
+        -------
+        bool
+        """
+        return (
+            (self.barcode_sections.get("index") == other.barcode_sections.get("index"))
+            and (self.barcode_sections.get("primer") == other.barcode_sections.get("primer"))
+            and (self.barcode_sections.get("library") == other.barcode_sections.get("library"))
+            and (self.get_position("index") == other.get_position("index"))
+            and (self.get_position("library") == other.get_position("library"))
+            and (self.get_position("primer") == other.get_position("primer"))
+        )
+
+    def is_experiment_compatible(self, other: Self) -> bool:
+        """
+        Return True if the schema is can be in the same experiment as the other
+
+        Notes
+        -----
+        Experiment compatible means two schemas have the
+        same primer tag (same sequence) and the
+        primer is in the same position as the other
+        in the barcode (if primer is position 1,
+        then the other should have this be true as well
+
+        See "Advanced Barcoding" for more details
+
+        Parameters
+        ----------
+        other: BarcodeSchema
+            BarcodeSchema to compare to
+
+        Returns
+        -------
+        bool
+        """
+        return (self.barcode_sections.get("index") == other.barcode_sections.get("index")) and (
+            self.get_position("index") == other.get_position("index")
+        )
+
+
+# class BarcodeSchemaSet:
+#     def __init__(self, schemas: List[BarcodeSchema]):
+#         self.schemas: List[BarcodeSchema] = schemas
+#
+#     def _validate_schemas(self):
+#         if len(self.schemas) == 1:
+#             return
+#
+#         _schema = self.schemas[0]
+#         true_sections = {
+#             "pre-index": _schema.barcode_sections.get("pre-index", None),
+#             "index": _schema.barcode_sections.get("index", None),
+#             "primer": _schema.barcode_sections.get("primer", None),
+#             "library": _schema.barcode_sections.get("library", None),
+#             "closing": _schema.barcode_sections.get("closing", None),
+#         }
+#         for schema in self.schemas[1:]:
+#             if not all([schema.barcode_sections.get(section_name) == section
+#                        for section_name, section in true_sections.items()]):
+#                 raise BarcodeSchemaError(
+#                     f"schema {schema.schema_id} does not share the same index,"
+#                 )
+#
+#
