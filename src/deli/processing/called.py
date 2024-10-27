@@ -137,7 +137,7 @@ def _align_call_mode(match: BarcodeMatch, barcode_schema: BarcodeSchema) -> Barc
     ----------
     match: FullBarcodeMatch
         the match to generate the alignment for
-    barcode_schema:
+    barcode_schema: BarcodeSchema
         the schema defining the barcode to align to
 
     Returns
@@ -344,7 +344,6 @@ class BarcodeCaller:
 
     def __init__(
         self,
-        barcode_schema: BarcodeSchema,
         libraries: DELibrarySchemaGroup,
         indexes: Optional[Union[List[Index], IndexSet]] = None,
         call_mode: CallModes = CallModes.ALIGN,
@@ -352,18 +351,8 @@ class BarcodeCaller:
         """
         Initialize a DEL BarcodeCaller object
 
-        Notes
-        -----
-        Current calling does not support heterogeneous barcode schemas
-        All DELs from passed the caller must have the same barcode
-        schema
-
-        In future updates this option will be added
-
         Parameters
         ----------
-        barcode_schema: BarcodeSchema
-            the BarcodeSchema used by all DELs from this run
         libraries: Union[List[DELibrary], MegaDELibrary]
             the possible libraries that can be called from
             can be a list of libraries or a mega library
@@ -377,8 +366,6 @@ class BarcodeCaller:
             the methods used for calling
             must be a valid CallModes function
         """
-        self.barcode_schema = barcode_schema
-
         # handle no indexes
         if indexes is None:
             indexes = IndexSet([])
@@ -458,19 +445,18 @@ class BarcodeCaller:
         else:
             return FailedCall(section_name="umi")
 
+    @staticmethod
     def _call_bb(
-        self,
         match: BarcodeMatch,
         alignment: BarcodeAlignment,
         called_lib: Union[LibraryCall, FailedCall],
     ) -> List[Union[FailedCall, BBCall]]:
         """Call the building blocks"""
-        bb_regions = self.barcode_schema.get_bb_regions()
-
         if isinstance(called_lib, FailedCall):
-            return [FailedCall(section_name=bb_region) for bb_region in bb_regions]
+            return [FailedCall(section_name="bb1")]
 
         _lib = called_lib.called_library
+        bb_regions = _lib.barcode_schema.get_bb_regions()
 
         bb_calls: List[Union[BBCall, FailedCall]] = []
 
@@ -507,12 +493,12 @@ class BarcodeCaller:
         # call index/library first if multiple libraries
         if self._skip_calling_lib:
             # get global alignment
-            alignment = self.call_mode(match, self.barcode_schema)
+            alignment = self.call_mode(match, self.libraries[0].barcode_schema)
 
             # call the library tag
             library_call = self._call_library(match, alignment)
         else:
-            lib_alignment = self.call_mode(match, self.libraries.get_library_call_tag())
+            lib_alignment = self.call_mode(match, self.libraries.get_library_call_schema())
             # call the library tag
             library_call = self._call_library(match, lib_alignment)
 
@@ -522,7 +508,7 @@ class BarcodeCaller:
                     index_call=FailedCall(),
                     library_call=library_call,
                     umi_call=FailedCall(),
-                    bb_calls=[FailedCall()],
+                    bb_calls=[FailedCall(section_name="bb1")],
                 )
 
             alignment = self.call_mode(match, library_call.called_library.barcode_schema)

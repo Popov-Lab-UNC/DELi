@@ -146,12 +146,12 @@ def _semi_global_align(seq1: str, seq2: str) -> Tuple[List[Tuple[int, int]], Dic
     # not sure if that is really needed and would slow
     # down the alignment. for not we won't use it
 
-    # while i < n - 1:
-    #     alignment.insert(0, (n - 1, -1))
-    #     n -= 1
-    # while j < m - 1:
-    #     alignment.insert(0, (-1, m - 1))
-    #     m -= 1
+    while i < n - 1:
+        alignment.insert(0, (n - 1, -1))
+        n -= 1
+    while j < m - 1:
+        alignment.insert(0, (-1, m - 1))
+        m -= 1
 
     while i >= 0 and j >= 0:
         direction = direction_table[i, j]

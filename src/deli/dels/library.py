@@ -1,13 +1,13 @@
 """defines DEL library functions and classes"""
 
 import json
-from typing import Dict, Iterator, List, Optional, Self, Union, overload
+from typing import Any, Iterator, List, Optional, Self, Tuple, Union, overload
 
 from Levenshtein import distance
 
 from deli.configure import accept_deli_data_name
 
-from .barcode import BarcodeSchema
+from .barcode import BarcodeSchema, BarcodeSection
 from .base import DeliDataLoadableMixin
 from .building_block import BuildingBlockSet
 
@@ -119,7 +119,7 @@ class DELibrary(DeliDataLoadableMixin):
                 raise LibraryBuildError("no scaffold to attach DNA barcode to")
 
     @classmethod
-    @accept_deli_data_name("libraries", ".json")
+    @accept_deli_data_name("libraries", "json")
     def load(cls, path: str) -> Self:
         """
         Load a library from the DELi data directory
@@ -212,10 +212,20 @@ class DELibrary(DeliDataLoadableMixin):
         return self.barcode_schema.full_barcode
 
 
-class DELibraryGroupMixin:
+class BaseDELibraryGroup:
     """base class for any class that olds a group of DEL libraries"""
 
-    libraries: List[DELibrary]
+    def __init__(self, libraries: List[DELibrary]):
+        """
+        Initialize a DELibrarySchemaGroup object
+
+        Parameters
+        ----------
+        libraries: List[DELibrary]
+            libraries to include in the library schema group
+        """
+        self.libraries = libraries
+        self._check_validity()
 
     def __len__(self) -> int:
         """Return number of libraries in the mega library"""
@@ -235,8 +245,79 @@ class DELibraryGroupMixin:
         """Get the Library(s) at the passed index from the set"""
         return self.libraries[index]
 
+    def __add__(self, other: Any) -> Self:
+        """Add two library groups together (will fail if they overlap)"""
+        if not isinstance(other, self.__class__):
+            raise TypeError(
+                f"unsupported operand type(s) for +: '{type(self)}' and '{type(other)}'"
+            )
+        else:
+            return self.__class__(libraries=self.libraries + other.libraries)
 
-class DELibrarySchemaGroup(DELibraryGroupMixin):
+    def _check_validity(self):
+        """Checks that there are no duplicate or conflicts in del mega library"""
+        _ids = []
+        _tags = []
+        for _library in self.libraries:
+            # check id uniqueness
+            if _library.library_id in _ids:
+                if _library.library_tag == self.libraries[_ids.index(_library.library_id)]:
+                    raise LibraryBuildError(
+                        f"identical library ids found in mega library: {_library.library_id}"
+                    )
+                else:
+                    raise LibraryBuildError(
+                        f"multiple indexes have the same id {_library.library_id}; "
+                        f"index_ids must be unique"
+                    )
+            else:
+                _ids.append(_library.library_id)
+
+            # check the tag uniqueness
+            if _library.library_tag in _tags:
+                _idx = _tags.index(_library.library_tag)
+                raise LibraryBuildError(
+                    f"library {_library.library_id} and library {self.libraries[_idx]} "
+                    f"have the same dna tag: {_library.library_tag}"
+                )
+            else:
+                _tags.append(_library.library_tag)
+
+    def has_library_with_name(self, lib_name: str) -> bool:
+        """
+        Returns True if the Group has a library with the passed ID/name
+
+        Parameters
+        ----------
+        lib_name: str
+            name/id of the library
+
+        Returns
+        -------
+        bool
+        """
+        return any([lib.library_id == lib_name for lib in self.libraries])
+
+    def get_library_with_name(self, lib_name: str) -> DELibrary:
+        """
+        Returns True if the Group has a library with the passed ID/name
+
+        Parameters
+        ----------
+        lib_name: str
+            name/id of the library
+
+        Returns
+        -------
+        DELibrary
+        """
+        for lib in self.libraries:
+            if lib.library_id == lib_name:
+                return lib
+        raise KeyError(f"cannot find library with name '{lib_name}' in LibraryGroup")
+
+
+class DELibrarySchemaGroup(BaseDELibraryGroup):
     """
     A group of DELibraries where each group member has a calling compatible schema
 
@@ -268,12 +349,12 @@ class DELibrarySchemaGroup(DELibraryGroupMixin):
         libraries: List[DELibrary]
             libraries to include in the library schema group
         """
-        self.libraries = libraries
-        self._check_validity()
+        super().__init__(libraries=libraries)
 
         self.requires_multistep_calling = self._requires_multistep_calling()
 
     def _check_validity(self):
+        super()._check_validity()
         _lib_1 = self.libraries[0]
         for _library in self.libraries[1:]:
             if not _library.barcode_schema.is_library_compatible(_lib_1.barcode_schema):
@@ -282,7 +363,7 @@ class DELibrarySchemaGroup(DELibraryGroupMixin):
                     "the same index, primer and library regions"
                 )
 
-    def get_library_call_tag(self) -> str:
+    def get_library_call_schema(self) -> BarcodeSchema:
         """
         Get the index (if present), primer and library dna tag for calling
 
@@ -290,16 +371,19 @@ class DELibrarySchemaGroup(DELibraryGroupMixin):
         -------
         str
         """
+        _sections: List[BarcodeSection] = list()
         __index = self.libraries[0].barcode_schema.barcode_sections.get("index")
         if __index is None:
-            _index = ""
+            pass
         else:
-            _index = __index.section_tag
+            _sections.append(__index)
 
-        _library = self.libraries[0].barcode_schema.barcode_sections["library"].section_tag
-        _primer = self.libraries[0].barcode_schema.barcode_sections["primer"].section_tag
+        _sections.append(self.libraries[0].barcode_schema.barcode_sections["library"])
+        _sections.append(self.libraries[0].barcode_schema.barcode_sections["primer"])
 
-        return _index + _library + _primer
+        return BarcodeSchema(
+            schema_id="TMP_DO_NOT_SAVE", barcode_sections=_sections, override_required=True
+        )
 
     def _requires_multistep_calling(self) -> bool:
         """
@@ -328,27 +412,15 @@ class DELibrarySchemaGroup(DELibraryGroupMixin):
         _lib_1 = self.libraries[0]
         for _library in self.libraries[1:]:
             if not _library.barcode_schema == _lib_1.barcode_schema:
-                return False
-        return True
+                return True
+        return False
 
 
-class DELibraryGroup(DELibraryGroupMixin):
+class DELibraryGroup(BaseDELibraryGroup):
     """A set of many DELibraries"""
 
-    def __init__(self, libraries: List[DELibrary]):
-        """
-        Initialize a DELibraryGroup object
-
-        Parameters
-        ----------
-        libraries: List[DELibrary]
-            libraries to include in the mega library
-        """
-        self.libraries = libraries
-        self._check_validity()
-
     @classmethod
-    @accept_deli_data_name("libraries", ".json")
+    @accept_deli_data_name("libraries", "json")
     def load(cls, path: str) -> Self:
         """
         Load a mega library from the DELi data directory
@@ -395,35 +467,6 @@ class DELibraryGroup(DELibraryGroupMixin):
 
         return cls(libraries=[DELibrary.from_dict(d) for d in data])
 
-    def _check_validity(self):
-        """Checks that there are no duplicate or conflicts in del mega library"""
-        _ids = []
-        _tags = []
-        for _library in self.libraries:
-            # check id uniqueness
-            if _library.library_id in _ids:
-                if _library.library_tag == self.libraries[_ids.index(_library.library_id)]:
-                    raise LibraryBuildError(
-                        f"identical library ids found in mega library: {_library.library_id}"
-                    )
-                else:
-                    raise LibraryBuildError(
-                        f"multiple indexes have the same id {_library.library_id}; "
-                        f"index_ids must be unique"
-                    )
-            else:
-                _ids.append(_library.library_id)
-
-            # check the tag uniqueness
-            if _library.library_tag in _tags:
-                _idx = _tags.index(_library.library_tag)
-                raise LibraryBuildError(
-                    f"library {_library.library_id} and library {self.libraries[_idx]} "
-                    f"have the same dna tag: {_library.library_tag}"
-                )
-            else:
-                _tags.append(_library.library_tag)
-
     def break_into_schema_groups(self) -> List[DELibrarySchemaGroup]:
         """
         Separates all libraries into groups based on schema compatability
@@ -444,23 +487,23 @@ class DELibraryGroup(DELibraryGroupMixin):
         -------
         List[DELLibrarySchemaGroup]
         """
-        _groups: Dict[BarcodeSchema, List[DELibrary]] = dict()
+        _groups: List[Tuple[BarcodeSchema, List[DELibrary]]] = list()
 
         for _library in self.libraries:
             _found_group = False
-            for key, val in _groups.items():
-                if _library.barcode_schema.is_library_compatible(key):
-                    val.append(_library)
+            for _schema, _libs in _groups:
+                if _library.barcode_schema.is_library_compatible(_schema):
+                    _libs.append(_library)
                     _found_group = True
                 break
-            if _found_group:
-                _groups[_library.barcode_schema] = [_library]
+            if not _found_group:
+                _groups.append((_library.barcode_schema, [_library]))
 
-        return [DELibrarySchemaGroup(_libs) for _libs in _groups.values()]
+        return [DELibrarySchemaGroup(_libs[1]) for _libs in _groups]
 
 
 def get_min_library_tag_distance(
-    included_libraries: Optional[Union[list[DELibrary], DELibraryGroupMixin]],
+    included_libraries: Optional[Union[list[DELibrary], BaseDELibraryGroup]],
 ) -> int:
     """
     Determine the minimum Levenshtein distance between all library tags
