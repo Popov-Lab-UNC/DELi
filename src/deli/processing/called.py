@@ -10,9 +10,9 @@ from deli.dels import (
     BarcodeSchema,
     BuildingBlock,
     DELibrary,
+    DELibrarySchemaGroup,
     Index,
     IndexSet,
-    MegaDELibrary,
     Umi,
     get_min_index_distance,
     get_min_library_tag_distance,
@@ -345,7 +345,7 @@ class BarcodeCaller:
     def __init__(
         self,
         barcode_schema: BarcodeSchema,
-        libraries: Union[List[DELibrary], MegaDELibrary],
+        libraries: DELibrarySchemaGroup,
         indexes: Optional[Union[List[Index], IndexSet]] = None,
         call_mode: CallModes = CallModes.ALIGN,
     ):
@@ -379,52 +379,19 @@ class BarcodeCaller:
         """
         self.barcode_schema = barcode_schema
 
+        # handle no indexes
         if indexes is None:
             indexes = IndexSet([])
 
         self.indexes = indexes if isinstance(indexes, IndexSet) else IndexSet(indexes)
-        self.libraries = (
-            libraries if isinstance(libraries, MegaDELibrary) else MegaDELibrary(libraries)
-        )
+        self.libraries = libraries
         self.call_mode = call_mode
-
-        self._check_caller_validity()  # check setting are valid
 
         # precompute calling distance cutoffs
         self._max_library_dist: float = get_min_library_tag_distance(self.libraries) / 2
         self._max_index_dist: float = get_min_index_distance(self.indexes) / 2
         self._skip_calling_index: bool = len(self.indexes) <= 1
-        self._skip_calling_lib: bool = len(self.libraries) <= 1
-
-    def _check_caller_validity(self):
-        """Check to make sure caller settings and barcode definitions are compatible"""
-        # check for no libraries
-        if len(self.libraries) < 1:
-            raise BarcodeCallingError("must pass at least one library for calling")
-
-        # check for too many indexes
-        if len(self.indexes) > 1 and not self.barcode_schema.has_index():
-            raise BarcodeCallingError(
-                f"barcode schema lacks index section but multiple indexes "
-                f"were passed to the caller: {self.indexes}; index cannot be called"
-            )
-
-        # check for too many libraries
-        if len(self.libraries) > 1 and not self.barcode_schema.has_library():
-            raise BarcodeCallingError(
-                f"barcode schema lacks library_tag section but multiple libraries "
-                f"were passed to the caller: {self.libraries}; library cannot be called"
-            )
-
-        # check that all libraries share the same schema as the caller
-        # in V2, we should try and alter DELi to handle libraries of different
-        #  schemas at the same time
-        for library in self.libraries:
-            if library.barcode_schema != self.barcode_schema:
-                raise BarcodeCallingError(
-                    f"library {library.library_id} does not use the same barcode schema "
-                    f"passed to the caller"
-                )
+        self._skip_calling_lib: bool = not self.libraries.requires_multistep_calling
 
     @staticmethod
     def _make_call(query: str, refs: List[str], dist_cutoff: float) -> Tuple[int, float]:
@@ -537,17 +504,36 @@ class BarcodeCaller:
         -------
         CalledBarcode
         """
-        alignment = self.call_mode(match, self.barcode_schema)
+        # call index/library first if multiple libraries
+        if self._skip_calling_lib:
+            # get global alignment
+            alignment = self.call_mode(match, self.barcode_schema)
 
+            # call the library tag
+            library_call = self._call_library(match, alignment)
+        else:
+            lib_alignment = self.call_mode(match, self.libraries.get_library_call_tag())
+            # call the library tag
+            library_call = self._call_library(match, lib_alignment)
+
+            if isinstance(library_call, FailedCall):
+                return CalledBarcode(
+                    parent_match=match,
+                    index_call=FailedCall(),
+                    library_call=library_call,
+                    umi_call=FailedCall(),
+                    bb_calls=[FailedCall()],
+                )
+
+            alignment = self.call_mode(match, library_call.called_library.barcode_schema)
+
+        # call index if it is needed
         if len(self.indexes) != 0:
             index_call = self._call_index(match, alignment)
         else:
             index_call = None
 
-        library_call = self._call_library(match, alignment)
-
         bb_calls = self._call_bb(match, alignment, library_call)
-
         umi_call = self._call_umi(match, alignment)
 
         return CalledBarcode(
