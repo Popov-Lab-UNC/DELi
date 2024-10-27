@@ -1,7 +1,7 @@
 """Code for handling indexes"""
 
 import json
-from typing import Iterator, List, Optional, Self, Union
+from typing import Iterator, List, Optional, Self, Union, overload
 
 from Levenshtein import distance
 
@@ -74,7 +74,13 @@ class IndexSet(DeliDataLoadableMixin):
         """Iterate all indexes in the IndexSet"""
         return iter(self.index_set)
 
-    def __getitem__(self, index: int) -> Index:
+    @overload
+    def __getitem__(self, index: int) -> Index: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> List[Index]: ...
+
+    def __getitem__(self, index: Union[int, slice]) -> Union[Index, List[Index]]:
         """Get the Index at the passed index from the set"""
         return self.index_set[index]
 
