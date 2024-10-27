@@ -47,14 +47,11 @@ class DeliConfig:
 
     def __post_init__(self):
         """Validate the passed DELi config parameters"""
-        # make sure fields are not `None` (missing config data)
-        for field in dataclasses.fields(self.__class__):
-            if self.__getattribute__(field.name) is None:
-                _system_var = os.getenv(field.name.upper())
-                if _system_var is None:
-                    raise ValueError(f"Missing DELi configuration setting: {field.name}")
-                else:
-                    self.__setattr__(field.name, _system_var)
+        self.deli_data_dir = Path(os.fspath(os.path.expanduser(self.deli_data_dir)))
+        self.bb_mask = str(self.bb_mask)
+        self.bb_null = str(self.bb_null)
+        self.max_index_risk_dist_threshold = int(self.max_index_risk_dist_threshold)
+        self.max_library_risk_dist_threshold = int(self.max_library_risk_dist_threshold)
 
     @classmethod
     def _load_config(cls, path: str) -> dict[str, Any]:
@@ -64,17 +61,14 @@ class DeliConfig:
 
         settings = dict(config.items("DEFAULT"))
 
-        # clean up the params
-        _clean_settings: dict[str, Any] = {
-            "deli_data_dir": os.fspath(os.path.expanduser(settings["deli_data_dir"])),
-            "max_index_risk_dist_threshold": int(settings["max_index_risk_dist_threshold"]),
-            "max_library_risk_dist_threshold": int(settings["max_library_risk_dist_threshold"]),
-        }
-        for key, val in settings.items():
-            if key not in _clean_settings.keys():
-                _clean_settings[key] = val
-
-        return _clean_settings
+        for field in dataclasses.fields(cls):
+            if settings.get(field.name) is None:
+                _system_var = os.getenv(field.name.upper())
+                if _system_var is None:
+                    raise ValueError(f"Missing DELi configuration setting: {field.name}")
+                else:
+                    settings[field.name] = _system_var
+        return settings
 
     @classmethod
     def load_defaults(cls) -> Self:

@@ -4,7 +4,7 @@ import enum
 import json
 import re
 from collections import OrderedDict
-from typing import List, Optional, Self
+from typing import Dict, List, Optional, Self, Tuple
 
 from deli.configure import accept_deli_data_name
 
@@ -232,6 +232,7 @@ class BarcodeSchema(DeliDataLoadableMixin):
         schema_id: str,
         barcode_sections: List[BarcodeSection],
         use_overhang_in_spans: bool = False,
+        override_required: bool = False,
     ):
         """
         Initialize the barcode schema
@@ -244,11 +245,14 @@ class BarcodeSchema(DeliDataLoadableMixin):
             Dictionary of barcode sections (see barcode schema docs for more info)
         use_overhang_in_spans: bool, default=False
             consider overhang regions in all sections as part of that sections barcode
+        override_required: bool, default=False
+
         """
         self.schema_id = schema_id
         self.barcode_sections = OrderedDict(
             {barcode_section.section_name: barcode_section for barcode_section in barcode_sections}
         )
+        self.override_required = override_required
 
         self._use_overhang_in_spans = use_overhang_in_spans
 
@@ -259,10 +263,11 @@ class BarcodeSchema(DeliDataLoadableMixin):
 
         self.num_cycles = len(self.get_bb_regions())
 
-        if self.num_cycles < 2:
-            raise BarcodeSchemaError(
-                f"number of bb cycles must be at least 2; found {self.num_cycles}"
-            )
+        if not self.override_required:
+            if self.num_cycles < 2:
+                raise BarcodeSchemaError(
+                    f"number of bb cycles must be at least 2; found {self.num_cycles}"
+                )
 
     @classmethod
     @accept_deli_data_name(sub_dir="barcodes", extension="json")
@@ -347,9 +352,8 @@ class BarcodeSchema(DeliDataLoadableMixin):
     def __eq__(self, other):
         """Return true if all sections AND the order of them are equal"""
         if isinstance(other, BarcodeSchema):
-            if self.schema_id == other.schema_id:
-                if self.barcode_sections == other.barcode_sections:
-                    return True
+            if self.barcode_sections == other.barcode_sections:
+                return True
         return False
 
     def _check_barcode_sections(self) -> None:
@@ -384,13 +388,19 @@ class BarcodeSchema(DeliDataLoadableMixin):
             ]
         )
 
-        for _required_section in _required_sections:
-            if not any(
-                [re.search(_required_section, _seen_section) for _seen_section in _seen_sections]
-            ):
-                raise BarcodeSchemaError(f"Missing required barcode section: {_required_section}")
+        if not self.override_required:
+            for _required_section in _required_sections:
+                if not any(
+                    [
+                        re.search(_required_section, _seen_section)
+                        for _seen_section in _seen_sections
+                    ]
+                ):
+                    raise BarcodeSchemaError(
+                        f"Missing required barcode section: {_required_section}"
+                    )
 
-    def _build_barcode_spans(self):
+    def _build_barcode_spans(self) -> Dict[str, Tuple[int, int]]:
         """Given a barcode section dictionary, build a spans dictionary"""
         _barcode_spans = {}
         prev = 0

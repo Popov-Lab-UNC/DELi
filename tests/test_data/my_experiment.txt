@@ -1,0 +1,15 @@
+[library_group]
+MyDELibrary
+
+[libraries]
+DEL004
+DEL005
+
+[index_set]
+MyIndexSet
+
+[indexes]
+NSP2: index1, index2, index3
+Rdrp5: index4, index5, index6
+control: index7, index8, index9
+dummy: index10

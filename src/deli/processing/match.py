@@ -1,18 +1,20 @@
 """matching sequences to DEL barcode schemas"""
 
-import warnings
 from itertools import count
-from typing import Iterable, List, Tuple, Union
+from typing import List, Tuple
 
 import regex
 
-from deli.dels import BarcodeSchema
+from deli.processing.experiment import PrimerDELExperiment
 from deli.sequence import FastqSequence
 from deli.sequence.fasta import FastaSequence
 
 
 # global match_id value
 MATCH_ID = count()
+
+MATCH_TO_SECTIONS = ["primer"]
+MAX_SEQ_SCALER = 4
 
 
 class MatchOutcome:
@@ -361,11 +363,8 @@ class BarcodeMatcher:
 
     def __init__(
         self,
-        barcode_scheme: BarcodeSchema,
-        match_sections: Iterable[str] = ("primer",),
-        full_match: bool = False,
+        experiment: PrimerDELExperiment,
         error_tolerance: int = 3,
-        padding: int = 5,
         rev_comp: bool = True,
     ):
         """
@@ -373,49 +372,41 @@ class BarcodeMatcher:
 
         Parameters
         ----------
-        barcode_scheme: BarcodeSchema
-            barcode schema to match too
-        match_sections: Iterable[str], default="primer"
-            which sections to try and match
-        full_match: bool, default=False
-            use all barcode section to make a match
-            will override any passed match_sections
+        experiment: PrimerDELExperiment
+            the DEL experiment for this match run
         error_tolerance: int, default=3
             if not exact_match, how many error are tolerated in
             static sections
-        padding: int, default=5
-            if not exact_match, add padding to the being or end
-            to prevent unintentional trimming of the start/end
         rev_comp: bool, default=True
             also search in the reverse complement of the barcode
         """
-        self.barcode_scheme = barcode_scheme
-        self.full_match = full_match
+        self.experiment = experiment
         self.error_tolerance = error_tolerance
-        self.padding = padding
         self.rev_comp = rev_comp
 
-        self.match_sections = (
-            self.barcode_scheme.get_all_section_names() if self.full_match else match_sections
-        )
+        self._back_overlap = self.experiment.get_min_max_behind()
+        self._front_overlap = self.experiment.get_min_max_in_front()
 
-        if len(set(self.match_sections) - set(self.barcode_scheme.get_all_section_names())) != 0:
-            raise BarcodeMatchPatternError(
-                f"attempting to match to sections: {self.match_sections} "
-                f"when only sections {self.barcode_scheme.get_all_section_names()} are present"
-            )
         self.pattern = self._make_pattern()
 
-    def _make_pattern(self):
-        _pattern = ""
+        self._min_seq_size = min(
+            [len(lib.barcode_schema.full_barcode) for lib in self.experiment.libraries]
+        )
+        self._max_seq_size = (
+            max([len(lib.barcode_schema.full_barcode) for lib in self.experiment.libraries])
+            * MAX_SEQ_SCALER
+        )
 
-        for section_name, section in self.barcode_scheme.barcode_sections.items():
-            if section_name not in self.match_sections:
-                _pattern += section.to_match_pattern(wildcard=True)
-            else:
-                _pattern += section.to_match_pattern(
-                    wildcard=False, error_tolerance=self.error_tolerance, include_overhang=True
-                )
+        self._back_padding = self._back_overlap[1] - self._back_overlap[0] + 5
+        self._front_padding = self._front_overlap[1] - self._front_overlap[0] + 5
+
+    def _make_pattern(self):
+        _pattern = (
+            self.experiment.primer.to_match_pattern(
+                wildcard=False, error_tolerance=self.error_tolerance, include_overhang=True
+            )
+            + f".{{{self._back_overlap[1]}}}"
+        )
 
         if len({"A", "G", "C", "T"}.intersection(set(_pattern))) == 0:
             raise BarcodeMatchPatternError(f"pattern contains no static sections:\n{_pattern}")
@@ -425,8 +416,6 @@ class BarcodeMatcher:
     def match(
         self,
         sequences: List[FastqSequence],
-        min_sequence_size: Union[int, float] = float("-inf"),
-        max_sequence_size: Union[int, float] = float("inf"),
     ) -> List[MatchOutcome]:
         """
         Given a set of sequence and a pattern, find all matches of the pattern in the sequence
@@ -476,70 +465,53 @@ class BarcodeMatcher:
         all_matches = []
         num_passed_seqs = len(sequences)
 
-        # adjust min match size to size of barcode if left as -inf
-        if min_sequence_size == float("-inf"):
-            min_sequence_size = len(self.barcode_scheme.full_barcode)
-
-        if len(self.barcode_scheme.full_barcode) > min_sequence_size:
-            warnings.warn(
-                f"min match size: {min_sequence_size} "
-                f"is smaller than the barcode size: {len(self.barcode_scheme.full_barcode)}; "
-                f"setting min match size to {len(self.barcode_scheme.full_barcode)}",
-                stacklevel=0,
-            )
-            min_sequence_size = len(self.barcode_scheme.full_barcode)
-
-        if len(self.barcode_scheme.full_barcode) >= max_sequence_size:
-            warnings.warn(
-                f"max match size: {max_sequence_size} "
-                f"is smaller than the barcode size: {len(self.barcode_scheme.full_barcode)}; "
-                f"setting max match size to {len(self.barcode_scheme.full_barcode) + 1}",
-                stacklevel=0,
-            )
-            max_sequence_size = len(self.barcode_scheme.full_barcode) + 1
-
         # we can pick up speed by only looking for rev in seqs that
         # don't have a fwd match. This can loose matches for nanopore
         # because it can read in a fwd and rev as the same seq,
         # but odds of this being a different UMI is low
 
-        if self.rev_comp:
-            sequences.extend([sequence.revcomp() for sequence in sequences])
+        # if self.rev_comp:
+        #     sequences.extend([sequence.revcomp() for sequence in sequences])
 
         for i, sequence in enumerate(sequences):
             _matches: List[MatchOutcome] = list()
 
             # check sequence for correct size
-            if len(sequence) > max_sequence_size:
+            if len(sequence) > self._max_seq_size:
                 _matches = [SequenceTooBig(sequence=sequence)]
                 continue
-            if len(sequence) < min_sequence_size:
+            if len(sequence) < self._min_seq_size:
                 _matches = [SequenceTooSmall(sequence=sequence)]
                 continue
 
             # add padding to both ends of sequence
-            if self.padding > 0:
-                _sequence = "X" * self.padding + sequence.sequence + "X" * self.padding
-            else:
-                _sequence = sequence.sequence
+            _sequence = "X" * self._front_padding + sequence.sequence + "X" * self._back_padding
 
             # loop until sequence is too small or no matches found
             _found_a_match: bool = False
-            while len(_sequence) >= min_sequence_size:
+            while len(_sequence) >= self._min_seq_size:
                 # skip best match flag
                 hit = regex.search(self.pattern, _sequence)
 
                 if hit:
+                    # remove current hit from sequence
                     _sequence = _sequence[
-                        (hit.regs[0][1] + 1) :
-                    ]  # remove current hit from sequence
-                    # add full match if exact mode is used
+                        (hit.regs[0][1] + 1 - (self._back_overlap[1] - self._back_overlap[0])) :
+                    ]
+                    # the span is adjust to compensate for the padding, the front region
+                    # (since we don't have that in the pattern) and then some buffer
                     _matches.append(
                         BarcodeMatch(
                             sequence=sequence,
                             match_span=(
-                                max(hit.regs[0][0] - self.padding - 5, 0),
-                                min(hit.regs[0][1] - self.padding + 5, len(sequence)),
+                                max(
+                                    hit.regs[0][0]
+                                    - self._front_padding
+                                    - self._front_overlap[1]
+                                    - 5,
+                                    0,
+                                ),
+                                min(hit.regs[0][1] - self._back_padding + 5, len(sequence)),
                             ),
                         )
                     )
@@ -547,8 +519,7 @@ class BarcodeMatcher:
                     # only add the revcomp if the first pass failed
                     if not _found_a_match:
                         if i < num_passed_seqs - 1:
-                            pass
-                            # sequences.append(sequence.revcomp())
+                            sequences.append(sequence.revcomp())
                     break  # exit loop if no matches
 
             # if no matches found in sequence add a no match object

@@ -1,6 +1,8 @@
 """Code for handling indexes"""
 
 import json
+import os.path
+from os import PathLike
 from typing import Iterator, List, Optional, Self, Union, overload
 
 from Levenshtein import distance
@@ -21,7 +23,7 @@ class Index:
     Object that contains the index id and corresponding DNA tag
     """
 
-    def __init__(self, index_id: str, dna_tag: str):
+    def __init__(self, index_id: str, dna_tag: str, sample_name: Optional[str] = None):
         """
         Initializes the object with the index id and corresponding DNA tag
 
@@ -31,9 +33,12 @@ class Index:
             id of the index
         dna_tag: str
             the DNA tag of the index
+        sample_name: Optional[str], default = None
+            name of a the sample linked to the experiment
         """
         self.index_id = index_id
         self.dna_tag = dna_tag
+        self.sample_name = sample_name
 
     def __len__(self):
         """Gets the length of the index DNA tag"""
@@ -43,6 +48,14 @@ class Index:
         """Two indexes are equal if they have the same id and DNA tag"""
         if isinstance(other, Index):
             return (self.index_id == other.index_id) and (self.dna_tag == other.dna_tag)
+
+    @classmethod
+    @accept_deli_data_name("indexes", "txt")
+    def load(cls, path: Union[str, PathLike]) -> Self:
+        """Load an Index from a txt file"""
+        index_id = os.path.basename(path).split(".")[0]
+        index_tag = open(path, "r").readlines()[0].strip()
+        return cls(index_id=index_id, dna_tag=index_tag)
 
 
 class IndexSet(DeliDataLoadableMixin):
@@ -168,6 +181,44 @@ class IndexSet(DeliDataLoadableMixin):
                 )
             else:
                 _tags.append(index.index_id)
+
+    def has_index_with_name(self, index_name: str) -> bool:
+        """
+        Returns True if the Set has a index with the passed ID/name
+
+        Parameters
+        ----------
+        index_name: str
+            name/id of the index
+
+        Returns
+        -------
+        bool
+        """
+        return any([idx.index_id == index_name for idx in self.index_set])
+
+    def get_index_with_name(self, index_name: str) -> Index:
+        """
+        Returns Index with given name from the set
+
+        Parameters
+        ----------
+        index_name: str
+            name/id of the index
+
+        Raises
+        ------
+        KeyError
+            if the passed index name is not in the IndexSet
+
+        Returns
+        -------
+        Index
+        """
+        for index in self.index_set:
+            if index.index_id == index_name:
+                return index
+        raise KeyError(f"cannot find index with name '{index_name}' in IndexSet")
 
 
 def get_min_index_distance(included_indexes: Optional[Union[list[Index], IndexSet]]) -> int:
