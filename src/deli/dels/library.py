@@ -1,7 +1,7 @@
 """defines DEL library functions and classes"""
 
 import json
-from typing import Dict, Iterator, List, Optional, Self, Union
+from typing import Dict, Iterator, List, Optional, Self, Union, overload
 
 from Levenshtein import distance
 
@@ -225,8 +225,14 @@ class DELibraryGroupMixin:
         """Iterate through all libraries in the mega library"""
         return iter(self.libraries)
 
-    def __getitem__(self, index: int) -> DELibrary:
-        """Get the library at the passed index from the mega library"""
+    @overload
+    def __getitem__(self, index: int) -> DELibrary: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> List[DELibrary]: ...
+
+    def __getitem__(self, index: Union[int, slice]) -> Union[DELibrary, List[DELibrary]]:
+        """Get the Library(s) at the passed index from the set"""
         return self.libraries[index]
 
 
