@@ -3,8 +3,10 @@
 import configparser
 import dataclasses
 import functools
+import inspect
 import os
-from typing import Any, Callable, Concatenate, Literal, ParamSpec, Self, TypeVar
+from pathlib import Path
+from typing import Any, Callable, Literal, ParamSpec, Self, TypeVar, Union
 
 
 P = ParamSpec("P")
@@ -35,7 +37,7 @@ class DeliConfig:
         if risk is above this number will fail the call
     """
 
-    deli_data_dir: str
+    deli_data_dir: Path
 
     bb_mask: str
     bb_null: str
@@ -45,10 +47,11 @@ class DeliConfig:
 
     def __post_init__(self):
         """Validate the passed DELi config parameters"""
-        # make sure fields are not `None` (missing config data)
-        for field in dataclasses.fields(self.__class__):
-            if self.__getattribute__(field.name) is None:
-                raise ValueError(f"Missing DELi configuration setting: {field.name}")
+        self.deli_data_dir = Path(os.fspath(os.path.expanduser(self.deli_data_dir)))
+        self.bb_mask = str(self.bb_mask)
+        self.bb_null = str(self.bb_null)
+        self.max_index_risk_dist_threshold = int(self.max_index_risk_dist_threshold)
+        self.max_library_risk_dist_threshold = int(self.max_library_risk_dist_threshold)
 
     @classmethod
     def _load_config(cls, path: str) -> dict[str, Any]:
@@ -58,17 +61,14 @@ class DeliConfig:
 
         settings = dict(config.items("DEFAULT"))
 
-        # clean up the params
-        _clean_settings: dict[str, Any] = {
-            "deli_data_dir": os.fspath(os.path.expanduser(settings["deli_data_dir"])),
-            "max_index_risk_dist_threshold": int(settings["max_index_risk_dist_threshold"]),
-            "max_library_risk_dist_threshold": int(settings["max_library_risk_dist_threshold"]),
-        }
-        for key, val in settings.items():
-            if key not in _clean_settings.keys():
-                _clean_settings[key] = val
-
-        return _clean_settings
+        for field in dataclasses.fields(cls):
+            if settings.get(field.name) is None:
+                _system_var = os.getenv(field.name.upper())
+                if _system_var is None:
+                    raise ValueError(f"Missing DELi configuration setting: {field.name}")
+                else:
+                    settings[field.name] = _system_var
+        return settings
 
     @classmethod
     def load_defaults(cls) -> Self:
@@ -79,6 +79,11 @@ class DeliConfig:
         -----
         Default DELi configuration files are saved in
         `~/.deli/.deli` where `~` if your USER home directory
+
+        If a given DELI parameter is unfilled in the config
+        file then DELI will try and load it from the system
+        arguments (if they are set). System args should be
+        all caps versions of the variables
 
         Returns
         -------
@@ -108,17 +113,18 @@ class DeliConfig:
         return cls(**cls._load_config(path=file_path))
 
 
+DELI_CONFIG = DeliConfig.load_defaults()
+
+
 class DeliDataNotFound(Exception):
     """raised when a file cannot be found in DELi data directory"""
 
     pass
 
 
-def accept_deli_data(
+def accept_deli_data_name(
     sub_dir: Literal["building_blocks", "libraries", "indexes", "barcodes"], extension: str
-) -> Callable[
-    [Callable[Concatenate[Any, str, P], R]], Callable[Concatenate[Any, str, DeliConfig, P], R]
-]:
+) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """
     Decorator to allow load functions to take name of DELi data object
 
@@ -154,38 +160,60 @@ def accept_deli_data(
     decorated_function: Callable[P, R]
     """
 
-    def _decorator(
-        func: Callable[Concatenate[Any, str, P], R],
-    ) -> Callable[Concatenate[Any, str, DeliConfig, P], R]:
+    def _build_deli_data_path(path: Union[str, os.PathLike]) -> Path:
+        if os.path.exists(path):
+            return Path(path)
+
+        _sub_dir_path = DELI_CONFIG.deli_data_dir / sub_dir
+        if not os.path.exists(_sub_dir_path):
+            raise DeliDataNotFound(
+                f"cannot find DELi data subdirectory at `{_sub_dir_path}`; "
+                f"did you check that DELI_DATA_DIR is set correctly?"
+            )
+
+        _file_name = os.path.basename(path).split(".")[0] + "." + extension
+        file_path = DELI_CONFIG.deli_data_dir / sub_dir / _file_name
+
+        if not os.path.exists(file_path):
+            raise DeliDataNotFound(f"cannot find file '{path}.{extension}' in {_sub_dir_path}")
+
+        return file_path
+
+    try:
+        decorator = _build_argument_validation_decorator(_build_deli_data_path, "path")
+    except ValueError as err:  # will throw this error if the function lacks a "path" argument
+        raise RuntimeError(
+            "cannot decorate function without 'path' parameter "
+            "with the `accept_deli_data_name` decorator"
+        ) from err
+    return decorator
+
+
+def _build_argument_validation_decorator(
+    validator_func: Callable[[Any], Any], target_arg_name: str
+):
+    """
+    General decorator generator for validating a given argument with a validator function.
+    """
+
+    def outer(func: Callable[P, R]) -> Callable[P, R]:
         @functools.wraps(func)
-        def _inner_func(
-            cls: Any, name_or_path: str, deli_config: DeliConfig, *args: P.args, **kwargs: P.kwargs
-        ) -> R:
-            # check if passed name_or_path is a valid path
-            if not (os.path.exists(name_or_path) and name_or_path.endswith(f".{extension}")):
-                # check for valid subdir
-
-                name_or_path = os.path.basename(name_or_path)
-
-                _sub_path = os.path.join(os.path.abspath(deli_config.deli_data_dir), sub_dir)
-                if not os.path.exists(_sub_path):
-                    raise DeliDataNotFound(
-                        f"cannot find DELi data subdirectory at `{_sub_path}`; "
-                        f"did you check that DELI_DATA_DIR is set correctly?"
-                    )
-                _path = os.path.join(_sub_path, name_or_path + "." + extension)
-
-                # check that a file with the correct name exists
-                if not os.path.exists(_path):
-                    raise DeliDataNotFound(
-                        f"cannot find file '{name_or_path}.{extension}' in {_sub_path}"
-                    )
-            # name_or_path was a valid path
+        def inner(*args: P.args, **kwargs: P.kwargs) -> R:
+            pos = None
+            if target_arg_name in kwargs:
+                target_arg_value = kwargs[target_arg_name]
             else:
-                _path = name_or_path
+                signature = inspect.signature(func)
+                pos = list(signature.parameters.keys()).index(target_arg_name)
+                target_arg_value = args[pos]
+            new_arg = validator_func(target_arg_value)
+            if pos:
+                _new_args = (*args[:pos], new_arg, *args[pos + 1 :])
+            else:
+                kwargs[target_arg_name] = new_arg
+                _new_args = (*args,)
+            return func(*_new_args, **kwargs)
 
-            return func(cls, _path, *args, **kwargs)
+        return inner
 
-        return _inner_func
-
-    return _decorator
+    return outer
