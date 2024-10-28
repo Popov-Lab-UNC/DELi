@@ -1,13 +1,21 @@
 """Code for handling indexes"""
 
 import json
-from typing import Iterator, List, Optional, Self, Union
+import os.path
+from os import PathLike
+from typing import Iterator, List, Optional, Self, Union, overload
 
 from Levenshtein import distance
 
-from deli.configure import accept_deli_data
+from deli.configure import accept_deli_data_name
 
 from .base import DeliDataLoadableMixin
+
+
+class DELIndexError(Exception):
+    """exception for issues when load indexes"""
+
+    pass
 
 
 class Index:
@@ -15,7 +23,7 @@ class Index:
     Object that contains the index id and corresponding DNA tag
     """
 
-    def __init__(self, index_id: str, dna_tag: str):
+    def __init__(self, index_id: str, dna_tag: str, sample_name: Optional[str] = None):
         """
         Initializes the object with the index id and corresponding DNA tag
 
@@ -25,9 +33,29 @@ class Index:
             id of the index
         dna_tag: str
             the DNA tag of the index
+        sample_name: Optional[str], default = None
+            name of a the sample linked to the experiment
         """
         self.index_id = index_id
         self.dna_tag = dna_tag
+        self.sample_name = sample_name
+
+    def __len__(self):
+        """Gets the length of the index DNA tag"""
+        return len(self.dna_tag)
+
+    def __eq__(self, other):
+        """Two indexes are equal if they have the same id and DNA tag"""
+        if isinstance(other, Index):
+            return (self.index_id == other.index_id) and (self.dna_tag == other.dna_tag)
+
+    @classmethod
+    @accept_deli_data_name("indexes", "txt")
+    def load(cls, path: Union[str, PathLike]) -> Self:
+        """Load an Index from a txt file"""
+        index_id = os.path.basename(path).split(".")[0]
+        index_tag = open(path, "r").readlines()[0].strip()
+        return cls(index_id=index_id, dna_tag=index_tag)
 
 
 class IndexSet(DeliDataLoadableMixin):
@@ -49,6 +77,7 @@ class IndexSet(DeliDataLoadableMixin):
             the index objects that make up the index set
         """
         self.index_set = index_set
+        self._check_validity()
 
     def __len__(self) -> int:
         """Return the number of indexes in the IndexSet"""
@@ -58,12 +87,25 @@ class IndexSet(DeliDataLoadableMixin):
         """Iterate all indexes in the IndexSet"""
         return iter(self.index_set)
 
-    def __getitem__(self, index: int) -> Index:
+    @overload
+    def __getitem__(self, index: int) -> Index: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> List[Index]: ...
+
+    def __getitem__(self, index: Union[int, slice]) -> Union[Index, List[Index]]:
         """Get the Index at the passed index from the set"""
         return self.index_set[index]
 
+    def __add__(self, other) -> Self:
+        """Merge two index sets together"""
+        if not isinstance(other, self.__class__):
+            raise TypeError(f"cannot add type {type(other)} to {self.__class__}")
+
+        return self.__class__(self.index_set + other.index_set)
+
     @classmethod
-    @accept_deli_data("indexes", "json")
+    @accept_deli_data_name("indexes", "json")
     def load(cls, path: str) -> Self:
         """
         Load a index set from the DELi data directory
@@ -113,6 +155,70 @@ class IndexSet(DeliDataLoadableMixin):
         """
         data = json.load(open(path))
         return cls(index_set=[Index(index_id=key, dna_tag=val) for key, val in data.items()])
+
+    def _check_validity(self):
+        """Checks that there are no duplicate or conflicts in index set"""
+        _ids = []
+        _tags = []
+        for index in self.index_set:
+            # check id uniqueness
+            if index.index_id in _ids:
+                if index.dna_tag == self.index_set[_ids.index(index.index_id)]:
+                    raise DELIndexError("identical indexes found in index set")
+                else:
+                    raise DELIndexError(
+                        "multiple indexes have the same id; index_ids must be unique"
+                    )
+            else:
+                _ids.append(index.index_id)
+
+            # check the tag uniqueness
+            if index.dna_tag in _tags:
+                _idx = _tags.index(index.dna_tag)
+                raise DELIndexError(
+                    f"index {index.index_id} and index {self.index_set[_idx]} "
+                    f"have the same dna tag: {index.dna_tag}"
+                )
+            else:
+                _tags.append(index.index_id)
+
+    def has_index_with_name(self, index_name: str) -> bool:
+        """
+        Returns True if the Set has a index with the passed ID/name
+
+        Parameters
+        ----------
+        index_name: str
+            name/id of the index
+
+        Returns
+        -------
+        bool
+        """
+        return any([idx.index_id == index_name for idx in self.index_set])
+
+    def get_index_with_name(self, index_name: str) -> Index:
+        """
+        Returns Index with given name from the set
+
+        Parameters
+        ----------
+        index_name: str
+            name/id of the index
+
+        Raises
+        ------
+        KeyError
+            if the passed index name is not in the IndexSet
+
+        Returns
+        -------
+        Index
+        """
+        for index in self.index_set:
+            if index.index_id == index_name:
+                return index
+        raise KeyError(f"cannot find index with name '{index_name}' in IndexSet")
 
 
 def get_min_index_distance(included_indexes: Optional[Union[list[Index], IndexSet]]) -> int:
