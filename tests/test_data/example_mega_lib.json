@@ -1,0 +1,50 @@
+[
+  {
+    "id": "DEL004",
+    "library_tag": "GCCAGACC",
+    "bb_sets": [
+      "C:\\Users\\James\\Projects\\Programing\\deli2\\tests\\test_data\\DEL004_bb\\DEL004_BBA.csv",
+      "C:\\Users\\James\\Projects\\Programing\\deli2\\tests\\test_data\\DEL004_bb\\DEL004_BBB.csv",
+      "C:\\Users\\James\\Projects\\Programing\\deli2\\tests\\test_data\\DEL004_bb\\DEL004_BBC.csv"
+    ],
+    "barcode_schema": "C:\\Users\\James\\Projects\\Programing\\deli2\\tests\\test_data\\example_schema.json",
+    "scaffold": "NA",
+    "reactions": [
+      {
+          "cycle_id_1": "DEL004_BBA",
+          "cycle_id_2": "DEL004_BBB",
+          "reaction": "NA"
+      },
+      {
+          "cycle_id_1": "DEL004_BBB",
+          "cycle_id_2": "DEL004_BBC",
+          "reaction": "NA"
+      }
+    ],
+    "dna_barcode_on": "DEL004_BBA"
+  },
+  {
+    "id": "DEL005",
+    "library_tag": "ACAGTGTC",
+    "bb_sets": [
+      "C:\\Users\\James\\Projects\\Programing\\deli2\\tests\\test_data\\DEL005_bb\\DEL005_BBA.csv",
+      "C:\\Users\\James\\Projects\\Programing\\deli2\\tests\\test_data\\DEL005_bb\\DEL005_BBB.csv",
+      "C:\\Users\\James\\Projects\\Programing\\deli2\\tests\\test_data\\DEL005_bb\\DEL005_BBC.csv"
+    ],
+    "barcode_schema": "C:\\Users\\James\\Projects\\Programing\\deli2\\tests\\test_data\\example_schema.json",
+    "scaffold": "NA",
+    "reactions": [
+      {
+          "cycle_id_1": "DEL005_BBA",
+          "cycle_id_2": "DEL005_BBB",
+          "reaction": "NA"
+      },
+      {
+          "cycle_id_1": "DEL005_BBB",
+          "cycle_id_2": "DEL005_BBC",
+          "reaction": "NA"
+      }
+    ],
+    "dna_barcode_on": "DEL005_BBA"
+  }
+]

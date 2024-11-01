@@ -1,67 +1,54 @@
 """define barcode functionality"""
 
+import enum
 import json
 import re
 from collections import OrderedDict
-from typing import Dict, Optional, Self, Tuple
+from typing import Dict, List, Optional, Self, Tuple
 
-from deli.dels.configure import check_file_path
+from deli.configure import accept_deli_data_name
 
-# id: (required, static)
+from .base import DeliDataLoadableMixin
+
+
+class BarcodeSectionTrait(enum.Enum):
+    """defines traits that barcode sections can have"""
+
+    REQUIRED: str = "REQUIRED"
+    STATIC: str = "STATIC"
+    BEFORE_BB: str = "BEFORE_BB"
+
+
 VALID_BARCODE_SECTIONS = {
-    "pre-index": (False, True),
-    "index": (False, False),
-    "primer": (False, True),
-    "library_tag": (True, False),
-    "library_overhang": (False, True),
-    "bb1_tag": (True, False),
-    "bb1_overhang": (False, True),
-    "bb2_tag": (True, False),
-    "bb2_overhang": (False, True),
-    r"bb[1-9][0-9]*_tag": (False, False),
-    r"bb[1-9][0-9]*_overhang": (False, True),
-    "pre-umi": (False, True),
-    "umi": (True, False),
-    "closing_primer": (False, True),
+    r"^pre-index$": [BarcodeSectionTrait.STATIC, BarcodeSectionTrait.BEFORE_BB],
+    r"^index$": [BarcodeSectionTrait.BEFORE_BB],
+    r"^primer$": [
+        BarcodeSectionTrait.STATIC,
+        BarcodeSectionTrait.REQUIRED,
+        BarcodeSectionTrait.BEFORE_BB,
+    ],
+    r"^library$": [BarcodeSectionTrait.BEFORE_BB],
+    r"^bb[1-9][0-9]*$": [],
+    r"^pre-umi$": [BarcodeSectionTrait.STATIC],
+    r"^umi$": [BarcodeSectionTrait.REQUIRED],
+    r"^closing_primer$": [BarcodeSectionTrait.STATIC],
 }
 
 
-def barcode_section_is_static(section: str) -> bool:
-    """
-    Return True if barcode section in static
-
-    Parameters
-    ----------
-    section: str
-        name of barcode section
-
-    Returns
-    -------
-    bool
-    """
-    for key, (_, is_static) in VALID_BARCODE_SECTIONS.items():
-        if re.match(key, section, re.IGNORECASE):
-            return is_static
-    raise ValueError(f"unrecognized barcode section: '{section}'")
+def _section_is_valid(section_name: str) -> bool:
+    """Check if a section is known to DELi"""
+    for valid_section_name, _ in VALID_BARCODE_SECTIONS.items():
+        if re.search(valid_section_name, section_name):
+            return True
+    return False
 
 
-def barcode_section_is_required(section: str) -> bool:
-    """
-    Return True if barcode section in required
-
-    Parameters
-    ----------
-    section: str
-        name of barcode section
-
-    Returns
-    -------
-    bool
-    """
-    for key, (is_required, _) in VALID_BARCODE_SECTIONS.items():
-        if re.match(key, section, re.IGNORECASE):
-            return is_required
-    raise ValueError(f"unrecognized barcode section: '{section}'")
+def _get_valid_section_traits(section_name: str) -> List[BarcodeSectionTrait]:
+    """Get the traits from a barcode section"""
+    for valid_section_name, valid_section_traits in VALID_BARCODE_SECTIONS.items():
+        if re.search(valid_section_name, section_name):
+            return valid_section_traits
+    raise KeyError("cannot find barcode section '{}'".format(section_name))
 
 
 class BarcodeSchemaError(Exception):
@@ -70,16 +57,182 @@ class BarcodeSchemaError(Exception):
     pass
 
 
-class BarcodeSchema:
-    """
-    contains data and metadata about a barcode schema
-    """
+class BarcodeSchemaFileError(Exception):
+    """exception raised when a barcode schema is invalid"""
+
+    pass
+
+
+class BarcodeSection:
+    """object for an individual barcode section"""
+
+    def __init__(self, section_name: str, section_tag: str, overhang_tag: Optional[str] = None):
+        """
+        Initialize the barcode section
+
+        Parameters
+        ----------
+        section_name: str
+            the name of the barcode section
+            must match one of the valid barcode names
+        section_tag: str
+            DNA tag of the barcode section
+        overhang_tag: Optional[str]
+            the DNA tag of the overhang associated with this section
+            if there is one
+        """
+        self.section_name = section_name
+        self.section_tag = section_tag.upper()
+        self.overhang_tag = overhang_tag.upper() if overhang_tag else overhang_tag
+
+        # check that section is recognizable to DELi
+        if not _section_is_valid(self.section_name):
+            raise BarcodeSchemaError(f"unrecognised barcode section: {self.section_name}")
+
+        # load traits
+        self.traits = _get_valid_section_traits(self.section_name)
+        self._tag_is_variable = "N" in self.section_tag
+
+        # check for trait conflict with passed tag
+        self._check_trait_validity()
+
+        # check that overhang is statis
+        if self.overhang_tag and "N" in self.overhang_tag:
+            raise BarcodeSchemaError(
+                f"overhang_tag cannot contain variable nucleotides: {overhang_tag}"
+            )
+
+    def __repr__(self):
+        """How the section name and DNA"""
+        return (
+            f"{self.section_name}: {self.section_tag}"
+            f"{self.overhang_tag if self.overhang_tag else ''}"
+        )
+
+    def __str__(self):
+        """Coverts the section to just the DNA part"""
+        return self.section_tag + (self.overhang_tag if self.overhang_tag else "")
+
+    def __len__(self, include_overhang: bool = True):
+        """Gets the full length of the barcode section including the overhang"""
+        if include_overhang and self.overhang_tag:
+            return len(self.overhang_tag) + len(self.section_tag)
+        else:
+            return len(self.section_tag)
+
+    def __eq__(self, other):
+        """Return true if two sections are the same or None"""
+        if isinstance(other, BarcodeSection):
+            if self.section_tag == other.section_tag:
+                if self.overhang_tag == other.overhang_tag:
+                    if self.section_name == other.section_name:
+                        return True
+        return False
+
+    def _check_trait_validity(self):
+        """Helper func to make sure there are no trait conflicts"""
+        _has_static_trait = self.has_trait(BarcodeSectionTrait.STATIC)
+
+        if self._tag_is_variable and _has_static_trait:
+            raise BarcodeSchemaError(
+                f"static barcode section {self.section_name} "
+                f"has variable nucleotides: {self.section_tag}"
+            )
+
+        if not self._tag_is_variable and not _has_static_trait:
+            raise BarcodeSchemaError(
+                f"variable barcode section {self.section_name} "
+                f"appears static: {self.section_tag}"
+            )
+
+    def is_variable(self) -> bool:
+        """Returns true if the section have variable nucleotides"""
+        return self._tag_is_variable
+
+    def is_static(self) -> bool:
+        """Returns true if the section have NO variable nucleotides"""
+        return not self._tag_is_variable
+
+    def is_required(self) -> bool:
+        """Returns true if the section has required barcode"""
+        return self.has_trait(BarcodeSectionTrait.REQUIRED)
+
+    def has_trait(self, trait: BarcodeSectionTrait) -> bool:
+        """
+        Returns true if the barcode section has the specified trait
+
+        Parameters
+        ----------
+        trait: BarcodeSectionTrait
+            the barcode section trait to check for
+
+        Returns
+        -------
+        bool
+        """
+        return trait in self.traits
+
+    def has_overhang(self) -> bool:
+        """Returns true if the barcode section has overhang"""
+        return self.overhang_tag is not None
+
+    def get_dna_sequence(self) -> str:
+        """Get the full DNA sequence of the section"""
+        return str(self)
+
+    def to_match_pattern(
+        self, wildcard: bool = True, error_tolerance: int = 0, include_overhang: bool = True
+    ) -> str:
+        """
+        Converts this section to a barcode matching regex pattern
+
+        Parameters
+        ----------
+        wildcard: bool, default= True
+            if true, will return a regex of just wild cards
+            for the full length (with overhang) of the section
+        error_tolerance: int, default=0
+            amount of error to tolerate in the pattern
+            only used if above 0 and the section has the static trait
+        include_overhang: bool, default=True
+            even if the section is variable, include the
+            explict DNA of the overhang
+            overridden by `wildcard`
+
+        Returns
+        -------
+        pattern: str
+        """
+        _pattern = ""
+
+        if wildcard:
+            return f".{{{len(self)}}}"
+
+        if self.is_static():
+            if error_tolerance > 0:
+                _pattern = f"(?:{self.section_tag}){{e<={error_tolerance}}}"
+            else:
+                _pattern = f"{self.section_tag}"
+        else:
+            f".{{{len(self.section_tag)}}}"
+
+        if include_overhang:
+            _pattern += self.overhang_tag if self.overhang_tag is not None else ""
+        else:
+            _pattern += f".{{{len(self.overhang_tag)}}}" if self.overhang_tag is not None else ""
+
+        return _pattern
+
+
+class BarcodeSchema(DeliDataLoadableMixin):
+    """contains data and metadata about a barcode schema"""
 
     def __init__(
         self,
         schema_id: str,
-        barcode_sections: Dict[str, Optional[str]],
-        order: Optional[Dict[str, Optional[int]]] = None,
+        barcode_sections: List[BarcodeSection],
+        use_overhang_in_spans: bool = False,
+        override_required: bool = False,
     ):
         """
         Initialize the barcode schema
@@ -90,28 +243,55 @@ class BarcodeSchema:
             name/id of the barcode schema
         barcode_sections: Dict[str, Optional[str]]
             Dictionary of barcode sections (see barcode schema docs for more info)
-        order: Dict[str, Optional[int]]
-            Dictionary of barcode section order (see barcode schema docs for more info)
+        use_overhang_in_spans: bool, default=False
+            consider overhang regions in all sections as part of that sections barcode
+        override_required: bool, default=False
+
         """
         self.schema_id = schema_id
-        self.barcode_sections = barcode_sections
-        self.order = order
+        self.barcode_sections = OrderedDict(
+            {barcode_section.section_name: barcode_section for barcode_section in barcode_sections}
+        )
+        self.override_required = override_required
+
+        self._use_overhang_in_spans = use_overhang_in_spans
 
         self._check_barcode_sections()
-        self._sort_barcode_sections()
 
-        self.full_barcode = self._generate_full_barcode()
-        self.barcode_lengths = {
-            key: len(val) for key, val in self.barcode_sections.items() if val is not None
-        }
+        self.full_barcode = "".join([str(val) for val in self.barcode_sections.values()])
         self.barcode_spans = self._build_barcode_spans()
 
-        self.num_cycles = sum(
-            [
-                re.match(r"bb[1-9][0-9]*_tag", section_name) is not None
-                for section_name in self.barcode_sections.keys()
-            ]
-        )
+        self.num_cycles = len(self.get_bb_regions())
+
+        if not self.override_required:
+            if self.num_cycles < 2:
+                raise BarcodeSchemaError(
+                    f"number of bb cycles must be at least 2; found {self.num_cycles}"
+                )
+
+    @classmethod
+    @accept_deli_data_name(sub_dir="barcodes", extension="json")
+    def load(cls, path: str) -> Self:
+        """
+        Load a barcode schema from the DELi data directory
+
+        Notes
+        -----
+        Call also just pass the name of the file
+        (with or without the file extension)
+        and as long as DELI_DATA_DIR is set
+
+
+        Parameters
+        ----------
+        path: str
+            path of the barcode to load
+
+        Returns
+        -------
+        BarcodeSchema
+        """
+        return cls.load_from_json(path)
 
     @classmethod
     def load_from_json(cls, file_path: str) -> Self:
@@ -128,9 +308,111 @@ class BarcodeSchema:
         BarcodeSchema
             the loaded schema
         """
-        file_path = check_file_path(file_path, "barcodes")
         data = json.load(open(file_path))
-        return cls(data["id"], data["sections"], data["order"])
+
+        # load the id
+        if "id" not in data.keys():
+            raise BarcodeSchemaFileError(f"schema file {file_path} missing 'id' key")
+        _id = str(data["id"])
+
+        # load the sections
+        if "sections" not in data.keys():
+            raise BarcodeSchemaFileError(f"schema file {file_path} missing 'sections' key")
+        if not isinstance(data["sections"], dict):
+            raise BarcodeSchemaFileError(f"'sections' should be a dictionary got a {type(data)}")
+
+        _sections = []
+        _parsed_sections = list(data["sections"].items())
+        while _parsed_sections:
+            section_name, section_dna_tag = _parsed_sections.pop(0)
+
+            # check for overhang section with no parent section
+            if section_name.endswith("_overhang"):
+                raise BarcodeSchemaFileError(
+                    f"found {section_name} but no " f"{section_name[:-9]} section before it"
+                )
+
+            # check for overhang
+            _overhang_section_tag = None
+            if len(_parsed_sections) > 0:
+                _next_section_name, _ = _parsed_sections[0]  # dont pop yet, just peak
+                if (
+                    _next_section_name.endswith("_overhang")
+                    and _next_section_name[:-9] == section_name
+                ):
+                    _, _overhang_section_tag = _parsed_sections.pop(0)
+            _sections.append(BarcodeSection(section_name, section_dna_tag, _overhang_section_tag))
+
+        return cls(_id, _sections)
+
+    def __getitem__(self, item: str) -> Optional[BarcodeSection]:
+        """Return the barcode section; None if not present"""
+        return self.barcode_sections.get(item)
+
+    def __eq__(self, other):
+        """Return true if all sections AND the order of them are equal"""
+        if isinstance(other, BarcodeSchema):
+            if self.barcode_sections == other.barcode_sections:
+                return True
+        return False
+
+    def _check_barcode_sections(self) -> None:
+        """Check barcode sections for errors and standardize text"""
+        _seen_sections = set()
+
+        # loop through all passed barcode section and check them all
+        _seen_bb_section: bool = False
+        for barcode_section_name, _ in self.barcode_sections.items():
+            if re.match(r"^bb[1-9][0-9]*$", barcode_section_name):
+                _seen_bb_section = True
+            if BarcodeSectionTrait.BEFORE_BB in _get_valid_section_traits(barcode_section_name):
+                if _seen_bb_section:
+                    raise BarcodeSchemaError(
+                        f"section {barcode_section_name} must come before all BB sections"
+                    )
+
+            if barcode_section_name not in _seen_sections:
+                _seen_sections.add(barcode_section_name)
+            else:
+                raise BarcodeSchemaError(
+                    f"sections must only be defined once; "
+                    f"found two definitions for section {barcode_section_name}"
+                )
+
+        # check that all required sections are present
+        _required_sections = set(
+            [
+                key
+                for key, traits in VALID_BARCODE_SECTIONS.items()
+                if BarcodeSectionTrait.REQUIRED in traits
+            ]
+        )
+
+        if not self.override_required:
+            for _required_section in _required_sections:
+                if not any(
+                    [
+                        re.search(_required_section, _seen_section)
+                        for _seen_section in _seen_sections
+                    ]
+                ):
+                    raise BarcodeSchemaError(
+                        f"Missing required barcode section: {_required_section}"
+                    )
+
+    def _build_barcode_spans(self) -> Dict[str, Tuple[int, int]]:
+        """Given a barcode section dictionary, build a spans dictionary"""
+        _barcode_spans = {}
+        prev = 0
+        for key, val in self.barcode_sections.items():
+            _length = len(val)
+            if self._use_overhang_in_spans:
+                _section_length = _length
+            else:
+                _section_length = len(val.section_tag)
+            _barcode_spans[key] = (prev, _section_length + prev)
+            prev += _length
+        return _barcode_spans
 
     def has_index(self) -> bool:
         """
@@ -142,147 +424,142 @@ class BarcodeSchema:
         """
         return self.barcode_sections.get("index") is not None
 
-    def get_del_tags(self) -> OrderedDict[str, Dict[str, Optional[str]]]:
+    def has_library(self) -> bool:
         """
-        get the DEL tags and their respective tag and overhang region
-
-        Notes
-        -----
-        The tags will be sorted by order of appearance in the schema.
-
-        will be keyed by name of region (ex: "library" or "bb1").
-        Val of each key will itself be a dict with "tag" and "overhang" keys.
-        Each will be the code encoded in that part (ex: "bb1_tag" or "bb1_overhang").
-        If overhang is `null` will be None
+        Return true if schema include and library region
 
         Returns
         -------
-        Dict[str, Dict[str, Optional[str]]]
-            See Notes
+        bool
         """
-        _return = OrderedDict()
-        for key in self.barcode_sections.keys():
-            if "_tag" in key:
-                _tag_name = key.replace("_tag", "")
-                _return[_tag_name] = {
-                    "tag": self.barcode_sections[key],
-                    "overhang": self.barcode_sections.get(_tag_name + "_overhang"),
-                }
-        return _return
+        return self.barcode_sections.get("library") is not None
 
-    def get_del_tag_lengths(self) -> Dict[str, Tuple[int, int]]:
+    def get_bb_regions(self) -> List[str]:
         """
-        Get the lengths of each DEL tag region split by tag and overhang
-
-        Notes
-        -----
-        The order of the List will be the same order the tag regions appear
-        Dict keys are the DEL tag names (ex: "library" or "bb1")
+        Return all the region names that are for bb_tags
 
         Returns
         -------
-        Dict[str, Tuple[int, int]]
-            tuple contains length of tag and length of overhang
-            if overhang region was `null` will be length 0
-
+        List[str]
         """
-        _tags = self.get_del_tags()
-        return {
-            key: (
-                0 if val["tag"] is None else len(val["tag"]),
-                0 if val["overhang"] is None else len(val["overhang"]),
-            )
-            for key, val in _tags.items()
-        }
+        _bb_sections = []
+        for barcode_section in self.barcode_sections.keys():
+            if re.search(r"^bb[1-9][0-9]*$", barcode_section):
+                _bb_sections.append(barcode_section)
+        return _bb_sections
 
-    def __getitem__(self, item: str) -> Optional[str]:
-        """Return the barcode section; None if not present"""
-        return self.barcode_sections.get(item)
+    def get_all_section_names(self) -> List[str]:
+        """
+        Return all the barcode section names
 
-    def _check_barcode_sections(self):
-        """Check barcode sections for errors and standardize text"""
+        Returns
+        -------
+        List[str]
+        """
+        return list(self.barcode_sections.keys())
 
-        def _is_variable(seq: str) -> bool:
-            return all([i == "N" for i in seq])
+    def get_position(self, section_name: str) -> Optional[int]:
+        """
+        Gets the position of the given section in the barcode (starts at 0)
 
-        _required_sections = set(
-            [key for key, (val, _) in VALID_BARCODE_SECTIONS.items() if val]
+        Notes
+        -----
+        Will return `None` if the section is not in the barcode
+
+        Parameters
+        ----------
+        section_name: str
+            name of the section to query
+
+        Returns
+        -------
+        int or None
+        """
+        if section_name in self.barcode_sections.keys():
+            return list(self.barcode_sections.keys()).index("library")
+        else:
+            return None
+
+    def is_library_compatible(self, other: Self) -> bool:
+        """
+        Return True if the schema is library calling compatible with the other
+
+        Notes
+        -----
+        Library calling compatible ("library compatible" for short)
+        means two schema share the same index, primer and library regions
+
+        This is all that is need in order to call the library.
+
+        See "Advanced Barcoding" for more details
+
+        Parameters
+        ----------
+        other: BarcodeSchema
+            BarcodeSchema to compare to
+
+        Returns
+        -------
+        bool
+        """
+        return (
+            (self.barcode_sections.get("index") == other.barcode_sections.get("index"))
+            and (self.barcode_sections.get("primer") == other.barcode_sections.get("primer"))
+            and (self.barcode_sections.get("library") == other.barcode_sections.get("library"))
+            and (self.get_position("index") == other.get_position("index"))
+            and (self.get_position("library") == other.get_position("library"))
+            and (self.get_position("primer") == other.get_position("primer"))
         )
-        _seen_sections = set()
-        for key, val in self.barcode_sections.copy().items():
-            if not any([re.match(valid_key, key) for valid_key in VALID_BARCODE_SECTIONS.keys()]):
-                raise BarcodeSchemaError(f"Unrecognized barcode section: {key}")
 
-            _barcode_section = val.upper()
-            _variable = _is_variable(_barcode_section)
-            if (not _variable) != barcode_section_is_static(key):
-                raise BarcodeSchemaError(
-                    f"section {key} should be "
-                    f"{'static' if VALID_BARCODE_SECTIONS[key][1] else 'variable'} "
-                    f"but found {'variable' if _variable else 'static'}"
-                )
+    def is_experiment_compatible(self, other: Self) -> bool:
+        """
+        Return True if the schema is can be in the same experiment as the other
 
-            self.barcode_sections[key] = _barcode_section  # DNA is upper case convention
-            if key not in _seen_sections:
-                _seen_sections.add(key)
-            else:
-                raise BarcodeSchemaError(
-                    f"sections must only be defined once; "
-                    f"found two definitions for section {key}"
-                )
-        if len(_required_sections - _seen_sections) > 0:
-            raise BarcodeSchemaError(
-                f"Missing required barcode sections: {_required_sections - _seen_sections}"
-            )
+        Notes
+        -----
+        Experiment compatible means two schemas have the
+        same primer tag (same sequence) and the
+        primer is in the same position as the other
+        in the barcode (if primer is position 1,
+        then the other should have this be true as well
 
-        # pre-index cannot be present if index is not
-        if self.barcode_sections.get("pre-index") is not None:
-            if self.barcode_sections.get("index") is None:
-                raise BarcodeSchemaError(
-                    "pre-index cannot be defined if index is null;"
-                    " set index or use primer section instead"
-                )
+        See "Advanced Barcoding" for more details
 
-        # a bb_overhang cannot be present if the bb_tag is not
-        for key in self.barcode_sections.keys():
-            if re.match(r"bb[1-9][0-9]*_overhang", key) is not None:
-                _bb_tag = key.replace("overhang", "tag")
-                if self.barcode_sections.get(_bb_tag) is None:
-                    raise BarcodeSchemaError(
-                        f"found {key} section but no corresponding {_bb_tag} section"
-                    )
+        Parameters
+        ----------
+        other: BarcodeSchema
+            BarcodeSchema to compare to
 
-    def _sort_barcode_sections(self):
-        """Sort barcode sections base on passed order"""
-        if self.order is None:  # if no custom order just return barcode sections
-            self.barcode_sections = OrderedDict(self.barcode_sections.items())
-        order_dict = dict()
-        for key, val in self.barcode_sections.items():
-            _order = self.order.get(key)
-            if _order is None:
-                raise BarcodeSchemaError(f"Barcode section {key} not found in order")
-            else:
-                order_dict[_order] = (key, val)
+        Returns
+        -------
+        bool
+        """
+        return (self.barcode_sections.get("index") == other.barcode_sections.get("index")) and (
+            self.get_position("index") == other.get_position("index")
+        )
 
-        _ordered_barcode_sections = OrderedDict()
-        for key in sorted(order_dict.keys()):
-            section, tag = order_dict[key]
-            _ordered_barcode_sections[section] = tag
-        self.barcode_sections = _ordered_barcode_sections
 
-    def _generate_full_barcode(self):
-        """Given a barcode section dictionary, generate a full barcode"""
-        _full_barcode = ""
-        for _, dna_tag in self.barcode_sections.items():
-            _full_barcode += dna_tag
-        return _full_barcode
-
-    def _build_barcode_spans(self):
-        """Given a barcode section dictionary, build a spans dictionary"""
-        _barcode_spans = {}
-        prev = 0
-        for key, val in self.barcode_sections.items():
-            _length = len(val)
-            _barcode_spans[key] = (prev, _length + prev)
-            prev += _length
-        return _barcode_spans
+# class BarcodeSchemaSet:
+#     def __init__(self, schemas: List[BarcodeSchema]):
+#         self.schemas: List[BarcodeSchema] = schemas
+#
+#     def _validate_schemas(self):
+#         if len(self.schemas) == 1:
+#             return
+#
+#         _schema = self.schemas[0]
+#         true_sections = {
+#             "pre-index": _schema.barcode_sections.get("pre-index", None),
+#             "index": _schema.barcode_sections.get("index", None),
+#             "primer": _schema.barcode_sections.get("primer", None),
+#             "library": _schema.barcode_sections.get("library", None),
+#             "closing": _schema.barcode_sections.get("closing", None),
+#         }
+#         for schema in self.schemas[1:]:
+#             if not all([schema.barcode_sections.get(section_name) == section
+#                        for section_name, section in true_sections.items()]):
+#                 raise BarcodeSchemaError(
+#                     f"schema {schema.schema_id} does not share the same index,"
+#                 )
+#
+#
