@@ -1,0 +1,19 @@
+{
+    "id": "MyExampleSchema",
+    "sections": {
+        "pre-index": null,
+        "index": "NNNNNNNNNN",
+        "primer": "CCGAGAATTCCA",
+        "library_tag": "ATCGCTGA",
+        "library_overhang": "CTA",
+        "bb1_tag": "CTCGTAGA",
+        "bb1_overhang": "ACG",
+        "bb2_tag": "CTCGTAGA",
+        "bb2_overhang": "GAT",
+        "bb3_tag": "CTCGTAGA",
+        "bb3_overhang": "TGC",
+        "pre-umi": "AATGCCAGTACG",
+        "umi": "NNNNNNNNNNN",
+        "closing_primer": "GATCGTCGGACTGTAGAACTCTGAAC"
+    }
+}
