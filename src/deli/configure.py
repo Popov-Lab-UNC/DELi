@@ -1,16 +1,19 @@
 """Code for handling loading/validating DELi configs for decoding"""
 
+import abc
 import configparser
 import dataclasses
 import functools
 import inspect
 import os
 from pathlib import Path
-from typing import Any, Callable, Literal, ParamSpec, Self, TypeVar, Union
+from typing import Any, Callable, Dict, Literal, ParamSpec, Self, TypeVar, Union
 
 
 P = ParamSpec("P")
 R = TypeVar("R")
+
+CONFIG_DIR_PATH = Path(os.path.join(os.path.expanduser("~"), ".deli"))
 
 
 @dataclasses.dataclass
@@ -45,6 +48,8 @@ class DeliConfig:
     max_index_risk_dist_threshold: int
     max_library_risk_dist_threshold: int
 
+    nuc_2_int: Dict[str, int]
+
     def __post_init__(self):
         """Validate the passed DELi config parameters"""
         self.deli_data_dir = Path(os.fspath(os.path.expanduser(self.deli_data_dir)))
@@ -52,9 +57,15 @@ class DeliConfig:
         self.bb_null = str(self.bb_null)
         self.max_index_risk_dist_threshold = int(self.max_index_risk_dist_threshold)
         self.max_library_risk_dist_threshold = int(self.max_library_risk_dist_threshold)
+        self.nuc_2_int = {
+            pair.split(":")[0].strip(): int(pair.split(":")[1].strip())
+            for pair in self.nuc_2_int.strip().split(",")
+        }
+
+        os.environ["DELI_DATA_DIR"] = str(self.deli_data_dir)
 
     @classmethod
-    def _load_config(cls, path: str) -> dict[str, Any]:
+    def _load_config(cls, path: Union[str, Path]) -> dict[str, Any]:
         """Helper func to load in config data"""
         config = configparser.RawConfigParser()
         config.read(os.path.normpath(path))
@@ -68,6 +79,7 @@ class DeliConfig:
                     raise ValueError(f"Missing DELi configuration setting: {field.name}")
                 else:
                     settings[field.name] = _system_var
+
         return settings
 
     @classmethod
@@ -89,28 +101,7 @@ class DeliConfig:
         -------
         DeliConfig
         """
-        return cls(**cls._load_config(os.path.join(os.path.expanduser("~"), ".deli", ".deli")))
-
-    @classmethod
-    def load_from_file(cls, file_path: str) -> Self:
-        """
-        Load DELi configuration settings from a given file path
-
-        Notes
-        -----
-        DELi configuration settings follow the python configure
-        format
-
-        Parameters
-        ----------
-        file_path: str
-            path to DELi configuration file
-
-        Returns
-        -------
-        DeliConfig
-        """
-        return cls(**cls._load_config(path=file_path))
+        return cls(**cls._load_config(CONFIG_DIR_PATH / ".deli"))
 
 
 DELI_CONFIG = DeliConfig.load_defaults()
@@ -123,7 +114,8 @@ class DeliDataNotFound(Exception):
 
 
 def accept_deli_data_name(
-    sub_dir: Literal["building_blocks", "libraries", "indexes", "barcodes"], extension: str
+    sub_dir: Literal["building_blocks", "libraries", "indexes", "barcodes", "hamming"],
+    extension: str,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """
     Decorator to allow load functions to take name of DELi data object
@@ -131,7 +123,7 @@ def accept_deli_data_name(
     Notes
     -----
     This should be used decorate the `load` function of any
-    class that has the `DeliDataLoadableMixin` mixin
+    class that has the `DeliDataLoadable` mixin
 
     It will result in the function taking in, rather than a full path,
     the name of the object (e.g. "MyMegaLibrary") and the
@@ -217,3 +209,14 @@ def _build_argument_validation_decorator(
         return inner
 
     return outer
+
+
+class DeliDataLoadable(abc.ABC):
+    """Mixin for objects that can be loaded from DeliDataDir"""
+
+    @classmethod
+    @abc.abstractmethod
+    @accept_deli_data_name(sub_dir="barcodes", extension="json")
+    def load(cls, name_or_path: str):
+        """Load the file into the object"""
+        raise NotImplementedError()

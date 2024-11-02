@@ -15,7 +15,7 @@ class FastaSequence(object):
         Parameters
         ----------
         read_tag: str
-            the read tag given in the FASTA file
+            the read bases given in the FASTA file
         read_id: int
             a numerical idx assigned to the read based on location in file
             starts from 0
@@ -74,7 +74,7 @@ class FastqSequence(FastaSequence):
         Parameters
         ----------
         read_tag: str
-            the read tag given in the FASTA file
+            the read bases given in the FASTA file
         read_id: int
             a numerical idx assigned to the read based on location in file
             starts from 0
