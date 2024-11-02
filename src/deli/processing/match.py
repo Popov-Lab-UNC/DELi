@@ -317,7 +317,7 @@ class BarcodeMatcher:
     the variable section and match any character
 
     So a barcode with a primer section of "AGCTGCT" and
-    3 building block tag sections of size 5 each, you might
+    3 building block bases sections of size 5 each, you might
     have a pattern of:
 
     "AGCTGCT.{5}.{5}.{5}"
@@ -448,13 +448,6 @@ class BarcodeMatcher:
         sequences: List[FastqSequence]
             sequence to search for matches in
             can be FastqSequence object or the full sequence as a string
-        min_sequence_size: int, default=70
-            the minimum length of a sequence to be searched for a match
-            cutoff is exclusive
-        max_sequence_size: int, default=1000
-            the maximum length of a sequence to be searched for a match
-            if above this size will not be searched at all
-            cutoff is exclusive
 
         Returns
         -------
@@ -466,7 +459,7 @@ class BarcodeMatcher:
         num_passed_seqs = len(sequences)
 
         # we can pick up speed by only looking for rev in seqs that
-        # don't have a fwd match. This can loose matches for nanopore
+        # don't have a fwd match. This can loose matches for nano-pore
         # because it can read in a fwd and rev as the same seq,
         # but odds of this being a different UMI is low
 

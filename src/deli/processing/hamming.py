@@ -162,7 +162,7 @@ class QuaternaryHammingDecoder(BaseQuaternaryHamming, DeliDataLoadable):
 
         Returns
         -------
-        str, bool
+        Tuple[str, bool]
         """
         _tag = [self.nuc_2_int_mapping[char] for char in sequence]
         try:

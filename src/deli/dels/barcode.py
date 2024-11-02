@@ -377,9 +377,9 @@ class BarcodeSchema(DeliDataLoadable):
 
         return cls(_id, _sections)
 
-    def __getitem__(self, item: str) -> Optional[BarcodeSection]:
+    def __getitem__(self, item: str) -> BarcodeSection:
         """Return the barcode section; None if not present"""
-        return self.barcode_sections.get(item)
+        return self.barcode_sections[item]
 
     def __eq__(self, other):
         """Return true if all sections AND the order of them are equal"""

@@ -19,6 +19,7 @@ from deli.dels import (
 )
 from deli.sequence import SemiGlobalAlignment
 
+from ..dels.barcode import BarcodeSection
 from .match import BarcodeMatch
 
 
@@ -395,6 +396,12 @@ class BarcodeCaller:
                 called = i
         return called, called_dist
 
+    @staticmethod
+    def _decode_seq(seq: str, section: BarcodeSection) -> Tuple[str, bool]:
+        if section.decoder:
+            return section.decoder.decode_sequence(seq)
+        return seq, True
+
     def _call_index(
         self, match: BarcodeMatch, alignment: BarcodeAlignment
     ) -> Union[FailedCall, IndexCall]:
@@ -404,6 +411,9 @@ class BarcodeCaller:
             return IndexCall(self.indexes[0])
 
         aligned_index_seq = match.match_sequence.sequence[slice(*alignment["index"])]
+        aligned_index_seq, _ = self._decode_seq(
+            aligned_index_seq, self.libraries[0].barcode_schema["index"]
+        )
 
         best_index_idx, best_index_dist = self._make_call(
             query=aligned_index_seq,
@@ -425,6 +435,9 @@ class BarcodeCaller:
             return LibraryCall(self.libraries[0])
 
         aligned_lib_seq = match.match_sequence.sequence[slice(*alignment["library"])]
+        aligned_lib_seq, _ = self._decode_seq(
+            aligned_lib_seq, self.libraries[0].barcode_schema["library"]
+        )
 
         best_lib_idx, best_lib_dist = self._make_call(
             query=aligned_lib_seq,
@@ -445,8 +458,8 @@ class BarcodeCaller:
         else:
             return FailedCall(section_name="umi")
 
-    @staticmethod
     def _call_bb(
+        self,
         match: BarcodeMatch,
         alignment: BarcodeAlignment,
         called_lib: Union[LibraryCall, FailedCall],
@@ -462,6 +475,13 @@ class BarcodeCaller:
 
         for bb_region, bb_set in zip(bb_regions, _lib.iter_bb_sets()):
             aligned_bb_seq = match.match_sequence.sequence[slice(*alignment[bb_region])]
+            aligned_bb_seq, _passed_decode = self._decode_seq(
+                aligned_bb_seq, _lib.barcode_schema[bb_region]
+            )
+
+            if not _passed_decode:
+                bb_calls.append(FailedCall(section_name=bb_region))
+
             bb_call = bb_set.search_tags(aligned_bb_seq)
             if isinstance(bb_call, BuildingBlock):
                 bb_calls.append(BBCall(bb_region, bb_call))
@@ -476,7 +496,7 @@ class BarcodeCaller:
 
         Notes
         -----
-        Even if some parts of the calling fails (e.i. no match for bb tag)
+        Even if some parts of the calling fails (e.i. no match for bb bases)
         a CalledBarcode is still returned.
         CalledBarcodes have functions that can assess if the call
         was successful
@@ -495,11 +515,11 @@ class BarcodeCaller:
             # get global alignment
             alignment = self.call_mode(match, self.libraries[0].barcode_schema)
 
-            # call the library tag
+            # call the library bases
             library_call = self._call_library(match, alignment)
         else:
-            lib_alignment = self.call_mode(match, self.libraries.get_library_call_schema())
-            # call the library tag
+            lib_alignment = self.call_mode(match, self.libraries.library_call_schema)
+            # call the library bases
             library_call = self._call_library(match, lib_alignment)
 
             if isinstance(library_call, FailedCall):
