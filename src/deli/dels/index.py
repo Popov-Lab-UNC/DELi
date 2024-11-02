@@ -7,9 +7,7 @@ from typing import Iterator, List, Optional, Self, Union, overload
 
 from Levenshtein import distance
 
-from deli.configure import accept_deli_data_name
-
-from .base import DeliDataLoadableMixin
+from deli.configure import DeliDataLoadable, accept_deli_data_name
 
 
 class DELIndexError(Exception):
@@ -20,19 +18,19 @@ class DELIndexError(Exception):
 
 class Index:
     """
-    Object that contains the index id and corresponding DNA tag
+    Object that contains the index id and corresponding DNA bases
     """
 
     def __init__(self, index_id: str, dna_tag: str, sample_name: Optional[str] = None):
         """
-        Initializes the object with the index id and corresponding DNA tag
+        Initializes the object with the index id and corresponding DNA bases
 
         Parameters
         ----------
         index_id: str
             id of the index
         dna_tag: str
-            the DNA tag of the index
+            the DNA bases of the index
         sample_name: Optional[str], default = None
             name of a the sample linked to the experiment
         """
@@ -41,11 +39,11 @@ class Index:
         self.sample_name = sample_name
 
     def __len__(self):
-        """Gets the length of the index DNA tag"""
+        """Gets the length of the index DNA bases"""
         return len(self.dna_tag)
 
     def __eq__(self, other):
-        """Two indexes are equal if they have the same id and DNA tag"""
+        """Two indexes are equal if they have the same id and DNA bases"""
         if isinstance(other, Index):
             return (self.index_id == other.index_id) and (self.dna_tag == other.dna_tag)
 
@@ -58,7 +56,7 @@ class Index:
         return cls(index_id=index_id, dna_tag=index_tag)
 
 
-class IndexSet(DeliDataLoadableMixin):
+class IndexSet(DeliDataLoadable):
     """
     Holds a set of indexes
 
@@ -172,12 +170,12 @@ class IndexSet(DeliDataLoadableMixin):
             else:
                 _ids.append(index.index_id)
 
-            # check the tag uniqueness
+            # check the bases uniqueness
             if index.dna_tag in _tags:
                 _idx = _tags.index(index.dna_tag)
                 raise DELIndexError(
                     f"index {index.index_id} and index {self.index_set[_idx]} "
-                    f"have the same dna tag: {index.dna_tag}"
+                    f"have the same dna bases: {index.dna_tag}"
                 )
             else:
                 _tags.append(index.index_id)

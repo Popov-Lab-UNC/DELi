@@ -5,10 +5,8 @@ import os
 import warnings
 from typing import List, Optional, Self
 
-from deli.configure import accept_deli_data_name
+from deli.configure import DeliDataLoadable, accept_deli_data_name
 from deli.constants import BB_MASK
-
-from .base import DeliDataLoadableMixin
 
 
 class BaseBuildingBlock(abc.ABC):
@@ -120,7 +118,7 @@ class BuildingBlock(BaseBuildingBlock):
         -------
         BuildingBlock
         """
-        return cls(data["id"], data.get("smiles"), data.get("tag"))
+        return cls(data["id"], data.get("smiles"), data.get("bases"))
 
     def is_mask(self) -> bool:
         """Masked BBs are never masks"""
@@ -140,7 +138,7 @@ class BuildingBlock(BaseBuildingBlock):
         return self.__class__(self.bb_id, self.smiles)
 
 
-class BuildingBlockSet(DeliDataLoadableMixin):
+class BuildingBlockSet(DeliDataLoadable):
     """
     Define a set of building blocks
     """
@@ -259,7 +257,7 @@ class BuildingBlockSet(DeliDataLoadableMixin):
 
     def search_tags(self, query: str) -> Optional[BuildingBlock]:
         """
-        Given a query DNA tag, search for corresponding BB with that tag
+        Given a query DNA bases, search for corresponding BB with that bases
 
         Notes
         -----
@@ -268,7 +266,7 @@ class BuildingBlockSet(DeliDataLoadableMixin):
         Parameters
         ----------
         query: str
-            DNA tag to query
+            DNA bases to query
 
         Returns
         -------

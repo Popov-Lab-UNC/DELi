@@ -6,9 +6,8 @@ import re
 from collections import OrderedDict
 from typing import Dict, List, Optional, Self, Tuple
 
-from deli.configure import accept_deli_data_name
-
-from .base import DeliDataLoadableMixin
+from deli.configure import DeliDataLoadable, accept_deli_data_name
+from deli.processing.hamming import QuaternaryHammingDecoder
 
 
 class BarcodeSectionTrait(enum.Enum):
@@ -66,7 +65,13 @@ class BarcodeSchemaFileError(Exception):
 class BarcodeSection:
     """object for an individual barcode section"""
 
-    def __init__(self, section_name: str, section_tag: str, overhang_tag: Optional[str] = None):
+    def __init__(
+        self,
+        section_name: str,
+        section_tag: str,
+        overhang_tag: Optional[str] = None,
+        hamming_decoder: Optional[QuaternaryHammingDecoder] = None,
+    ):
         """
         Initialize the barcode section
 
@@ -76,14 +81,17 @@ class BarcodeSection:
             the name of the barcode section
             must match one of the valid barcode names
         section_tag: str
-            DNA tag of the barcode section
-        overhang_tag: Optional[str]
-            the DNA tag of the overhang associated with this section
+            DNA bases of the barcode section
+        overhang_tag: Optional[str], default = None
+            the DNA bases of the overhang associated with this section
             if there is one
+        hamming_decoder: Optional[QuaternaryHammingDecoder]
+            the decoder associated with this barcode section
         """
         self.section_name = section_name
         self.section_tag = section_tag.upper()
         self.overhang_tag = overhang_tag.upper() if overhang_tag else overhang_tag
+        self.decoder = hamming_decoder
 
         # check that section is recognizable to DELi
         if not _section_is_valid(self.section_name):
@@ -93,7 +101,7 @@ class BarcodeSection:
         self.traits = _get_valid_section_traits(self.section_name)
         self._tag_is_variable = "N" in self.section_tag
 
-        # check for trait conflict with passed tag
+        # check for trait conflict with passed bases
         self._check_trait_validity()
 
         # check that overhang is statis
@@ -224,7 +232,7 @@ class BarcodeSection:
         return _pattern
 
 
-class BarcodeSchema(DeliDataLoadableMixin):
+class BarcodeSchema(DeliDataLoadable):
     """contains data and metadata about a barcode schema"""
 
     def __init__(
@@ -321,6 +329,10 @@ class BarcodeSchema(DeliDataLoadableMixin):
         if not isinstance(data["sections"], dict):
             raise BarcodeSchemaFileError(f"'sections' should be a dictionary got a {type(data)}")
 
+        _hamming_encoded_sections: Dict[str, str] = dict()
+        if "hamming_encoded" in data.keys():
+            _hamming_encoded_sections = data["hamming_encoded"]
+
         _sections = []
         _parsed_sections = list(data["sections"].items())
         while _parsed_sections:
@@ -341,7 +353,27 @@ class BarcodeSchema(DeliDataLoadableMixin):
                     and _next_section_name[:-9] == section_name
                 ):
                     _, _overhang_section_tag = _parsed_sections.pop(0)
-            _sections.append(BarcodeSection(section_name, section_dna_tag, _overhang_section_tag))
+
+            _decoder: Optional[QuaternaryHammingDecoder] = None
+            _hamming_encoded = section_name in _hamming_encoded_sections
+            if section_name in _hamming_encoded_sections.keys():
+                _dec_name = _hamming_encoded_sections[section_name]
+
+                if _dec_name == "default":
+                    _decoder = QuaternaryHammingDecoder(list(range(len(section_dna_tag))), True)
+                else:
+                    _decoder = QuaternaryHammingDecoder.load(
+                        _hamming_encoded_sections[section_name]
+                    )
+
+            _sections.append(
+                BarcodeSection(
+                    section_name=section_name,
+                    section_tag=section_dna_tag,
+                    overhang_tag=_overhang_section_tag,
+                    hamming_decoder=_decoder,
+                )
+            )
 
         return cls(_id, _sections)
 
@@ -518,7 +550,7 @@ class BarcodeSchema(DeliDataLoadableMixin):
         Notes
         -----
         Experiment compatible means two schemas have the
-        same primer tag (same sequence) and the
+        same primer bases (same sequence) and the
         primer is in the same position as the other
         in the barcode (if primer is position 1,
         then the other should have this be true as well

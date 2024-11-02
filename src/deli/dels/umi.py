@@ -15,7 +15,7 @@ class Umi:
         Parameters
         ----------
         umi: str
-            the DNA tag of the umi
+            the DNA bases of the umi
         """
         self.umi = umi
 

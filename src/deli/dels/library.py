@@ -5,10 +5,9 @@ from typing import Any, Iterator, List, Optional, Self, Tuple, Union, overload
 
 from Levenshtein import distance
 
-from deli.configure import accept_deli_data_name
+from deli.configure import DeliDataLoadable, accept_deli_data_name
 
 from .barcode import BarcodeSchema, BarcodeSection
-from .base import DeliDataLoadableMixin
 from .building_block import BuildingBlockSet
 
 
@@ -27,7 +26,7 @@ class Reaction:
         self.reaction = reaction
 
 
-class DELibrary(DeliDataLoadableMixin):
+class DELibrary(DeliDataLoadable):
     """
     Contains information about a DNA-encoded library
 
@@ -69,8 +68,8 @@ class DELibrary(DeliDataLoadableMixin):
             reaction at index i is the reaction between bb_sets[i] and bb_sets[i+1]
             reactions must have length equal to the the number of `bb_sets` minus 1
         dna_barcode_on: str
-            the id of the bb_set that is linked to the DNA tag
-            can be 'scaffold' if DNA tag is linked to the scaffold
+            the id of the bb_set that is linked to the DNA bases
+            can be 'scaffold' if DNA bases is linked to the scaffold
         scaffold: optional, str
             SMILES of the scaffold
             if no scaffold in library should be `None`
@@ -109,7 +108,7 @@ class DELibrary(DeliDataLoadableMixin):
 
         self.library_size = sum([len(bb_set) for bb_set in self.bb_sets])
 
-        # handle the dna tag location
+        # handle the dna bases location
         if self.dna_barcode_on not in [bb_set.bb_set_id for bb_set in self.bb_sets]:
             if scaffold is not None and self.dna_barcode_on != "scaffold":
                 raise LibraryBuildError(
@@ -166,10 +165,8 @@ class DELibrary(DeliDataLoadableMixin):
             library_id=lib_dict["id"],
             library_dna_tag=lib_dict["library_tag"],
             dna_barcode_on=lib_dict["dna_barcode_on"],
-            barcode_schema=BarcodeSchema.load_from_json(lib_dict["barcode_schema"]),
-            bb_sets=[
-                BuildingBlockSet.load_from_csv(bb, no_smiles=True) for bb in lib_dict["bb_sets"]
-            ],
+            barcode_schema=BarcodeSchema.load(lib_dict["barcode_schema"]),
+            bb_sets=[BuildingBlockSet.load(bb) for bb in lib_dict["bb_sets"]],
             reactions=[Reaction(**react) for react in lib_dict["reactions"]],
             scaffold=lib_dict["scaffold"],
         )
@@ -273,12 +270,12 @@ class BaseDELibraryGroup:
             else:
                 _ids.append(_library.library_id)
 
-            # check the tag uniqueness
+            # check the bases uniqueness
             if _library.library_tag in _tags:
                 _idx = _tags.index(_library.library_tag)
                 raise LibraryBuildError(
                     f"library {_library.library_id} and library {self.libraries[_idx]} "
-                    f"have the same dna tag: {_library.library_tag}"
+                    f"have the same dna bases: {_library.library_tag}"
                 )
             else:
                 _tags.append(_library.library_tag)
@@ -331,7 +328,7 @@ class DELibrarySchemaGroup(BaseDELibraryGroup):
 
     This way the caller can still
     figure out which library a read is in even if the barcodes
-    have variable numbers of building blocks, different BB tag sizes
+    have variable numbers of building blocks, different BB bases sizes
     or different UMI regions
 
     Raises
@@ -351,6 +348,7 @@ class DELibrarySchemaGroup(BaseDELibraryGroup):
         """
         super().__init__(libraries=libraries)
 
+        self.library_call_schema = self._generate_library_call_schema()
         self.requires_multistep_calling = self._requires_multistep_calling()
 
     def _check_validity(self):
@@ -363,9 +361,9 @@ class DELibrarySchemaGroup(BaseDELibraryGroup):
                     "the same index, primer and library regions"
                 )
 
-    def get_library_call_schema(self) -> BarcodeSchema:
+    def _generate_library_call_schema(self) -> BarcodeSchema:
         """
-        Get the index (if present), primer and library dna tag for calling
+        Get the index (if present), primer and library dna bases for calling
 
         Returns
         -------
@@ -480,7 +478,7 @@ class DELibraryGroup(BaseDELibraryGroup):
         a barcode that shares the same 'index' (if used), 'primer'
         and 'library' regions. This way the caller can still
         figure out which library a read is in even if the barcodes
-        have variable numbers of building blocks, different BB tag sizes
+        have variable numbers of building blocks, different BB bases sizes
         or different UMI regions
 
         Returns
@@ -516,7 +514,7 @@ def get_min_library_tag_distance(
     Returns
     -------
     min_distance: int
-        the minimum Levenshtein distance between the passed library's tag
+        the minimum Levenshtein distance between the passed library's bases
     """
     # if only one index just give it a constant threshold
     if included_libraries is None or len(included_libraries) <= 1:
