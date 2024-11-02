@@ -2,6 +2,8 @@
 
 from typing import Dict, List, Self, Tuple
 
+from numba import njit
+
 
 class SemiGlobalAlignment:
     """Contains the global alignment of two sequences."""
@@ -101,7 +103,7 @@ class SemiGlobalAlignment:
         )
 
 
-# @njit()
+@njit()
 def _semi_global_align(seq1: str, seq2: str) -> Tuple[List[Tuple[int, int]], Dict[int, int]]:
     """
     Numba accelerated semi-global alignment implementation
