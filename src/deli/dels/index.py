@@ -102,6 +102,10 @@ class IndexSet(DeliDataLoadable):
 
         return self.__class__(self.index_set + other.index_set)
 
+    def __bool__(self) -> bool:
+        """IndexSet is False when it is empty"""
+        return len(self) > 0
+
     @classmethod
     @accept_deli_data_name("indexes", "json")
     def load(cls, path: str) -> Self:
