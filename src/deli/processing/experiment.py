@@ -155,7 +155,7 @@ class DELExperiment(_BaseExperiment):
 
         Returns
         -------
-        Self
+        DELExperiment
         """
         # read the file
         info: Dict[str, List[str]] = {}
