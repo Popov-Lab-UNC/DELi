@@ -192,7 +192,9 @@ class BuildingBlockSet(DeliDataLoadable):
         -------
         BuildingBlockSet
         """
-        return cls.load_from_csv(path)
+        _cls = cls.load_from_csv(path)
+        _cls.loaded_from = path
+        return _cls
 
     @classmethod
     def load_from_csv(cls, path: str, set_id: Optional[str] = None, no_smiles: bool = False):

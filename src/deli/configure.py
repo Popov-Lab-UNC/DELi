@@ -214,7 +214,7 @@ def _build_argument_validation_decorator(
 class DeliDataLoadable(abc.ABC):
     """Mixin for objects that can be loaded from DeliDataDir"""
 
-    loaded_from: str = ""
+    loaded_from: Union[os.PathLike, str] = ""
 
     @classmethod
     @abc.abstractmethod
