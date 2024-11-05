@@ -299,7 +299,9 @@ class BarcodeSchema(DeliDataLoadable):
         -------
         BarcodeSchema
         """
-        return cls.load_from_json(path)
+        _cls = cls.load_from_json(path)
+        _cls.loaded_from = path
+        return _cls
 
     @classmethod
     def load_from_json(cls, file_path: str) -> Self:
@@ -391,12 +393,14 @@ class BarcodeSchema(DeliDataLoadable):
     def _check_barcode_sections(self) -> None:
         """Check barcode sections for errors and standardize text"""
         _seen_sections = set()
+        _bb_section_order = list()
 
         # loop through all passed barcode section and check them all
         _seen_bb_section: bool = False
         for barcode_section_name, _ in self.barcode_sections.items():
             if re.match(r"^bb[1-9][0-9]*$", barcode_section_name):
                 _seen_bb_section = True
+                _bb_section_order.append(int(barcode_section_name[2:]))  # append only the int
             if BarcodeSectionTrait.BEFORE_BB in _get_valid_section_traits(barcode_section_name):
                 if _seen_bb_section:
                     raise BarcodeSchemaError(
@@ -410,6 +414,16 @@ class BarcodeSchema(DeliDataLoadable):
                     f"sections must only be defined once; "
                     f"found two definitions for section {barcode_section_name}"
                 )
+
+        # check that the order of the BB integers starts with `1`
+        # and in ascending and full (no missing integers)
+        if _bb_section_order != sorted(_bb_section_order):
+            raise BarcodeSchemaError(
+                f"the order of BB sections must start with 'bb1' and then "
+                f"continue to acsend in order; e.g. next is `bb2`, `bb3`... "
+                f"saw order {['bb'+str(_) for _ in _bb_section_order]}; "
+                f"see 'Defining Barcode Schema' docs for more details"
+            )
 
         # check that all required sections are present
         _required_sections = set(

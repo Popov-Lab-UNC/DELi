@@ -214,6 +214,8 @@ def _build_argument_validation_decorator(
 class DeliDataLoadable(abc.ABC):
     """Mixin for objects that can be loaded from DeliDataDir"""
 
+    loaded_from: str = ""
+
     @classmethod
     @abc.abstractmethod
     @accept_deli_data_name(sub_dir="barcodes", extension="json")
