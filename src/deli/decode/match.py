@@ -5,7 +5,7 @@ from typing import List, Tuple
 
 import regex
 
-from deli.processing.experiment import PrimerDELExperiment
+from deli.decode.experiment import PrimerDELExperiment
 from deli.sequence import FastqSequence
 from deli.sequence.fasta import FastaSequence
 
@@ -22,6 +22,7 @@ class MatchOutcome:
 
     def __init__(self):
         self.match_id = next(MATCH_ID)
+        self.passed = False
 
 
 class NoSequenceMatch(MatchOutcome):
@@ -110,6 +111,7 @@ class BarcodeMatch(MatchOutcome):
         super().__init__()
         self.sequence = sequence
         self.match_span = match_span
+        self.passed = True
 
     @property
     def match_sequence(self) -> FastaSequence:
@@ -366,6 +368,7 @@ class BarcodeMatcher:
         experiment: PrimerDELExperiment,
         error_tolerance: int = 3,
         rev_comp: bool = True,
+        primer_match_length: int = -1,
     ):
         """
         Initialize BarcodeMatcher object
@@ -379,10 +382,15 @@ class BarcodeMatcher:
             static sections
         rev_comp: bool, default=True
             also search in the reverse complement of the barcode
+        primer_match_length: int, default=-1
+            how many base pairs to try and match in the primer
+            will start at the end of the sequence and count backwards
+            if -1 will do all
         """
         self.experiment = experiment
         self.error_tolerance = error_tolerance
         self.rev_comp = rev_comp
+        self.primer_match_length = primer_match_length
 
         self._back_overlap = self.experiment.get_min_max_behind()
         self._front_overlap = self.experiment.get_min_max_in_front()

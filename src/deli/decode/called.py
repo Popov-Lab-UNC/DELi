@@ -348,9 +348,20 @@ class BarcodeCaller:
         libraries: DELibrarySchemaGroup,
         indexes: Optional[Union[List[Index], IndexSet]] = None,
         call_mode: CallModes = CallModes.ALIGN,
+        hamming: bool = True,
     ):
         """
         Initialize a DEL BarcodeCaller object
+
+        Notes
+        -----
+        Even if a barcode schema has hamming encode in it,
+        initializing a BarcodeCaller with `hamming=False` will
+        prevent any attempt to try a hamming decode
+
+        Likewise, just because `hamming=True` does not mean
+        all sections will try a decoding: it just means that
+        if a barcode section has a hamming encoded it will attempt it
 
         Parameters
         ----------
@@ -366,6 +377,8 @@ class BarcodeCaller:
         call_mode: CallModes, default = CallModes.ALIGN
             the methods used for calling
             must be a valid CallModes function
+        hamming: bool, default = True
+            attempt hamming decoding (if barcode schema is hamming encoded)
         """
         # handle no indexes
         if indexes is None:
@@ -374,12 +387,13 @@ class BarcodeCaller:
         self.indexes = indexes if isinstance(indexes, IndexSet) else IndexSet(indexes)
         self.libraries = libraries
         self.call_mode = call_mode
+        self.hamming = hamming
 
         # precompute calling distance cutoffs
         self._max_library_dist: float = get_min_library_tag_distance(self.libraries) / 2
         self._max_index_dist: float = get_min_index_distance(self.indexes) / 2
-        self._skip_calling_index: bool = len(self.indexes) <= 1
-        self._skip_calling_lib: bool = not self.libraries.requires_multistep_calling
+        self.skip_calling_index: bool = len(self.indexes) <= 1
+        self.skip_calling_lib: bool = not self.libraries.requires_multistep_calling
 
     @staticmethod
     def _make_call(query: str, refs: List[str], dist_cutoff: float) -> Tuple[int, float]:
@@ -396,9 +410,8 @@ class BarcodeCaller:
                 called = i
         return called, called_dist
 
-    @staticmethod
-    def _decode_seq(seq: str, section: BarcodeSection) -> Tuple[str, bool]:
-        if section.decoder:
+    def _decode_seq(self, seq: str, section: BarcodeSection) -> Tuple[str, bool]:
+        if self.hamming and section.decoder:
             return section.decoder.decode_sequence(seq)
         return seq, True
 
@@ -407,7 +420,7 @@ class BarcodeCaller:
     ) -> Union[FailedCall, IndexCall]:
         """Call the index"""
         # if skip index call the first index always
-        if self._skip_calling_index:
+        if self.skip_calling_index:
             return IndexCall(self.indexes[0])
 
         aligned_index_seq = match.match_sequence.sequence[slice(*alignment["index"])]
@@ -431,7 +444,7 @@ class BarcodeCaller:
     ) -> Union[FailedCall, LibraryCall]:
         """Call the library"""
         # if skip library call the first library always
-        if self._skip_calling_lib:
+        if self.skip_calling_lib:
             return LibraryCall(self.libraries[0])
 
         aligned_lib_seq = match.match_sequence.sequence[slice(*alignment["library"])]
@@ -475,12 +488,18 @@ class BarcodeCaller:
 
         for bb_region, bb_set in zip(bb_regions, _lib.iter_bb_sets()):
             aligned_bb_seq = match.match_sequence.sequence[slice(*alignment[bb_region])]
+            # exit early if not the right size (hamming encode cannot fix indels)
+            if bb_set.tag_length != len(aligned_bb_seq):
+                bb_calls.append(FailedCall(section_name=bb_region))
+                continue
+
             aligned_bb_seq, _passed_decode = self._decode_seq(
                 aligned_bb_seq, _lib.barcode_schema[bb_region]
             )
 
             if not _passed_decode:
                 bb_calls.append(FailedCall(section_name=bb_region))
+                continue
 
             bb_call = bb_set.search_tags(aligned_bb_seq)
             if isinstance(bb_call, BuildingBlock):
@@ -511,7 +530,7 @@ class BarcodeCaller:
         CalledBarcode
         """
         # call index/library first if multiple libraries
-        if self._skip_calling_lib:
+        if self.skip_calling_lib:
             # get global alignment
             alignment = self.call_mode(match, self.libraries[0].barcode_schema)
 

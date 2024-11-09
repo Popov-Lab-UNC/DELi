@@ -1,15 +1,25 @@
-[library_group]
-MyDELibrary
-
 [libraries]
 DEL004
 DEL005
-
-[index_set]
-MyIndexSet
 
 [indexes]
 NSP2: index1, index2, index3
 Rdrp5: index4, index5, index6
 control: index7, index8, index9
 dummy: index10
+
+[matching_settings]
+error_tolerance: 3
+primer_match_length: -1
+rev_comp: true
+
+[call_settings]
+hamming: false
+
+[cube_settings]
+disynthon: true
+monosynthon: false
+split_by_index: false
+split_by_lib: true
+umi_cluster: false
+normalize: false

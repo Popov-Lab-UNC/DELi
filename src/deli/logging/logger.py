@@ -1,24 +1,45 @@
+"""for basic python-based logging"""
+
 import logging
-import sys
 import os
-
-from deli.constants import PACKAGE_DIR
-
-logging.captureWarnings(True)  # hook python warning to the logger
+import sys
 
 
-def setup_logger(name: str = 'root', debug: bool = False, console_logging: bool = False) -> logging.Logger:
+def setup_logger(
+    name: str = "root", debug: bool = False, console_logging: bool = False
+) -> logging.Logger:
+    """
+    Create a logger with the passed settings
+
+    Notes
+    -----
+    Will always save logs to the CWD as 'deli.log'
+
+    Parameters
+    ----------
+    name: str
+        name to use for logging
+    debug: bool, Default False
+        if True, turn on debug logging
+    console_logging:
+        if True, add a console log handler
+        not recommend for large experiment runs
+        use tqdm settings instead
+
+    Returns
+    -------
+    logging.Logger
+    """
+    logging.captureWarnings(True)  # hook python warning to the logger
     logger = logging.getLogger(name=name)
 
     # setup handlers
-    # write to package log if running in deli directory else write to CWD
-    if "deli" in os.getcwd():
-        file_handler = logging.FileHandler(os.path.join(PACKAGE_DIR, "deli.log"))
-    else:
-        file_handler = logging.FileHandler(os.path.join(os.getcwd(), "deli.log"))
-    file_handler.setFormatter(logging.Formatter('%(asctime)s | %(name)s | %(levelname)s | %(message)s'))
+    file_handler = logging.FileHandler(os.path.join(os.getcwd(), "deli.log"))
+    file_handler.setFormatter(
+        logging.Formatter("%(asctime)s | %(name)s | %(levelname)s | %(message)s")
+    )
     console_handler = logging.StreamHandler()
-    console_handler.setFormatter(logging.Formatter('%(name)s - %(levelname)s - %(message)s'))
+    console_handler.setFormatter(logging.Formatter("%(name)s - %(levelname)s - %(message)s"))
 
     # set levels
     if debug:
@@ -42,6 +63,7 @@ def setup_logger(name: str = 'root', debug: bool = False, console_logging: bool 
             return
         logger.critical("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
         sys.__excepthook__(exc_type, exc_value, exc_traceback)
+
     sys.excepthook = handle_exception
 
     return logger

@@ -145,31 +145,9 @@ class DELibrary(DeliDataLoadable):
         -------
         DELibrary
         """
-        return cls.read_json(path)
-
-    @classmethod
-    def from_dict(cls, lib_dict: dict) -> Self:
-        """
-        Load a DEL from a dict
-
-        Parameters
-        ----------
-        lib_dict: dict
-            DEL info as a dictionary
-
-        Returns
-        -------
-        DELibrary
-        """
-        return cls(
-            library_id=lib_dict["id"],
-            library_dna_tag=lib_dict["library_tag"],
-            dna_barcode_on=lib_dict["dna_barcode_on"],
-            barcode_schema=BarcodeSchema.load(lib_dict["barcode_schema"]),
-            bb_sets=[BuildingBlockSet.load(bb) for bb in lib_dict["bb_sets"]],
-            reactions=[Reaction(**react) for react in lib_dict["reactions"]],
-            scaffold=lib_dict["scaffold"],
-        )
+        _cls = cls.read_json(path)
+        _cls.loaded_from = path
+        return _cls
 
     @classmethod
     def read_json(cls, path: str) -> Self:
@@ -190,7 +168,15 @@ class DELibrary(DeliDataLoadable):
         if "scaffold" not in data.keys():
             data["scaffold"] = None
 
-        return cls.from_dict(data)
+        return cls(
+            library_id=data["id"],
+            library_dna_tag=data["library_tag"],
+            dna_barcode_on=data["dna_barcode_on"],
+            barcode_schema=BarcodeSchema.load(data["barcode_schema"]),
+            bb_sets=[BuildingBlockSet.load(bb) for bb in data["bb_sets"]],
+            reactions=[Reaction(**react) for react in data["reactions"]],
+            scaffold=data["scaffold"],
+        )
 
     def iter_bb_sets(self) -> Iterator[BuildingBlockSet]:
         """
@@ -417,53 +403,55 @@ class DELibrarySchemaGroup(BaseDELibraryGroup):
 class DELibraryGroup(BaseDELibraryGroup):
     """A set of many DELibraries"""
 
-    @classmethod
-    @accept_deli_data_name("libraries", "json")
-    def load(cls, path: str) -> Self:
-        """
-        Load a mega library from the DELi data directory
-
-        Notes
-        -----
-        This is decorated by `accept_deli_data`
-        which makes this function actually take
-          path_or_name: str
-          deli_config: DeliConfig
-
-        `path_or_name` can be the full path to the file
-        or it can be the name of the object to load
-
-        See `Storing DEL info` in docs for more details
-
-
-        Parameters
-        ----------
-        path: str
-            path of the mega library to load
-
-        Returns
-        -------
-        DELibraryGroup
-        """
-        return cls.read_json(path)
-
-    @classmethod
-    def read_json(cls, path: str) -> Self:
-        """
-        Read a mega library from a json file
-
-        Parameters
-        ----------
-        path: str
-            path to mega library json
-
-        Returns
-        -------
-        DELibraryGroup
-        """
-        data = json.load(open(path))
-
-        return cls(libraries=[DELibrary.from_dict(d) for d in data])
+    # @classmethod
+    # @accept_deli_data_name("libraries", "json")
+    # def load(cls, path: str) -> Self:
+    #     """
+    #     Load a mega library from the DELi data directory
+    #
+    #     Notes
+    #     -----
+    #     This is decorated by `accept_deli_data`
+    #     which makes this function actually take
+    #       path_or_name: str
+    #       deli_config: DeliConfig
+    #
+    #     `path_or_name` can be the full path to the file
+    #     or it can be the name of the object to load
+    #
+    #     See `Storing DEL info` in docs for more details
+    #
+    #
+    #     Parameters
+    #     ----------
+    #     path: str
+    #         path of the mega library to load
+    #
+    #     Returns
+    #     -------
+    #     DELibraryGroup
+    #     """
+    #     _cls = cls.read_json(path)
+    #     _cls.loaded_from = path
+    #     return _cls
+    #
+    # @classmethod
+    # def read_json(cls, path: str) -> Self:
+    #     """
+    #     Read a mega library from a json file
+    #
+    #     Parameters
+    #     ----------
+    #     path: str
+    #         path to mega library json
+    #
+    #     Returns
+    #     -------
+    #     DELibraryGroup
+    #     """
+    #     data = json.load(open(path))
+    #
+    #     return cls(libraries=[DELibrary.from_dict(d) for d in data])
 
     def break_into_schema_groups(self) -> List[DELibrarySchemaGroup]:
         """
