@@ -9,6 +9,12 @@ from deli.configure import DeliDataLoadable, accept_deli_data_name
 from deli.constants import BB_MASK
 
 
+class BuildingBlockSetError(Exception):
+    """raised when there is an issue with building block set definition"""
+
+    pass
+
+
 class BaseBuildingBlock(abc.ABC):
     """Base class for all BuildingBlock objects"""
 
@@ -88,7 +94,7 @@ class MaskedBuildingBlock(BaseBuildingBlock):
 class BuildingBlock(BaseBuildingBlock):
     """define building block class"""
 
-    def __init__(self, bb_id: str, smiles: Optional[str] = None, tag: Optional[str] = None):
+    def __init__(self, bb_id: str, tag: str, smiles: Optional[str] = None):
         """
         Initialize the building block
 
@@ -96,6 +102,8 @@ class BuildingBlock(BaseBuildingBlock):
         ----------
         bb_id: str
             building block id
+        tag: str
+            the dna tag associated with this building block
         smiles: Optional[str], default = None
             SMILES of the building block
         """
@@ -118,7 +126,7 @@ class BuildingBlock(BaseBuildingBlock):
         -------
         BuildingBlock
         """
-        return cls(data["id"], data.get("smiles"), data.get("bases"))
+        return cls(data["id"], data["tag"], data.get("smiles"))
 
     def is_mask(self) -> bool:
         """Masked BBs are never masks"""
@@ -161,6 +169,13 @@ class BuildingBlockSet(DeliDataLoadable):
         """
         self.bb_set_id = bb_set_id
         self.building_blocks = building_blocks
+        self.tag_length = len(self.building_blocks[0].tag)
+        for i, _bb in enumerate(building_blocks[1:]):
+            if self.tag_length != len(_bb.tag):
+                raise BuildingBlockSetError(
+                    f"expected all tags to have length {self.tag_length}, "
+                    f"but tag '{_bb.bb_id}' at row {i} has length {len(_bb.tag)}"
+                )
 
         self._dna_lookup_table = {bb.tag: i for i, bb in enumerate(self.building_blocks)}
 
@@ -192,7 +207,9 @@ class BuildingBlockSet(DeliDataLoadable):
         -------
         BuildingBlockSet
         """
-        return cls.load_from_csv(path)
+        _cls = cls.load_from_csv(path)
+        _cls.loaded_from = path
+        return _cls
 
     @classmethod
     def load_from_csv(cls, path: str, set_id: Optional[str] = None, no_smiles: bool = False):

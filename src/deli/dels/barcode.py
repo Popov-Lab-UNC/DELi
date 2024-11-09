@@ -7,7 +7,7 @@ from collections import OrderedDict
 from typing import Dict, List, Optional, Self, Tuple
 
 from deli.configure import DeliDataLoadable, accept_deli_data_name
-from deli.processing.hamming import QuaternaryHammingDecoder
+from deli.decode.hamming import QuaternaryHammingDecoder
 
 
 class BarcodeSectionTrait(enum.Enum):
@@ -189,7 +189,11 @@ class BarcodeSection:
         return str(self)
 
     def to_match_pattern(
-        self, wildcard: bool = True, error_tolerance: int = 0, include_overhang: bool = True
+        self,
+        wildcard: bool = True,
+        error_tolerance: int = 0,
+        include_overhang: bool = True,
+        trim: int = -1,
     ) -> str:
         """
         Converts this section to a barcode matching regex pattern
@@ -206,6 +210,10 @@ class BarcodeSection:
             even if the section is variable, include the
             explict DNA of the overhang
             overridden by `wildcard`
+        trim: int, default=-1
+            if -1 match the full static region
+            if not, only match the first <trim> base pairs and treat the rest
+            like wildcards
 
         Returns
         -------
@@ -217,10 +225,21 @@ class BarcodeSection:
             return f".{{{len(self)}}}"
 
         if self.is_static():
+            if trim != -1:
+                _section_tag = self.section_tag[:trim]
+                _leftover = max(0, len(self.section_tag) - trim)
+            else:
+                _section_tag = self.section_tag
+                _leftover = 0
+
             if error_tolerance > 0:
                 _pattern = f"(?:{self.section_tag}){{e<={error_tolerance}}}"
             else:
                 _pattern = f"{self.section_tag}"
+
+            if _leftover > 0:
+                _pattern += f".{{{_leftover}}}"
+
         else:
             f".{{{len(self.section_tag)}}}"
 
@@ -299,7 +318,9 @@ class BarcodeSchema(DeliDataLoadable):
         -------
         BarcodeSchema
         """
-        return cls.load_from_json(path)
+        _cls = cls.load_from_json(path)
+        _cls.loaded_from = path
+        return _cls
 
     @classmethod
     def load_from_json(cls, file_path: str) -> Self:
@@ -391,12 +412,14 @@ class BarcodeSchema(DeliDataLoadable):
     def _check_barcode_sections(self) -> None:
         """Check barcode sections for errors and standardize text"""
         _seen_sections = set()
+        _bb_section_order = list()
 
         # loop through all passed barcode section and check them all
         _seen_bb_section: bool = False
         for barcode_section_name, _ in self.barcode_sections.items():
             if re.match(r"^bb[1-9][0-9]*$", barcode_section_name):
                 _seen_bb_section = True
+                _bb_section_order.append(int(barcode_section_name[2:]))  # append only the int
             if BarcodeSectionTrait.BEFORE_BB in _get_valid_section_traits(barcode_section_name):
                 if _seen_bb_section:
                     raise BarcodeSchemaError(
@@ -410,6 +433,17 @@ class BarcodeSchema(DeliDataLoadable):
                     f"sections must only be defined once; "
                     f"found two definitions for section {barcode_section_name}"
                 )
+
+        # check that the order of the BB integers starts with `1`
+        # and in ascending and full (no missing integers)
+        if _bb_section_order != list(range(1, len(_bb_section_order) + 1)):
+            raise BarcodeSchemaError(
+                f"the order of BB sections must start with 'bb1' and then "
+                f"continue to acsend in order; e.g. next is `bb2`, `bb3`... "
+                f"saw order '{['bb'+str(_) for _ in _bb_section_order]}', "
+                f"expected order '{list(range(1, len(_bb_section_order)+1))}';"
+                f"see 'Defining Barcode Schema' docs for more details"
+            )
 
         # check that all required sections are present
         _required_sections = set(
@@ -570,28 +604,21 @@ class BarcodeSchema(DeliDataLoadable):
             self.get_position("index") == other.get_position("index")
         )
 
+    def to_csv_header(self) -> List[str]:
+        """
+        Returns the header sections post calling required for calls from this schema
 
-# class BarcodeSchemaSet:
-#     def __init__(self, schemas: List[BarcodeSchema]):
-#         self.schemas: List[BarcodeSchema] = schemas
-#
-#     def _validate_schemas(self):
-#         if len(self.schemas) == 1:
-#             return
-#
-#         _schema = self.schemas[0]
-#         true_sections = {
-#             "pre-index": _schema.barcode_sections.get("pre-index", None),
-#             "index": _schema.barcode_sections.get("index", None),
-#             "primer": _schema.barcode_sections.get("primer", None),
-#             "library": _schema.barcode_sections.get("library", None),
-#             "closing": _schema.barcode_sections.get("closing", None),
-#         }
-#         for schema in self.schemas[1:]:
-#             if not all([schema.barcode_sections.get(section_name) == section
-#                        for section_name, section in true_sections.items()]):
-#                 raise BarcodeSchemaError(
-#                     f"schema {schema.schema_id} does not share the same index,"
-#                 )
-#
-#
+        Returns
+        -------
+        List[str]
+        """
+        _headers = ["DEL_ID", "umi"]
+
+        if self.has_index():
+            _headers.append("index")
+        if self.has_library():
+            _headers.append("library")
+        for bb_section in self.get_bb_regions():
+            _headers.append(bb_section)
+
+        return _headers

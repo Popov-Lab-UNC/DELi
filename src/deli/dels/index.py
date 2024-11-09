@@ -1,6 +1,5 @@
 """Code for handling indexes"""
 
-import json
 import os.path
 from os import PathLike
 from typing import Iterator, List, Optional, Self, Union, overload
@@ -16,7 +15,7 @@ class DELIndexError(Exception):
     pass
 
 
-class Index:
+class Index(DeliDataLoadable):
     """
     Object that contains the index id and corresponding DNA bases
     """
@@ -53,10 +52,12 @@ class Index:
         """Load an Index from a txt file"""
         index_id = os.path.basename(path).split(".")[0]
         index_tag = open(path, "r").readlines()[0].strip()
-        return cls(index_id=index_id, dna_tag=index_tag)
+        _tmp = cls(index_id=index_id, dna_tag=index_tag)
+        _tmp.loaded_from = path
+        return _tmp
 
 
-class IndexSet(DeliDataLoadable):
+class IndexSet:
     """
     Holds a set of indexes
 
@@ -102,57 +103,63 @@ class IndexSet(DeliDataLoadable):
 
         return self.__class__(self.index_set + other.index_set)
 
-    @classmethod
-    @accept_deli_data_name("indexes", "json")
-    def load(cls, path: str) -> Self:
-        """
-        Load a index set from the DELi data directory
+    def __bool__(self) -> bool:
+        """IndexSet is False when it is empty"""
+        return len(self) > 0
 
-        Notes
-        -----
-        This is decorated by `accept_deli_data`
-        which makes this function actually take
-          path_or_name: str
-          deli_config: DeliConfig
-
-        `path_or_name` can be the full path to the file
-        or it can be the name of the object to load
-
-        See `Storing DEL info` in docs for more details
-
-
-        Parameters
-        ----------
-        path: str
-            path of the index set to load
-
-        Returns
-        -------
-        IndexSet
-        """
-        return cls.from_json(path)
-
-    @classmethod
-    def from_json(cls, path: str) -> Self:
-        """
-        Load a index set from a JSON file
-
-        Notes
-        -----
-        See the "De-multiplexing with DELi" docs for more info
-
-        Parameters
-        ----------
-        path: str
-            path to json string
-
-        Returns
-        -------
-        IndexSet
-
-        """
-        data = json.load(open(path))
-        return cls(index_set=[Index(index_id=key, dna_tag=val) for key, val in data.items()])
+    # @classmethod
+    # @accept_deli_data_name("indexes", "json")
+    # def load(cls, path: str) -> Self:
+    #     """
+    #     Load a index set from the DELi data directory
+    #
+    #     Notes
+    #     -----
+    #     This is decorated by `accept_deli_data`
+    #     which makes this function actually take
+    #       path_or_name: str
+    #       deli_config: DeliConfig
+    #
+    #     `path_or_name` can be the full path to the file
+    #     or it can be the name of the object to load
+    #
+    #     See `Storing DEL info` in docs for more details
+    #
+    #
+    #     Parameters
+    #     ----------
+    #     path: str
+    #         path of the index set to load
+    #
+    #     Returns
+    #     -------
+    #     IndexSet
+    #     """
+    #     _cls = cls.from_json(path)
+    #     _cls.loaded_from = path
+    #     return _cls
+    #
+    # @classmethod
+    # def from_json(cls, path: str) -> Self:
+    #     """
+    #     Load a index set from a JSON file
+    #
+    #     Notes
+    #     -----
+    #     See the "De-multiplexing with DELi" docs for more info
+    #
+    #     Parameters
+    #     ----------
+    #     path: str
+    #         path to json string
+    #
+    #     Returns
+    #     -------
+    #     IndexSet
+    #
+    #     """
+    #     data = json.load(open(path))
+    #     return cls(index_set=[Index(index_id=key, dna_tag=val) for key, val in data.items()])
 
     def _check_validity(self):
         """Checks that there are no duplicate or conflicts in index set"""
