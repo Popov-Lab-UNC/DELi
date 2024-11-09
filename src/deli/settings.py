@@ -1,7 +1,7 @@
 """handles loading a parsing of DELi run settings"""
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Dict, Self
 
 
 class DELiSettingError(Exception):
@@ -58,6 +58,11 @@ class MatcherSettings:
         self.primer_match_length = _check_int(self.primer_match_length, "primer_match_length")
         self.rev_comp = _check_bool(self.rev_comp, "rev_comp")
 
+    @classmethod
+    def from_dict(cls, info: Dict[str, Any]) -> Self:
+        """Load the settings object from a dictionary"""
+        return cls(**info)
+
 
 @dataclass
 class CallerSettings:
@@ -68,6 +73,11 @@ class CallerSettings:
     def __post_init__(self):
         """Check types post init"""
         self.hamming = _check_bool(self.hamming, "hamming")
+
+    @classmethod
+    def from_dict(cls, info: Dict[str, Any]) -> Self:
+        """Load the settings object from a dictionary"""
+        return cls(**info)
 
 
 @dataclass
@@ -89,3 +99,8 @@ class CubeGenSettings:
         self.split_by_lib = _check_bool(self.split_by_lib, "split_by_lib")
         self.umi_cluster = _check_bool(self.umi_cluster, "umi_cluster")
         self.normalize = _check_bool(self.normalize, "normalize")
+
+    @classmethod
+    def from_dict(cls, info: Dict[str, Any]) -> Self:
+        """Load the settings object from a dictionary"""
+        return cls(**info)

@@ -5,7 +5,7 @@ from typing import List, Tuple
 
 import regex
 
-from deli.processing.experiment import PrimerDELExperiment
+from deli.decode.experiment import PrimerDELExperiment
 from deli.sequence import FastqSequence
 from deli.sequence.fasta import FastaSequence
 

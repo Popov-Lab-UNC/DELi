@@ -7,7 +7,7 @@ from collections import OrderedDict
 from typing import Dict, List, Optional, Self, Tuple
 
 from deli.configure import DeliDataLoadable, accept_deli_data_name
-from deli.processing.hamming import QuaternaryHammingDecoder
+from deli.decode.hamming import QuaternaryHammingDecoder
 
 
 class BarcodeSectionTrait(enum.Enum):
@@ -417,11 +417,12 @@ class BarcodeSchema(DeliDataLoadable):
 
         # check that the order of the BB integers starts with `1`
         # and in ascending and full (no missing integers)
-        if _bb_section_order != sorted(_bb_section_order):
+        if _bb_section_order != list(range(1, len(_bb_section_order) + 1)):
             raise BarcodeSchemaError(
                 f"the order of BB sections must start with 'bb1' and then "
                 f"continue to acsend in order; e.g. next is `bb2`, `bb3`... "
-                f"saw order {['bb'+str(_) for _ in _bb_section_order]}; "
+                f"saw order '{['bb'+str(_) for _ in _bb_section_order]}', "
+                f"expected order '{list(range(1, len(_bb_section_order)+1))}';"
                 f"see 'Defining Barcode Schema' docs for more details"
             )
 
@@ -584,28 +585,21 @@ class BarcodeSchema(DeliDataLoadable):
             self.get_position("index") == other.get_position("index")
         )
 
+    def to_csv_header(self) -> List[str]:
+        """
+        Returns the header sections post calling required for calls from this schema
 
-# class BarcodeSchemaSet:
-#     def __init__(self, schemas: List[BarcodeSchema]):
-#         self.schemas: List[BarcodeSchema] = schemas
-#
-#     def _validate_schemas(self):
-#         if len(self.schemas) == 1:
-#             return
-#
-#         _schema = self.schemas[0]
-#         true_sections = {
-#             "pre-index": _schema.barcode_sections.get("pre-index", None),
-#             "index": _schema.barcode_sections.get("index", None),
-#             "primer": _schema.barcode_sections.get("primer", None),
-#             "library": _schema.barcode_sections.get("library", None),
-#             "closing": _schema.barcode_sections.get("closing", None),
-#         }
-#         for schema in self.schemas[1:]:
-#             if not all([schema.barcode_sections.get(section_name) == section
-#                        for section_name, section in true_sections.items()]):
-#                 raise BarcodeSchemaError(
-#                     f"schema {schema.schema_id} does not share the same index,"
-#                 )
-#
-#
+        Returns
+        -------
+        List[str]
+        """
+        _headers = ["DEL_ID", "umi"]
+
+        if self.has_index():
+            _headers.append("index")
+        if self.has_library():
+            _headers.append("library")
+        for bb_section in self.get_bb_regions():
+            _headers.append(bb_section)
+
+        return _headers

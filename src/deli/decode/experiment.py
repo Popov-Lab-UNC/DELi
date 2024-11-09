@@ -4,6 +4,7 @@ from os import PathLike
 from typing import Dict, List, Optional, Self, Tuple, Union
 
 from deli.dels import BarcodeSchema, DELibrary, DELibraryGroup, Index, IndexSet
+from deli.settings import CallerSettings, CubeGenSettings, MatcherSettings
 
 
 class DELExperimentError(Exception):
@@ -13,7 +14,14 @@ class DELExperimentError(Exception):
 
 
 class _BaseExperiment:
-    def __init__(self, libraries: DELibraryGroup, indexes: Optional[IndexSet] = None):
+    def __init__(
+        self,
+        libraries: DELibraryGroup,
+        indexes: Optional[IndexSet] = None,
+        matching_settings: Optional[MatcherSettings] = None,
+        caller_settings: Optional[CallerSettings] = None,
+        cube_settings: Optional[CubeGenSettings] = None,
+    ):
         """
         Initialize the DELExperiment object
 
@@ -22,17 +30,31 @@ class _BaseExperiment:
         DEL experiments hold the libraries (and indexes) that were used in a DEL run
         This info is needed both for decoding DEL sequences and analysis of the DELs.
 
-        When
-
         Parameters
         ----------
-        libraries
-        indexes
+        libraries: DELibraryGroup
+            the libraries to be used for calling
+        indexes: Optional[IndexSet]
+            the indexes to be used for de-multiplexing (if turned on)
+        matching_settings: Optional[MatcherSettings]
+            the settings to use for matching
+            if None will use default settings
+        caller_settings: Optional[CallerSettings]
+            the settings to use for calling
+            if None will use default settings
+        cube_settings: Optional[CubeGenSettings]
+            the settings to use for CubeGen
+            if None will use default settings
         """
         self.libraries = libraries
         if indexes is None:
             indexes = IndexSet([])
         self.indexes = indexes
+        self.matching_settings = (
+            matching_settings if matching_settings is not None else MatcherSettings()
+        )
+        self.caller_settings = caller_settings if caller_settings is not None else CallerSettings()
+        self.cubegen_settings = cube_settings if cube_settings is not None else CubeGenSettings()
         self._check_validity()
 
     def _check_validity(self):
@@ -58,11 +80,67 @@ class _BaseExperiment:
                 f"were passed to the experiment: {self.libraries}"
             )
 
+    def to_experiment_file(self, path: Union[str, PathLike]):
+        with open(path, "w") as f:
+            # libraries
+            f.write("[libraries]\n")
+            for lib in self.libraries:
+                f.write(str(lib.loaded_from))
+                f.write("\n")
+            f.write("\n")
+
+            # indexes
+            f.write("[indexes]\n")
+            _index_samples = dict()
+            for idx in self.indexes:
+                _samp_name = idx.sample_name
+                if _samp_name == "" or _samp_name is None:
+                    _index_samples[idx.index_id] = [str(idx.loaded_from)]
+                else:
+                    _index_samples[_samp_name] = [str(idx.loaded_from)]
+            for samp_name, index_list in _index_samples.items():
+                _str = f"{samp_name}: " + ",".join(index_list)
+                f.write(_str)
+                f.write("\n")
+            f.write("\n")
+
+            # settings
+            f.write("[matching_settings]\n")
+            f.write(
+                "\n".join(
+                    [f"{key}: {val}" for key, val in self.matching_settings.__dict__.items()]
+                )
+            )
+            f.write("\n\n")
+
+            f.write("[call_settings]\n")
+            f.write(
+                "\n".join([f"{key}: {val}" for key, val in self.caller_settings.__dict__.items()])
+            )
+            f.write("\n\n")
+
+            f.write("[cube_settings]\n")
+            f.write(
+                "\n".join([f"{key}: {val}" for key, val in self.cubegen_settings.__dict__.items()])
+            )
+            f.write("\n\n")
+
+    def get_checksum(self, path: Union[str, PathLike]):
+        # TODO in issue #36
+        raise NotImplementedError
+
 
 class PrimerDELExperiment(_BaseExperiment):
     """A DEL experiment where all libraries are have the same primer"""
 
-    def __init__(self, libraries: DELibraryGroup, indexes: Optional[IndexSet] = None):
+    def __init__(
+        self,
+        libraries: DELibraryGroup,
+        indexes: Optional[IndexSet] = None,
+        matching_settings: Optional[MatcherSettings] = None,
+        caller_settings: Optional[CallerSettings] = None,
+        cube_settings: Optional[CubeGenSettings] = None,
+    ):
         """
         Initialize a PrimerDELExperiment object
 
@@ -78,9 +156,25 @@ class PrimerDELExperiment(_BaseExperiment):
         ----------
         libraries: DELibraryGroup
             libraries in this experiment
-        indexes
+        indexes: Optional[IndexSet]
+            the indexes to be used for de-multiplexing (if turned on)
+        matching_settings: Optional[MatcherSettings]
+            the settings to use for matching
+            if None will use default settings
+        caller_settings: Optional[CallerSettings]
+            the settings to use for calling
+            if None will use default settings
+        cube_settings: Optional[CubeGenSettings]
+            the settings to use for CubeGen
+            if None will use default settings
         """
-        super().__init__(libraries=libraries, indexes=indexes)
+        super().__init__(
+            libraries=libraries,
+            indexes=indexes,
+            caller_settings=caller_settings,
+            matching_settings=matching_settings,
+            cube_settings=cube_settings,
+        )
 
         self.library_schema_groups = self.libraries.break_into_schema_groups()
         self.primer = self.libraries[0].barcode_schema["primer"]
@@ -158,51 +252,33 @@ class DELExperiment(_BaseExperiment):
         DELExperiment
         """
         # read the file
-        info: Dict[str, List[str]] = {}
+        info: Dict[str, List[Tuple[str, int]]] = {}
         with open(path, "r") as file:
             _current_section: str = ""
-            for line in file:
+            for i, line in enumerate(file):
                 _line = line.strip()
                 if _line.startswith("[") and _line.endswith("]"):
                     _current_section = _line[1:-1]
                     info[_current_section] = list()
                     continue
                 if _line != "":
-                    info[_current_section].append(_line)
-
-        # load in the library groups first
-        library_group = DELibraryGroup(list())
-        if "library_group" in info.keys():
-            for library_group_name in info["library_group"]:
-                library_group += DELibraryGroup.load(library_group_name)
+                    info[_current_section].append((_line, i))
 
         # load in the libraries
         _libs: list[DELibrary] = list()
         if "libraries" in info.keys():
-            for _library in info["libraries"]:
-                if library_group.has_library_with_name(_library):
-                    _libs.append(library_group.get_library_with_name(_library))
-                else:
-                    _libs.append(DELibrary.load(_library))
+            for _library, _line_number in info["libraries"]:
+                _libs.append(DELibrary.load(_library))
             library = DELibraryGroup(_libs)
         else:
-            if len(library_group) == 0:
-                raise DELExperimentError(
-                    f"cannot find the 'library_group' or 'libraries' "
-                    f"section in the experiment file: {path}"
-                )
-            library = library_group
+            raise DELExperimentError(
+                "requires section 'libraries' is missing from experiment file"
+            )
 
-        # load in the index set
-        index_set = IndexSet(list())
-        if "index_set" in info.keys():
-            for index_set_name in info["index_set"]:
-                index_set += IndexSet.load(index_set_name)
-
-        # load in the libraries
+        # load in the indexes
         _indexes: list[Index] = list()
         if "indexes" in info.keys():
-            for _index_info in info["indexes"]:
+            for _index_info, _line_number in info["indexes"]:
                 splits = _index_info.split(":")
                 _sample_name = splits[0].strip()
                 _sample_indexes = [_idx.strip() for _idx in splits[1].split(",")]
@@ -215,22 +291,44 @@ class DELExperiment(_BaseExperiment):
                     _sample_names = [_sample_name]
 
                 for _samp_name, _index in zip(_sample_names, _sample_indexes):
-                    if index_set.has_index_with_name(_index):
-                        _tmp = index_set.get_index_with_name(_index)
-                    else:
-                        _tmp = Index.load(_index)
+                    _tmp = Index.load(_index)
                     _tmp.sample_name = _samp_name
                     _indexes.append(_tmp)
             index = IndexSet(_indexes)
         else:
-            if len(index_set) > 0:
-                raise DELExperimentError(
-                    "must manually map indexes to sample names; "
-                    "see 'Defining DEL experiments for more info'"
-                )
-            index = index_set
+            index = IndexSet([])
 
-        return cls(libraries=library, indexes=index)
+        # load in optional matching settings
+        _matching_settings = dict()
+        if "matching_settings" in info.keys():
+            for _match_setting, _line_number in info["matching_settings"]:
+                _name, _val = _match_setting.replace(" ", "").split(":")
+                _matching_settings[_name] = _val
+        matching_settings = MatcherSettings.from_dict(_matching_settings)
+
+        # load in optional calling settings
+        _calling_settings = dict()
+        if "call_settings" in info.keys():
+            for _call_setting, _line_number in info["call_settings"]:
+                _name, _val = _call_setting.replace(" ", "").split(":")
+                _calling_settings[_name] = _val
+        calling_settings = CallerSettings.from_dict(_calling_settings)
+
+        # load in optional cubegen settings
+        _cube_settings = dict()
+        if "cube_settings" in info.keys():
+            for _cube_setting, _line_number in info["cube_settings"]:
+                _name, _val = _cube_setting.replace(" ", "").split(":")
+                _cube_settings[_name] = _val
+        cube_settings = CubeGenSettings.from_dict(_cube_settings)
+
+        return cls(
+            libraries=library,
+            indexes=index,
+            caller_settings=calling_settings,
+            cube_settings=cube_settings,
+            matching_settings=matching_settings,
+        )
 
     def break_into_matching_experiments(self) -> List[PrimerDELExperiment]:
         """
@@ -268,5 +366,12 @@ class DELExperiment(_BaseExperiment):
                 )
 
         return [
-            PrimerDELExperiment(DELibraryGroup(_lib[1]), self.indexes) for _lib in _sub_experiments
+            PrimerDELExperiment(
+                DELibraryGroup(_lib[1]),
+                self.indexes,
+                caller_settings=self.caller_settings,
+                cube_settings=self.cubegen_settings,
+                matching_settings=self.matching_settings,
+            )
+            for _lib in _sub_experiments
         ]
