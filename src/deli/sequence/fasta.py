@@ -1,6 +1,7 @@
 """reading and parsing fasta/q files"""
 
-from typing import Iterator, List, Self
+import os
+from typing import Iterator, List, Self, Union
 
 from .utils import reverse_compliment
 
@@ -147,7 +148,7 @@ class FastqSequence(FastaSequence):
         )
 
 
-def yield_fastq(fastq_file: str) -> Iterator[FastqSequence]:
+def yield_fastq(fastq_file: Union[str, os.PathLike]) -> Iterator[FastqSequence]:
     """
     Read a FASTQ file and yield the sequences
 
@@ -173,7 +174,7 @@ def yield_fastq(fastq_file: str) -> Iterator[FastqSequence]:
                 _id_counter += 1
 
 
-def read_fastq(fastq_file: str) -> List[FastqSequence]:
+def read_fastq(fastq_file: Union[str, os.PathLike]) -> List[FastqSequence]:
     """
     Read a FASTQ file and return a list of the sequences
 

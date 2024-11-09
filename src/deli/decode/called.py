@@ -348,9 +348,20 @@ class BarcodeCaller:
         libraries: DELibrarySchemaGroup,
         indexes: Optional[Union[List[Index], IndexSet]] = None,
         call_mode: CallModes = CallModes.ALIGN,
+        hamming: bool = True,
     ):
         """
         Initialize a DEL BarcodeCaller object
+
+        Notes
+        -----
+        Even if a barcode schema has hamming encode in it,
+        initializing a BarcodeCaller with `hamming=False` will
+        prevent any attempt to try a hamming decode
+
+        Likewise, just because `hamming=True` does not mean
+        all sections will try a decoding: it just means that
+        if a barcode section has a hamming encoded it will attempt it
 
         Parameters
         ----------
@@ -366,6 +377,8 @@ class BarcodeCaller:
         call_mode: CallModes, default = CallModes.ALIGN
             the methods used for calling
             must be a valid CallModes function
+        hamming: bool, default = True
+            attempt hamming decoding (if barcode schema is hamming encoded)
         """
         # handle no indexes
         if indexes is None:
@@ -374,6 +387,7 @@ class BarcodeCaller:
         self.indexes = indexes if isinstance(indexes, IndexSet) else IndexSet(indexes)
         self.libraries = libraries
         self.call_mode = call_mode
+        self.hamming = hamming
 
         # precompute calling distance cutoffs
         self._max_library_dist: float = get_min_library_tag_distance(self.libraries) / 2
@@ -396,9 +410,8 @@ class BarcodeCaller:
                 called = i
         return called, called_dist
 
-    @staticmethod
-    def _decode_seq(seq: str, section: BarcodeSection) -> Tuple[str, bool]:
-        if section.decoder:
+    def _decode_seq(self, seq: str, section: BarcodeSection) -> Tuple[str, bool]:
+        if self.hamming and section.decoder:
             return section.decoder.decode_sequence(seq)
         return seq, True
 

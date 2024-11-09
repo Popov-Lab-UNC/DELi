@@ -7,7 +7,7 @@ from pathlib import Path
 
 import click
 
-from deli.decode import BarcodeCaller, BarcodeMatch, BarcodeMatcher, DELExperiment
+from deli.decode import BarcodeCaller, BarcodeMatcher, DELExperiment
 from deli.logging.logger import setup_logger
 from deli.sequence import read_fastq
 
@@ -34,11 +34,15 @@ def deli():
 
 @deli.command()
 @click.argument("fastq_file", type=click.Path(exists=True), required=True)
-@click.option("--experiment", "-e", type=click.Path(exists=True), required=True)
-@click.option("--out_dir", "-o", type=click.Path(), required=False, default="")
-@click.option("--prefix", "-p", type=click.STRING, required=False, default="")
+@click.argument("experiment_file", type=click.Path(exists=True), required=True)
+@click.option(
+    "--out_dir", "-o", type=click.Path(), required=False, default="", help="Output directory"
+)
+@click.option(
+    "--prefix", "-p", type=click.STRING, required=False, default="", help="Prefix for output files"
+)
 @click.option("--debug", is_flag=True, help="Enable debug mode")
-def decode(fastq_file, experiment, out_dir, prefix, debug):
+def decode(fastq_file, experiment_file, out_dir, prefix, debug):
     """
     run decoding on a given fastq file of DEL sequences
 
@@ -46,7 +50,7 @@ def decode(fastq_file, experiment, out_dir, prefix, debug):
     ----------
     fastq_file: Path
         the path to a fastq file
-    experiment: Path
+    experiment_file: Path
         the path to a DEL experiment outline
     out_dir: Path
         the path to a directory to write the output files
@@ -60,9 +64,9 @@ def decode(fastq_file, experiment, out_dir, prefix, debug):
     _start = datetime.datetime.now()
 
     # load in the experiment data
-    logger.debug(f"reading experiment settings from {experiment}")
-    _experiment = DELExperiment.load_experiment(experiment)
-    _experiment_name = os.path.basename(experiment).split(".")[0]
+    logger.debug(f"reading experiment settings from {experiment_file}")
+    _experiment = DELExperiment.load_experiment(experiment_file)
+    _experiment_name = os.path.basename(experiment_file).split(".")[0]
     if _experiment.indexes:
         logger.info(f"loaded experiment {_experiment_name}")
         logger.debug("detected indexes; turning on de-multiplexing")
@@ -90,7 +94,7 @@ def decode(fastq_file, experiment, out_dir, prefix, debug):
     logger.debug(f"writing calls to {call_file_path}")
 
     _headers_fieldnames = list()
-    for lib in experiment.libraries:
+    for lib in _experiment.libraries:
         _headers_fieldnames.extend(lib.barcode_schema.to_csv_header())
     _headers_fieldnames = list(set(_headers_fieldnames))
     _headers_fieldnames.extend(["from_read", "from_match", "match_seq"])
@@ -111,13 +115,13 @@ def decode(fastq_file, experiment, out_dir, prefix, debug):
         _match_start = datetime.datetime.now()
         logger.info(f"running matching experiment {i + 1} of {len(primer_experiments)}")
 
-        matcher = BarcodeMatcher(primer_experiment, **primer_experiment.matching_settings)
+        matcher = BarcodeMatcher(primer_experiment, **primer_experiment.matching_settings.__dict__)
         logger.debug(f"detected primer sequence {primer_experiment.primer}")
         logger.debug(f"matching to pattern {matcher.pattern}")
 
         matches = matcher.match(sequences)
 
-        _num_valid_matches = sum([isinstance(_match, BarcodeMatch) for _match in matches])
+        _num_valid_matches = sum([_match.passed for _match in matches])
         _seqs_matched = set([_match.sequence.read_id for _match in matches])
         _num_seqs_matched = len(_seqs_matched)
         _num_matches = len(matches)
@@ -135,7 +139,7 @@ def decode(fastq_file, experiment, out_dir, prefix, debug):
         _sub_total_call_count = 0
         _sub_total_valid_call_count = 0
         _sub_reads_with_calls = set()
-        _uncalled_matches = matches
+        _uncalled_matches = [m for m in matches if m.passed]
         _call_start = datetime.datetime.now()
 
         logger.debug(
@@ -155,7 +159,7 @@ def decode(fastq_file, experiment, out_dir, prefix, debug):
             caller = BarcodeCaller(
                 libraries=_sub_library_set,
                 indexes=primer_experiment.indexes,
-                **primer_experiment.caller_settings,
+                **primer_experiment.caller_settings.__dict__,
             )
             logger.debug(f"index calling turned {'off' if caller.skip_calling_index else 'on'}")
             logger.debug(f"library calling turned {'off' if caller.skip_calling_lib else 'on'}")

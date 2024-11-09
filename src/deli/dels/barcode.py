@@ -189,7 +189,11 @@ class BarcodeSection:
         return str(self)
 
     def to_match_pattern(
-        self, wildcard: bool = True, error_tolerance: int = 0, include_overhang: bool = True
+        self,
+        wildcard: bool = True,
+        error_tolerance: int = 0,
+        include_overhang: bool = True,
+        trim: int = -1,
     ) -> str:
         """
         Converts this section to a barcode matching regex pattern
@@ -206,6 +210,10 @@ class BarcodeSection:
             even if the section is variable, include the
             explict DNA of the overhang
             overridden by `wildcard`
+        trim: int, default=-1
+            if -1 match the full static region
+            if not, only match the first <trim> base pairs and treat the rest
+            like wildcards
 
         Returns
         -------
@@ -217,10 +225,21 @@ class BarcodeSection:
             return f".{{{len(self)}}}"
 
         if self.is_static():
+            if trim != -1:
+                _section_tag = self.section_tag[:trim]
+                _leftover = max(0, len(self.section_tag) - trim)
+            else:
+                _section_tag = self.section_tag
+                _leftover = 0
+
             if error_tolerance > 0:
                 _pattern = f"(?:{self.section_tag}){{e<={error_tolerance}}}"
             else:
                 _pattern = f"{self.section_tag}"
+
+            if _leftover > 0:
+                _pattern += f".{{{_leftover}}}"
+
         else:
             f".{{{len(self.section_tag)}}}"
 
