@@ -27,12 +27,12 @@ def _setup_outdir(out_dir):
 
 
 @click.group()
-def deli():
+def cli():
     """Main command group entry"""
     pass
 
 
-@deli.command()
+@cli.command()
 @click.argument("fastq_file", type=click.Path(exists=True), required=True)
 @click.argument("experiment_file", type=click.Path(exists=True), required=True)
 @click.option(
