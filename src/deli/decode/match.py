@@ -24,6 +24,10 @@ class MatchOutcome:
         self.match_id = next(MATCH_ID)
         self.passed = False
 
+    def match_type(self):
+        """Get the type of the MatchOutcome as a str (faster than isinstance)"""
+        return str(self.__class__.__name__)
+
 
 class NoSequenceMatch(MatchOutcome):
     """

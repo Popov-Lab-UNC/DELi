@@ -125,6 +125,16 @@ class _BaseExperiment:
             )
             f.write("\n\n")
 
+    def has_index(self) -> bool:
+        """
+        return True if experiment requires de-multiplexing (has indexes)
+
+        Returns
+        -------
+        bool
+        """
+        return len(self.indexes) > 0
+
     def get_checksum(self, path: Union[str, PathLike]):
         # TODO in issue #36
         raise NotImplementedError
