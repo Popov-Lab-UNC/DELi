@@ -4,8 +4,11 @@ import abc
 import configparser
 import dataclasses
 import functools
+import getpass
 import inspect
+import math
 import os
+import warnings
 from pathlib import Path
 from typing import Any, Callable, Dict, Literal, ParamSpec, Self, TypeVar, Union
 
@@ -14,6 +17,20 @@ P = ParamSpec("P")
 R = TypeVar("R")
 
 CONFIG_DIR_PATH = Path(os.path.join(os.path.expanduser("~"), ".deli"))
+
+DELI_DATA_SUB_DIRS = ["hamming", "barcodes", "libraries", "indexes", "building_blocks"]
+
+
+class DeliDataNotFound(Exception):
+    """raised when a file cannot be found in DELi data directory"""
+
+    pass
+
+
+class DeliDataDirError(Exception):
+    """raised when a DELi data directory cannot be found or is invalid (missing sub-dirs)"""
+
+    pass
 
 
 @dataclasses.dataclass
@@ -62,6 +79,25 @@ class DeliConfig:
             for pair in self.nuc_2_int.strip().split(",")
         }
 
+        # check for a valid Deli Data Dir
+        if not os.path.exists(self.deli_data_dir):
+            raise DeliDataDirError(
+                f"DELi data directory '{self.deli_data_dir}' does not exist; "
+                f"create it using 'deli create_data_dir {self.deli_data_dir}' OR "
+                f"change your '.deli' config file to point to a valid DELi data directory"
+            )
+
+        sub_dirs = os.listdir(self.deli_data_dir)
+        missing_sub_dirs = set(DELI_DATA_SUB_DIRS) - set(sub_dirs)
+        if len(missing_sub_dirs) > 0:
+            raise DeliDataDirError(
+                f"DELi data directory '{self.deli_data_dir}' is invalid; "
+                f"missing sub-directories {list(missing_sub_dirs)}"
+                f"create missing sub-directories manually OR "
+                f"use 'deli create_data_dir {self.deli_data_dir} --fix' OR "
+                f"change your '.deli' config file to point to a valid DELi data directory"
+            )
+
         os.environ["DELI_DATA_DIR"] = str(self.deli_data_dir)
 
     @classmethod
@@ -71,6 +107,8 @@ class DeliConfig:
         config.read(os.path.normpath(path))
 
         settings = dict(config.items("DEFAULT"))
+        if len(settings) == 0:
+            raise FileNotFoundError(f"cannot find config file at '{os.path.normpath(path)}'")
 
         for field in dataclasses.fields(cls):
             if settings.get(field.name) is None:
@@ -104,13 +142,61 @@ class DeliConfig:
         return cls(**cls._load_config(CONFIG_DIR_PATH / ".deli"))
 
 
-DELI_CONFIG = DeliConfig.load_defaults()
+def init_deli_data_dir(path: Union[str, os.PathLike], fail_on_exist: bool = True):
+    """
+    Create a new Deli Data Directory with all the necessary sub folders
+
+    Parameters
+    ----------
+    path: Union[str, os.PathLike]
+        path to create deli data dir at
+    fail_on_exist: bool, default = True
+        if True, will raise an exception if the directory path already exists
+        if False, will try and create the sub-dirs in the existing directory
+    """
+    _path = Path(path)
+    os.makedirs(_path, exist_ok=not fail_on_exist)
+    os.makedirs(_path / "libraries", exist_ok=not fail_on_exist)
+    os.makedirs(_path / "indexes", exist_ok=not fail_on_exist)
+    os.makedirs(_path / "barcodes", exist_ok=not fail_on_exist)
+    os.makedirs(_path / "hamming", exist_ok=not fail_on_exist)
+    os.makedirs(_path / "building_blocks", exist_ok=not fail_on_exist)
+    _create_default_hamming_files(_path / "hamming")
 
 
-class DeliDataNotFound(Exception):
-    """raised when a file cannot be found in DELi data directory"""
+def _create_default_hamming_files(path: Path):
+    """Will generate generic hamming files for all hamming coded tags length 5-16"""
+    for i in range(5, 16):
+        file_path = path / f"hamming3_{i}.txt"
+        extra_parity_file_path = path / f"hamming4_{i}.txt"
 
-    pass
+        hamming_order = []
+        for j in range(1, i + 1):
+            hamming_order.append(f"p{j}" if math.log2(j).is_integer() else f"d{j}")
+        extra_hamming_order = ["p0"] + hamming_order[:-1]
+
+        with open(file_path, "w") as f:
+            f.write(f"hamming_order: {','.join(hamming_order)}\n")
+            f.write(f"custom_order: {','.join(hamming_order)}\n")
+
+        with open(extra_parity_file_path, "w") as f:
+            f.write(f"hamming_order: {','.join(extra_hamming_order)}\n")
+            f.write(f"custom_order: {','.join(extra_hamming_order)}\n")
+
+
+def _create_deli_config_default(path: Path):
+    """Create a default .deli config file"""
+    _config = (
+        f"[DEFAULT]\n"
+        f"DELI_DATA_DIR = {CONFIG_DIR_PATH / 'deli_data'}\n"
+        f"BB_MASK = ###\n"
+        f"BB_NULL = NUL\n"
+        f"MAX_INDEX_RISK_DIST_THRESHOLD = 3\n"
+        f"MAX_LIBRARY_RISK_DIST_THRESHOLD = 4\n"
+        f"NUC_2_INT = A:0,T:1,C:2,G:3\n"
+    )
+    with open(path, "w") as f:
+        f.write(_config)
 
 
 def accept_deli_data_name(
@@ -222,3 +308,25 @@ class DeliDataLoadable(abc.ABC):
     def load(cls, name_or_path: str):
         """Load the file into the object"""
         raise NotImplementedError()
+
+
+# load in the deli config file
+if not os.path.exists(CONFIG_DIR_PATH):
+    warnings.warn(
+        f"user {getpass.getuser()} has no '.deli' config directory in their home directory; "
+        f"creating one",
+        stacklevel=0,
+    )
+    os.makedirs(CONFIG_DIR_PATH, exist_ok=True)
+    _create_deli_config_default(CONFIG_DIR_PATH)
+    init_deli_data_dir(CONFIG_DIR_PATH / "deli_data")
+
+try:
+    DELI_CONFIG = DeliConfig.load_defaults()
+except FileNotFoundError:
+    warnings.warn(
+        f"user {getpass.getuser()} has no '.deli' config file in their user directory; "
+        f"creating default",
+        stacklevel=0,
+    )
+    _create_deli_config_default(CONFIG_DIR_PATH)
