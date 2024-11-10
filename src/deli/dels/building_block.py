@@ -5,8 +5,7 @@ import os
 import warnings
 from typing import List, Optional, Self
 
-from deli.configure import DeliDataLoadable, accept_deli_data_name
-from deli.constants import BB_MASK
+from deli.configure import DELI_CONFIG, DeliDataLoadable, accept_deli_data_name
 
 
 class BuildingBlockSetError(Exception):
@@ -72,7 +71,7 @@ class MaskedBuildingBlock(BaseBuildingBlock):
     def __init__(self):
         """Initialize the object"""
         super().__init__()
-        self.bb_id = BB_MASK
+        self.bb_id = DELI_CONFIG["BB_MASK"]
 
     def is_mask(self) -> bool:
         """Masked BBs are always masks"""
