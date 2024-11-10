@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FASTQ Report</title>
+    <title>DELi Decode Report</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -40,6 +40,26 @@
             margin: 0 auto;
         }
 
+        .chart-container-double {
+            display: flex;
+            margin-top: 20px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            padding: 20px;
+            background-color: #fff;
+        }
+
+        .chart-container-double-sub {
+            flex: 50%;
+        }
+
+        .chart-container-double-sub img {
+            max-width: 100%;
+            height: auto;
+            display: block;
+            margin: 0 auto;
+        }
+
         table {
             width: 100%;
             border-collapse: collapse;
@@ -55,28 +75,29 @@
             background-color: #f2f2f2;
         }
     </style>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
 </head>
 <body>
     <div class="container">
-        <h1>DELi Report</h1>
-        <h5>Reading basecalled sequences from {{ file }}</h5>
-        <h5>Searching for pattern match {{ pattern }}} with error tolerance of {{ error }}</h5>
-        <h5>Barcoding with libraries {{ libs }} and indexes {{ idx }}</h5>
+        <h1>DELi Decode Report</h1>
+        <h4>Report generated on {{ timestamp }} for experiment {{ experiment }}</h4>
+        <p>Searched for indexes: {{ idx }}</p>
+        <p>Searched for libraries: {{ libs }}</p>
         <div class="chart-container">
             <h3>Sequence Lengths</h3>
-            <h5>Total sequences: {{ numseq }}</h5>
-            {{ hist }}
+            <h5>Total sequences: {{ num_reads }}</h5>
+            {{ read_hist }}
         </div>
         <div class="chart-container">
             <h3>Barcode Calling</h3>
             {{ pie }}
         </div>
-        <div>
-            <div class="chart-container" style="float: left">
+        <div class="chart-container-double">
+            <div class="chart-container-double-sub">
                 <h3>Called index</h3>
                 {{ indexpie }}
             </div>
-            <div class="chart-container" style="float: left">
+            <div class="chart-container-double-sub">
                 <h3>Called libs</h3>
                 {{ libpie }}
             </div>
