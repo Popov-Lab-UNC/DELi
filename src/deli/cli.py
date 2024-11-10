@@ -1,13 +1,21 @@
 """command line functions for deli"""
 
 import datetime
+import json
 import os
+from collections import Counter
 from csv import DictWriter
 from pathlib import Path
 
 import click
 
-from deli.decode import BarcodeCaller, BarcodeMatcher, DELExperiment
+from deli.decode import (
+    BarcodeCaller,
+    BarcodeMatcher,
+    DecodeReportStats,
+    DELExperiment,
+    build_decoding_report,
+)
 from deli.logging.logger import setup_logger
 from deli.sequence import read_fastq
 
@@ -42,7 +50,9 @@ def cli():
     "--prefix", "-p", type=click.STRING, required=False, default="", help="Prefix for output files"
 )
 @click.option("--debug", is_flag=True, help="Enable debug mode")
-def decode(fastq_file, experiment_file, out_dir, prefix, debug):
+@click.option("--save_report_data", is_flag=True, help="Save data required for reporting")
+@click.option("--skip_report", is_flag=True, help="Do not render a decoding report")
+def decode(fastq_file, experiment_file, out_dir, prefix, debug, save_report_data, skip_report):
     """
     run decoding on a given fastq file of DEL sequences
 
@@ -58,6 +68,10 @@ def decode(fastq_file, experiment_file, out_dir, prefix, debug):
         a prefix to append to the output files
     debug: bool, default=False
         enable debug logging mode
+    save_report_data: bool, default=False
+        save data required for reporting
+    skip_report: bool, default=False
+        do not render a decoding report
     """
     logger = setup_logger("deli-decode", debug=debug)
     out_dir = _setup_outdir(out_dir)
@@ -86,6 +100,7 @@ def decode(fastq_file, experiment_file, out_dir, prefix, debug):
 
     logger.info(f"reading sequences from {fastq_file}")
     sequences = read_fastq(fastq_file)
+    seq_lengths = Counter([len(seq) for seq in sequences])
     logger.info(f"read in {len(sequences):,} reads")
 
     # prep call file
@@ -104,11 +119,16 @@ def decode(fastq_file, experiment_file, out_dir, prefix, debug):
         csv_writer.writeheader()
 
     _total_match_count = 0
+    _total_match_too_big = 0
+    _total_match_too_small = 0
     _total_valid_match_count = 0
     _reads_with_matches = set()
     _total_call_count = 0
     _total_valid_call_count = 0
     _reads_with_calls = set()
+
+    _lib_calls = dict()
+    _index_calls = dict()
 
     # Experiment matching loop
     for i, primer_experiment in enumerate(primer_experiments):
@@ -124,6 +144,7 @@ def decode(fastq_file, experiment_file, out_dir, prefix, debug):
         _num_valid_matches = sum([_match.passed for _match in matches])
         _seqs_matched = set([_match.sequence.read_id for _match in matches])
         _num_seqs_matched = len(_seqs_matched)
+
         _num_matches = len(matches)
         logger.debug(
             f"matching experiment {i} made {_num_matches:,} match "
@@ -134,6 +155,8 @@ def decode(fastq_file, experiment_file, out_dir, prefix, debug):
         _total_match_count += _num_matches
         _total_valid_match_count += _num_valid_matches
         _reads_with_matches = _reads_with_matches.union(_seqs_matched)
+        _total_match_too_big += sum([m.match_type() == "SequenceTooBig" for m in matches])
+        _total_match_too_small += sum([m.match_type() == "SequenceTooSmall" for m in matches])
 
         # calling loop
         _sub_total_call_count = 0
@@ -183,8 +206,14 @@ def decode(fastq_file, experiment_file, out_dir, prefix, debug):
                 for _call in calls
                 if _call.called_successfully()
             ]
+
+            _lib_calls += Counter([str(c.library_call) for c in calls])
+            if _experiment.has_index():
+                _index_calls += Counter([str(c.index_call) for c in calls])
+
             for _seq in _seq_with_calls:
                 _sub_reads_with_calls.add(_seq)
+
             _passed_calls = len(_seq_with_calls)
             _call_attempts = len(calls)
             _sub_total_call_count += _call_attempts
@@ -223,6 +252,59 @@ def decode(fastq_file, experiment_file, out_dir, prefix, debug):
 
     logger.info(f"called {len(_reads_with_calls):,} out of {len(sequences):,} reads")
     logger.info(f"calls written to {call_file_path}")
+
+    # handle report generation
+    # only need to do this if report is turned on
+    if (not skip_report) or save_report_data:
+        # need to add in the missing libraries/index if 0 calls made
+        for lib in _experiment.libraries:
+            if lib.library_id not in _lib_calls.keys():
+                _lib_calls[lib.library_id] = 0
+
+        for idx in _experiment.indexes:
+            if idx.index_id not in _index_calls.keys():
+                _index_calls[idx.index_id] = 0
+
+        _report_stats = DecodeReportStats(
+            num_reads=len(sequences),
+            num_match_attempts=_total_match_count,
+            num_call_attempts=_total_call_count,
+            num_valid_matches=_total_valid_match_count,
+            num_valid_calls=_total_valid_call_count,
+            num_reads_with_match=len(_reads_with_matches),
+            num_reads_with_calls=len(_reads_with_calls),
+            num_match_too_big=_total_match_too_big,
+            num_match_too_small=_total_match_too_small,
+            experiment_name=_experiment_name,
+            libraries=_lib_calls,
+            indexes=_index_calls,
+        )
+
+        if save_report_data:
+            logger.debug("saving report data files")
+            json.dump(
+                seq_lengths,
+                open(
+                    out_dir / f"{prefix}_{_experiment_name}_{_timestamp()}_seq_lengths.json", "w"
+                ),
+            )
+            with open(
+                out_dir / f"{prefix}_{_experiment_name}_{_timestamp()}_report_stats.txt", "w"
+            ) as f:
+                f.write(_report_stats.to_report_str())
+
+        if not skip_report:
+            logger.debug("generating html decoding report")
+            report_path = (
+                out_dir / f"{prefix}_{_experiment_name}_{_timestamp()}_decode_report.html"
+            )
+            build_decoding_report(
+                report_stats=_report_stats, seq_lengths=seq_lengths, out_path=report_path
+            )
+            logger.info(f"decoding report written to {report_path}")
+    else:
+        logger.debug("reporting turned off")
+
     logger.info(
         f"DELi decoding for experiment {_experiment_name} "
         f"completed in {datetime.datetime.now() - _start}"

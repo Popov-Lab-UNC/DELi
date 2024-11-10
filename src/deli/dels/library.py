@@ -117,6 +117,10 @@ class DELibrary(DeliDataLoadable):
             if scaffold is None and self.dna_barcode_on == "scaffold":
                 raise LibraryBuildError("no scaffold to attach DNA barcode to")
 
+    def __repr__(self):
+        """Represent the library as its name"""
+        return self.library_id
+
     @classmethod
     @accept_deli_data_name("libraries", "json")
     def load(cls, path: str) -> Self:

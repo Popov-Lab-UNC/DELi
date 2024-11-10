@@ -37,6 +37,10 @@ class Index(DeliDataLoadable):
         self.dna_tag = dna_tag
         self.sample_name = sample_name
 
+    def __repr__(self):
+        """Represent the index as its name"""
+        return self.index_id
+
     def __len__(self):
         """Gets the length of the index DNA bases"""
         return len(self.dna_tag)
