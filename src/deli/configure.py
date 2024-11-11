@@ -318,7 +318,7 @@ if not os.path.exists(CONFIG_DIR_PATH):
         stacklevel=0,
     )
     os.makedirs(CONFIG_DIR_PATH, exist_ok=True)
-    _create_deli_config_default(CONFIG_DIR_PATH)
+    _create_deli_config_default(CONFIG_DIR_PATH / ".deli")
     init_deli_data_dir(CONFIG_DIR_PATH / "deli_data")
 
 try:
