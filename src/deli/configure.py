@@ -329,4 +329,4 @@ except FileNotFoundError:
         f"creating default",
         stacklevel=0,
     )
-    _create_deli_config_default(CONFIG_DIR_PATH)
+    _create_deli_config_default(CONFIG_DIR_PATH / ".deli")
