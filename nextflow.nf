@@ -1,32 +1,49 @@
 #!/usr/bin/env nextflow
 
-params.fastq_files
-params.experiment_setup
+params.fastq_file
+params.experiment
+params.out_dir = $PWD
+params.prefix = "deli_decode"
+params.debug = false
 
-process Match {
+process Decode {
+    publishDir '$params.out_dir/logs/', mode: 'move', pattern: "*.log"
+
     input:
-    path fastq_file
-    path experiment
+    path fastq
+    path exp
 
     output:
-    path '*.match'
+    path '*_calls.csv', emit: calls
+    path '*.log', emit: logs
+    path '*_seq_lengths.json', emit: seq_lengths
+    path '*_report_stats.txt', emit: decode_stats
 
     script:
     """
-    deli match --input $fastq_file --experiment $experiment
+    deli decode $fastq $exp --save_report_data --skip_report
     """
 }
 
-process Call {
+process MergeCalls {
+    publishDir '$params.out_dir/', mode: 'move'
+
     input:
-    path match_file
-    path experiment
+    path "*_calls.csv"
 
     output:
-    path '*.call.csv'
+    path "${params.prefix}_all_calls.csv"
 
     script:
     """
-    deli call --input $match_file --experiment $experiment
+    awk 'FNR==1 && NR!=1{next;}{print}' *_calls.csv > ${params.prefix}_all_calls.csv
     """
+}
+
+process MergeReport {
+
+}
+
+workflow {
+
 }
