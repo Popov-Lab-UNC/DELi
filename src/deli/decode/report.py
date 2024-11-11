@@ -7,8 +7,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, List, Self, Union
 
+import jinja2
 import plotly.graph_objects as go
-from jinja2 import Environment, FileSystemLoader
 
 
 @dataclass
@@ -264,14 +264,14 @@ def build_decoding_report(
                         "Failed calling",
                         "Called",
                     ],
-                    values=[_too_big, _failed_match, _failed_calling, _passed],
+                    values=[_too_big, _too_small, _failed_match, _failed_calling, _passed],
                     hole=0.3,
-                    pull=[0, 0, 0, 0.2],
+                    pull=[0, 0, 0, 0, 0.2],
                     hoverinfo="skip",
                     textinfo="percent+value+label",
                     textfont_size=18,
                     marker=dict(
-                        colors=["orange", "red", "pink", "royalblue"],
+                        colors=["orange", "yellow", "red", "pink", "royalblue"],
                         line=dict(color="#000000", width=2),
                     ),
                 )
@@ -310,6 +310,8 @@ def build_decoding_report(
         _labels = []
         _values = []
         for idx, count in count_dict.items():
+            if count == 0:
+                continue
             _labels.append(idx)
             _values.append(count)
 
@@ -340,8 +342,12 @@ def build_decoding_report(
     jinja_data = {
         "timestamp": datetime.now().strftime("%b %d, %Y %H:%M"),
         "experiment": _all_report_stats.experiment_name,
-        "libs": ", ".join([lib for lib in _all_report_stats.libraries.keys()]),
-        "idx": ", ".join([idx for idx in _all_report_stats.indexes.keys()])
+        "libs": ", ".join(
+            sorted([lib for lib in _all_report_stats.libraries.keys() if lib != "FAILED"])
+        ),
+        "idx": ", ".join(
+            sorted([idx for idx in _all_report_stats.indexes.keys() if idx != "FAILED"])
+        )
         if len(_all_report_stats.indexes) > 0
         else "<b>no de-multiplexing occurred during this DELi decoding run</b>",
         "num_reads": _all_report_stats.num_reads,
@@ -357,13 +363,8 @@ def build_decoding_report(
         "libpie": _generate_sub_call_pie_chart(_all_report_stats.libraries),
     }
 
-    with resources.as_file(resources.files("templates")) as templates_path:
-        # Initialize the Jinja2 environment with the templates directory
-        env = Environment(loader=FileSystemLoader(str(templates_path)))
-
-        # Load and render the template
-        template = env.get_template("decode_report.html")
-        rendered_content = template.render(your_data=jinja_data)
-
+    with resources.path("templates", "decode_report.html") as template_path:
+        template = jinja2.Template(open(template_path).read())
+        rendered_content = template.render(jinja_data)
         with open(out_path, "w", encoding="utf-8") as f:
             f.write(rendered_content)

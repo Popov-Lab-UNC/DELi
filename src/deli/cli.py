@@ -100,8 +100,9 @@ def decode(fastq_file, experiment_file, out_dir, prefix, debug, save_report_data
 
     logger.info(f"reading sequences from {fastq_file}")
     sequences = read_fastq(fastq_file)
+    _num_reads = len(sequences)
     seq_lengths = Counter([len(seq) for seq in sequences])
-    logger.info(f"read in {len(sequences):,} reads")
+    logger.info(f"read in {_num_reads:,} reads")
 
     # prep call file
     call_file_name = f"{prefix}_{_experiment_name}_{_timestamp()}_calls.csv"
@@ -127,8 +128,8 @@ def decode(fastq_file, experiment_file, out_dir, prefix, debug, save_report_data
     _total_valid_call_count = 0
     _reads_with_calls = set()
 
-    _lib_calls = dict()
-    _index_calls = dict()
+    _lib_calls = Counter()
+    _index_calls = Counter()
 
     # Experiment matching loop
     for i, primer_experiment in enumerate(primer_experiments):
@@ -142,7 +143,7 @@ def decode(fastq_file, experiment_file, out_dir, prefix, debug, save_report_data
         matches = matcher.match(sequences)
 
         _num_valid_matches = sum([_match.passed for _match in matches])
-        _seqs_matched = set([_match.sequence.read_id for _match in matches])
+        _seqs_matched = set([_match.sequence.read_id for _match in matches if _match.passed])
         _num_seqs_matched = len(_seqs_matched)
 
         _num_matches = len(matches)
@@ -250,7 +251,7 @@ def decode(fastq_file, experiment_file, out_dir, prefix, debug, save_report_data
     )
     logger.debug(f"made {_total_valid_call_count:,} calls out of {_total_call_count:,} attempts")
 
-    logger.info(f"called {len(_reads_with_calls):,} out of {len(sequences):,} reads")
+    logger.info(f"called {len(_reads_with_calls):,} out of {_num_reads:,} reads")
     logger.info(f"calls written to {call_file_path}")
 
     # handle report generation
@@ -266,7 +267,7 @@ def decode(fastq_file, experiment_file, out_dir, prefix, debug, save_report_data
                 _index_calls[idx.index_id] = 0
 
         _report_stats = DecodeReportStats(
-            num_reads=len(sequences),
+            num_reads=_num_reads,
             num_match_attempts=_total_match_count,
             num_call_attempts=_total_call_count,
             num_valid_matches=_total_valid_match_count,
