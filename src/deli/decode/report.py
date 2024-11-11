@@ -1,11 +1,12 @@
 """handles making html reports for deli decoding"""
 
 import importlib.resources as resources
+import json
 import os
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, List, Self, Union
+from typing import List, Self, Union
 
 import jinja2
 import plotly.graph_objects as go
@@ -16,6 +17,7 @@ class DecodeReportStats:
     """Dataclass to hold info for decoding statistics"""
 
     num_reads: int
+    read_length: Counter
     num_match_attempts: int
     num_valid_matches: int
     num_match_too_big: int
@@ -31,11 +33,11 @@ class DecodeReportStats:
     @classmethod
     def load_report_file(cls, path: Union[os.PathLike, str]) -> Self:
         """
-        Load a `DecodeReportStats` instance from a file
+        Load a `DecodeReportStats` instance from a json file
 
         Notes
         -----
-        File must have the report stats string format and nothing else
+        File must have the report stats json format and nothing else
 
         Parameters
         ----------
@@ -46,47 +48,22 @@ class DecodeReportStats:
         -------
         DecodeReportStats
         """
-        with open(path, "r") as f:
-            report_str = f.read()
-        return cls.load_report_str(report_str)
-
-    @classmethod
-    def load_report_str(cls, report_str: str) -> Self:
-        """
-        Load a `DecodeReportStats` instance from a string
-
-        Notes
-        -----
-        String must be in the report stats string format
-
-        Parameters
-        ----------
-        report_str: str
-            the report stats string
-
-        Returns
-        -------
-        DecodeReportStats
-        """
-        _chucks = report_str.strip().split("\n")
+        info = json.load(open(path, "r"))
 
         return cls(
-            num_reads=int(_chucks[0]),
-            num_match_attempts=int(_chucks[1]),
-            num_valid_matches=int(_chucks[2]),
-            num_match_too_big=int(_chucks[3]),
-            num_match_too_small=int(_chucks[4]),
-            num_reads_with_match=int(_chucks[5]),
-            num_call_attempts=int(_chucks[6]),
-            num_valid_calls=int(_chucks[7]),
-            num_reads_with_calls=int(_chucks[8]),
-            experiment_name=_chucks[9],
-            libraries=Counter(
-                {_.split(":")[0]: int(_.split(":")[1]) for _ in _chucks[10].split("|")}
-            ),
-            indexes=Counter(
-                {_.split(":")[0]: int(_.split(":")[1]) for _ in _chucks[11].split("|")}
-            ),
+            num_reads=info["num_reads"],
+            read_length=Counter({int(key): val for key, val in info["read_length"]}),
+            num_match_attempts=info["num_match_attempts"],
+            num_valid_matches=info["num_valid_matches"],
+            num_match_too_big=info["num_match_too_big"],
+            num_match_too_small=info["num_match_too_small"],
+            num_reads_with_match=info["num_reads_with_match"],
+            num_call_attempts=info["num_call_attempts"],
+            num_valid_calls=info["num_valid_calls"],
+            num_reads_with_calls=info["num_reads_with_calls"],
+            experiment_name=info["experiment_name"],
+            libraries=Counter(info["libraries"]),
+            indexes=Counter(info["indexes"]),
         )
 
     def __add__(self, other):
@@ -104,6 +81,7 @@ class DecodeReportStats:
                 )
             return self.__class__(
                 num_reads=self.num_reads + other.num_reads,
+                read_length=self.read_length + other.read_length,
                 num_match_attempts=self.num_match_attempts + other.num_match_attempts,
                 num_valid_matches=self.num_valid_matches + other.num_valid_matches,
                 num_match_too_big=self.num_match_too_big + other.num_match_too_big,
@@ -117,100 +95,77 @@ class DecodeReportStats:
                 indexes=self.indexes + other.indexes,
             )
 
-    def to_report_str(self) -> str:
-        """
-        Convert the DecodeReportStats to a string format for easy saving
 
-        Returns
-        -------
-        str
-        """
-        return build_report_str(
-            self.num_reads,
-            self.num_match_attempts,
-            self.num_valid_matches,
-            self.num_match_too_big,
-            self.num_match_too_small,
-            self.num_reads_with_match,
-            self.num_call_attempts,
-            self.num_valid_calls,
-            self.num_reads_with_calls,
-            self.experiment_name,
-            self.libraries,
-            self.indexes,
-        )
-
-
-def build_report_str(
-    num_reads: int,
-    num_match_attempts: int,
-    num_valid_matches: int,
-    num_match_too_big: int,
-    num_match_too_small: int,
-    num_reads_with_match: int,
-    num_call_attempts: int,
-    num_valid_calls: int,
-    num_reads_with_calls: int,
-    experiment_name: str,
-    libraries: Union[Counter, Dict[str, int]],
-    indexes: Union[Counter, Dict[str, int]],
-):
-    """
-    Given various deli decode stats, generate a report string
-
-    Parameters
-    ----------
-    num_reads: int
-        number of reads from this decoding run
-    num_match_attempts: int
-        number of matches that were attempted (including revcomp)
-    num_valid_matches: int
-        number of matches that were successful
-    num_match_too_big: int
-        number of matches that failed for the sequence being too big
-    num_match_too_small: int
-        number of matches that failed for the sequence being too small
-    num_reads_with_match: int
-        the number of unique reads that had a match in them
-    num_call_attempts: int
-        the number of calls that were attempted
-    num_valid_calls: int
-        the number of valid calls
-    num_reads_with_calls: int
-        the number of unique reads that had a call
-    experiment_name: str
-        the name of the experiment
-    libraries: Union[Counter, Dict[str, int]]
-        a count dict of lib_id -> number of calls with that lib_id
-        can include "FAILED" lib_id for failed lib calls
-    indexes: Union[Counter, Dict[str, int]]
-        a count dict of lib_id -> number of calls with that lib_id
-        can include "FAILED" lib_id for failed lib calls
-
-    Returns
-    -------
-    str
-    """
-    _str = (
-        f"{num_reads}\n"
-        f"{num_match_attempts}\n"
-        f"{num_valid_matches}\n"
-        f"{num_match_too_big}\n"
-        f"{num_match_too_small}\n"
-        f"{num_reads_with_match}\n"
-        f"{num_call_attempts}\n"
-        f"{num_valid_calls}\n"
-        f"{num_reads_with_calls}\n"
-        f"{experiment_name}\n"
-    )
-    _str += "|".join([f"{lib}:{count}" for lib, count in libraries.items()])
-    _str += "|".join([f"{idx}:{count}" for idx, count in indexes.items()])
-    return _str
+#
+# def build_report_str(
+#     num_reads: int,
+#     num_match_attempts: int,
+#     num_valid_matches: int,
+#     num_match_too_big: int,
+#     num_match_too_small: int,
+#     num_reads_with_match: int,
+#     num_call_attempts: int,
+#     num_valid_calls: int,
+#     num_reads_with_calls: int,
+#     experiment_name: str,
+#     libraries: Union[Counter, Dict[str, int]],
+#     indexes: Union[Counter, Dict[str, int]],
+# ):
+#     """
+#     Given various deli decode stats, generate a report string
+#
+#     Parameters
+#     ----------
+#     num_reads: int
+#         number of reads from this decoding run
+#     num_match_attempts: int
+#         number of matches that were attempted (including revcomp)
+#     num_valid_matches: int
+#         number of matches that were successful
+#     num_match_too_big: int
+#         number of matches that failed for the sequence being too big
+#     num_match_too_small: int
+#         number of matches that failed for the sequence being too small
+#     num_reads_with_match: int
+#         the number of unique reads that had a match in them
+#     num_call_attempts: int
+#         the number of calls that were attempted
+#     num_valid_calls: int
+#         the number of valid calls
+#     num_reads_with_calls: int
+#         the number of unique reads that had a call
+#     experiment_name: str
+#         the name of the experiment
+#     libraries: Union[Counter, Dict[str, int]]
+#         a count dict of lib_id -> number of calls with that lib_id
+#         can include "FAILED" lib_id for failed lib calls
+#     indexes: Union[Counter, Dict[str, int]]
+#         a count dict of lib_id -> number of calls with that lib_id
+#         can include "FAILED" lib_id for failed lib calls
+#
+#     Returns
+#     -------
+#     str
+#     """
+#     _str = (
+#         f"{num_reads}\n"
+#         f"{num_match_attempts}\n"
+#         f"{num_valid_matches}\n"
+#         f"{num_match_too_big}\n"
+#         f"{num_match_too_small}\n"
+#         f"{num_reads_with_match}\n"
+#         f"{num_call_attempts}\n"
+#         f"{num_valid_calls}\n"
+#         f"{num_reads_with_calls}\n"
+#         f"{experiment_name}\n"
+#     )
+#     _str += "|".join([f"{lib}:{count}" for lib, count in libraries.items()])
+#     _str += "|".join([f"{idx}:{count}" for idx, count in indexes.items()])
+#     return _str
 
 
 def build_decoding_report(
     report_stats: Union[List[DecodeReportStats], DecodeReportStats],
-    seq_lengths: Union[Union[Counter, Dict[int, int]], List[Union[Counter, Dict[int, int]]]],
     out_path: Union[str, os.PathLike],
 ):
     """
@@ -226,8 +181,6 @@ def build_decoding_report(
     ----------
     report_stats: Union[List[DecodeReportStats], DecodeReportStats]
         the reporting stats object(s) to generate the report for
-    seq_lengths: Union[Union[Counter, Dict[int, int]], List[Union[Counter, Dict[int, int]]]]
-        the sequence length(s) counted dicts holding info on read lengths
     out_path: Union[str, os.PathLike]
         full path (with file name) to save the report to
         will raise exception if directory used does not exist
@@ -351,7 +304,7 @@ def build_decoding_report(
         if len(_all_report_stats.indexes) > 0
         else "<b>no de-multiplexing occurred during this DELi decoding run</b>",
         "num_reads": _all_report_stats.num_reads,
-        "read_hists": _generate_seq_length_hist(seq_lengths),
+        "read_hist": _generate_seq_length_hist(_all_report_stats.read_length),
         "pie": _generate_calling_pie_chart(
             num_reads=_all_report_stats.num_reads,
             num_match_too_big=_all_report_stats.num_match_too_big,

@@ -268,6 +268,7 @@ def decode(fastq_file, experiment_file, out_dir, prefix, debug, save_report_data
 
         _report_stats = DecodeReportStats(
             num_reads=_num_reads,
+            read_length=seq_lengths,
             num_match_attempts=_total_match_count,
             num_call_attempts=_total_call_count,
             num_valid_matches=_total_valid_match_count,
@@ -284,24 +285,18 @@ def decode(fastq_file, experiment_file, out_dir, prefix, debug, save_report_data
         if save_report_data:
             logger.debug("saving report data files")
             json.dump(
-                seq_lengths,
+                _report_stats.__dict__,
                 open(
-                    out_dir / f"{prefix}_{_experiment_name}_{_timestamp()}_seq_lengths.json", "w"
+                    out_dir / f"{prefix}_{_experiment_name}_{_timestamp()}_report_stats.txt", "w"
                 ),
             )
-            with open(
-                out_dir / f"{prefix}_{_experiment_name}_{_timestamp()}_report_stats.txt", "w"
-            ) as f:
-                f.write(_report_stats.to_report_str())
 
         if not skip_report:
             logger.debug("generating html decoding report")
             report_path = (
                 out_dir / f"{prefix}_{_experiment_name}_{_timestamp()}_decode_report.html"
             )
-            build_decoding_report(
-                report_stats=_report_stats, seq_lengths=seq_lengths, out_path=report_path
-            )
+            build_decoding_report(report_stats=_report_stats, out_path=report_path)
             logger.info(f"decoding report written to {report_path}")
     else:
         logger.debug("reporting turned off")
