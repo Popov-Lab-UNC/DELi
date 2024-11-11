@@ -330,3 +330,4 @@ except FileNotFoundError:
         stacklevel=0,
     )
     _create_deli_config_default(CONFIG_DIR_PATH / ".deli")
+    DELI_CONFIG = DeliConfig.load_defaults()
