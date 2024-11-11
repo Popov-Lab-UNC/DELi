@@ -14,7 +14,7 @@ from deli.sequence.fasta import FastaSequence
 MATCH_ID = count()
 
 MATCH_TO_SECTIONS = ["primer"]
-MAX_SEQ_SCALER = 4
+MAX_SEQ_SCALER = 6
 
 
 class MatchOutcome:
@@ -467,7 +467,7 @@ class BarcodeMatcher:
             the list of all matches
             if not matches found will be empty list
         """
-        all_matches = []
+        all_matches: List[MatchOutcome] = []
         num_passed_seqs = len(sequences)
 
         # we can pick up speed by only looking for rev in seqs that
@@ -483,10 +483,10 @@ class BarcodeMatcher:
 
             # check sequence for correct size
             if len(sequence) > self._max_seq_size:
-                _matches = [SequenceTooBig(sequence=sequence)]
+                all_matches.append(SequenceTooBig(sequence=sequence))
                 continue
             if len(sequence) < self._min_seq_size:
-                _matches = [SequenceTooSmall(sequence=sequence)]
+                all_matches.append(SequenceTooSmall(sequence=sequence))
                 continue
 
             # add padding to both ends of sequence
@@ -529,6 +529,7 @@ class BarcodeMatcher:
 
             # if no matches found in sequence add a no match object
             if len(_matches) == 0:
-                _matches = [NoSequenceMatch(sequence=sequence)]
-            all_matches.extend(_matches)
+                all_matches.append(NoSequenceMatch(sequence=sequence))
+            else:
+                all_matches.extend(_matches)
         return all_matches

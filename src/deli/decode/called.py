@@ -365,7 +365,7 @@ class BarcodeCaller:
 
         Parameters
         ----------
-        libraries: Union[List[DELibrary], MegaDELibrary]
+        libraries: DELibrarySchemaGroup
             the possible libraries that can be called from
             can be a list of libraries or a mega library
             must all use teh same barcode schema as the passed
@@ -393,7 +393,8 @@ class BarcodeCaller:
         self._max_library_dist: float = get_min_library_tag_distance(self.libraries) / 2
         self._max_index_dist: float = get_min_index_distance(self.indexes) / 2
         self.skip_calling_index: bool = len(self.indexes) <= 1
-        self.skip_calling_lib: bool = not self.libraries.requires_multistep_calling
+        self.skip_calling_lib: bool = len(self.libraries) <= 1
+        self.skip_multistep_calling: bool = not self.libraries.requires_multistep_calling
 
     @staticmethod
     def _make_call(query: str, refs: List[str], dist_cutoff: float) -> Tuple[int, float]:
@@ -530,7 +531,7 @@ class BarcodeCaller:
         CalledBarcode
         """
         # call index/library first if multiple libraries
-        if self.skip_calling_lib:
+        if self.skip_multistep_calling:
             # get global alignment
             alignment = self.call_mode(match, self.libraries[0].barcode_schema)
 
