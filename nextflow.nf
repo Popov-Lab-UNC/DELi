@@ -56,8 +56,8 @@ process MergeReport {
 }
 
 workflow {
-    fastq_files = Channel.fromPath($params.fastq_file).splitFastq(by: $params.chuck_size, file: true)
-    experiment = Channel.fromPath($params.experiment)
+    fastq_files = Channel.fromPath(${params.fastq_file}).splitFastq(by: ${params.chuck_size}, file: true)
+    experiment = Channel.fromPath(${params.experiment})
     Decode(fastq_files, experiment) | collect( flat: false )
     MergeCalls(Decode.out.calls)
     MergeReport(Decode.out.decode_stats)
