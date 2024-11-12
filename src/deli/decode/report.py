@@ -52,7 +52,7 @@ class DecodeReportStats:
 
         return cls(
             num_reads=info["num_reads"],
-            read_length=Counter({int(key): val for key, val in info["read_length"]}),
+            read_length=Counter({int(key): val for key, val in info["read_length"].items()}),
             num_match_attempts=info["num_match_attempts"],
             num_valid_matches=info["num_valid_matches"],
             num_match_too_big=info["num_match_too_big"],
