@@ -2,10 +2,10 @@
 
 params.fastq_file
 params.experiment
-params.out_dir = $PWD
+params.out_dir = "${launchDir}"
 params.prefix = "deli_decode"
 params.debug = false
-params.chuck_size = 50000
+params.chuck_size = 50
 
 process Decode {
     publishDir '$params.out_dir/logs/', mode: 'move', pattern: "*.log"
