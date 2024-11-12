@@ -287,7 +287,7 @@ def decode(fastq_file, experiment_file, out_dir, prefix, debug, save_report_data
             json.dump(
                 _report_stats.__dict__,
                 open(
-                    out_dir / f"{prefix}_{_experiment_name}_{_timestamp()}_report_stats.txt", "w"
+                    out_dir / f"{prefix}_{_experiment_name}_{_timestamp()}_report_stats.json", "w"
                 ),
             )
 
@@ -305,3 +305,50 @@ def decode(fastq_file, experiment_file, out_dir, prefix, debug, save_report_data
         f"DELi decoding for experiment {_experiment_name} "
         f"completed in {datetime.datetime.now() - _start}"
     )
+
+
+@cli.group()
+def report():
+    """Report command group"""
+    pass
+
+
+@report.command()
+@click.argument("report_stats", nargs=-1, type=click.Path(exists=True, dir_okay=False))
+@click.option(
+    "-n",
+    "--name",
+    type=click.STRING,
+    required=False,
+    default="merged_decoding_report",
+    help="name to give the merged report file",
+)
+@click.option("--render_report", is_flag=True, help="render merged report as html file")
+def merge(report_stats, name, render_report):
+    """
+    Merge a set of decode reports into a single report stat file.
+
+    Optionally renders an html report if --render_report is used
+    Will always created the merged report in the current working directory
+    """
+    report_stat = DecodeReportStats.load_report_file(report_stats[0])
+    for file in report_stats[1:]:
+        report_stat = report + DecodeReportStats.load_report_file(file)
+
+    if render_report:
+        build_decoding_report(report_stat, os.path.join(os.getcwd(), f"{name}.html"))
+
+    json.dump(report_stat.__dict__, open(os.path.join(os.getcwd(), f"{name}.html"), "w"))
+
+
+@report.command()
+@click.argument("report_stat", nargs=1, type=click.Path(exists=True, dir_okay=False))
+def render(report_stat):
+    """
+    Given a report stat json file, render the decoding html report from it
+
+    Will create the html report in the current working directory
+    """
+    name = os.path.basename(os.path.abspath(report_stat)).split(".")[0] + ".html"
+    _report_stat = DecodeReportStats.load_report_file(report_stat)
+    build_decoding_report(_report_stat, os.path.join(os.getcwd(), name))
