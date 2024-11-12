@@ -5,6 +5,7 @@ params.experiment
 params.out_dir = $PWD
 params.prefix = "deli_decode"
 params.debug = false
+params.chuck_size = 50000
 
 process Decode {
     publishDir '$params.out_dir/logs/', mode: 'move', pattern: "*.log"
@@ -16,8 +17,7 @@ process Decode {
     output:
     path '*_calls.csv', emit: calls
     path '*.log', emit: logs
-    path '*_seq_lengths.json', emit: seq_lengths
-    path '*_report_stats.txt', emit: decode_stats
+    path '*_report_stats.json', emit: decode_stats
 
     script:
     """
@@ -41,9 +41,24 @@ process MergeCalls {
 }
 
 process MergeReport {
+    publishDir '$params.out_dir/', mode: 'move'
 
+    input:
+    path '*_report_stats.json'
+
+    output:
+    path "${params.prefix}_decode_report.html"
+
+    script:
+    """
+    deli report merge *_report_stats.json --render_report --name ${params.prefix}_decode_report.html
+    """
 }
 
 workflow {
-
+    fastq_files = Channel.fromPath($params.fastq_file).splitFastq(by: $params.chuck_size, file: true)
+    experiment = Channel.fromPath($params.experiment)
+    Decode(fastq_files, experiment) | collect( flat: false )
+    MergeCalls(Decode.out.calls)
+    MergeReport(Decode.out.decode_stats)
 }
