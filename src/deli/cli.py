@@ -9,6 +9,7 @@ from pathlib import Path
 
 import click
 
+from deli.configure import init_deli_data_dir
 from deli.decode import (
     BarcodeCaller,
     BarcodeMatcher,
@@ -352,3 +353,22 @@ def render(report_stat):
     name = os.path.basename(os.path.abspath(report_stat)).split(".")[0] + ".html"
     _report_stat = DecodeReportStats.load_report_file(report_stat)
     build_decoding_report(_report_stat, os.path.join(os.getcwd(), name))
+
+
+@cli.group()
+def data():
+    """Group for deli data dir functions"""
+    pass
+
+
+@data.command()
+@click.argument("data_dir", nargs=1, type=click.Path(exists=True, dir_okay=False))
+@click.option("--fix", is_flag=True, help="will add any missing sub-dirs to the deli_data_dir")
+def init(data_dir, fix):
+    """
+    Creates a DELI_DATA_DIR with the correct sub-folders
+
+    Will also create hamming files for code of length 5-16 in both
+    normal and extra parity mode
+    """
+    init_deli_data_dir(data_dir, not fix)
