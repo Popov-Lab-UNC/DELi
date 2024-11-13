@@ -139,62 +139,6 @@ It should match the file name of one of the ``bb_sets``.
 This tells DELi which building block the DNA is attached to.
 DELi uses this during some data analysis methods.
 
-Defining Library Groups
-=======================
-Most DELs screening involves the screening of a mix
-of lirbaries all at once. Often this is a standard mix
-that is commonly used. To allow for this, DELi also allows
-for the encoding a large set of libraries in one file.
-Internally, DELi calls these a ``DELibraryGroup``.
-
-To define a library group in a file, you follow the same definition
-for libraries, except you encapsulate them in a list
-::
-    [
-        {
-            "id": My_Library_1,
-            "bb_sets": [
-                "BB_B",
-                "BB_E"
-            ],
-            "scaffold": null
-            "reactions": [
-                {
-                    "cycle_id_1": "BB_B"
-                    "cycle_id_2": "BB_E"
-                    "reaction": "(C(=O)O).(OCC)>>C(=O)OCC.O"
-                }
-            ],
-            "dna_barcode_on": "BB_B"
-        },
-        {
-            "id": My_Library_2,
-            "bb_sets": [
-                "BB_A",
-                "BB_C",
-                "BB_D"
-            ],
-            "scaffold": "C1CC(Cl)CCC1"
-            "reactions": [
-                {
-                    "cycle_id_1": "BB_A"
-                    "cycle_id_2": "scaffold"
-                    "reaction": "[C:1]Cl.[C:2]O>>[C:1]O[C:2]"
-                },
-                {
-                    "cycle_id_1": "BB_B"
-                    "cycle_id_2": "BB_A"
-                    "reaction": "(C(=O)O).(OCC)>>C(=O)OCC.O"
-                },
-                {
-                    "cycle_id_1": "BB_B"
-                    "cycle_id_2": "BB_C"
-                    "reaction": "[C:1]Cl.[C:2]O>>[C:1]O[C:2]"
-                }
-            ],
-            "dna_barcode_on": "scaffold"
-        }
-    ]
 
 Saving in the DELi Data Directory
 =================================
