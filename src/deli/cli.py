@@ -334,7 +334,7 @@ def merge(report_stats, name, render_report):
     """
     report_stat = DecodeReportStats.load_report_file(report_stats[0])
     for file in report_stats[1:]:
-        report_stat = report + DecodeReportStats.load_report_file(file)
+        report_stat = report_stat + DecodeReportStats.load_report_file(file)
 
     if render_report:
         build_decoding_report(report_stat, os.path.join(os.getcwd(), f"{name}.html"))
