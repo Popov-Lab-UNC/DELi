@@ -8,7 +8,7 @@ params.debug = false
 params.chuck_size = 50
 
 process Decode {
-    publishDir '$params.out_dir/logs/', mode: 'move', pattern: "*.log"
+    publishDir "$params.out_dir/logs/", mode: 'move', pattern: "*.log"
 
     input:
     path fastq
@@ -26,7 +26,7 @@ process Decode {
 }
 
 process MergeCalls {
-    publishDir '$params.out_dir/', mode: 'move'
+    publishDir "$params.out_dir/", mode: 'move'
 
     input:
     path "*_calls.csv"
@@ -41,7 +41,7 @@ process MergeCalls {
 }
 
 process MergeReport {
-    publishDir '$params.out_dir/', mode: 'move'
+    publishDir "$params.out_dir/", mode: 'move'
 
     input:
     path '*_report_stats.json'
@@ -58,7 +58,6 @@ process MergeReport {
 workflow {
     fastq_files = Channel.fromPath(params.fastq_file).splitFastq(by: params.chuck_size, file: true)
     experiment = Channel.fromPath(params.experiment).first()
-    fastq_files.view()
     Decode(fastq_files, experiment)
     MergeCalls(Decode.out.calls.collect())
     MergeReport(Decode.out.decode_stats.collect())
