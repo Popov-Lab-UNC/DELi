@@ -3,7 +3,7 @@
 params.fastq_file
 params.experiment
 params.out_dir = "${launchDir}"
-params.prefix = "deli_decode"
+params.prefix = "deli_test"
 params.debug = false
 params.chuck_size = 50
 
@@ -51,7 +51,7 @@ process MergeReport {
 
     script:
     """
-    deli report merge *_report_stats.json --render_report --name ${params.prefix}_decode_report.html
+    deli report merge *_report_stats.json --render_report --name ${params.prefix}_decode_report
     """
 }
 
