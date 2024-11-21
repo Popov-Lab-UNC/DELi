@@ -65,7 +65,12 @@ All bb sections are variable.
 DELi will require that a bb1 and bb2 section are present,
 but all other from bb3-bb99 are optional, and only necessary if you have those cycles.
 The only other limitation is that bb sections must appear in numerical order.
-So you cannot start with bb2 and then next be bb5 and bb16. It must be bb1, bb2 and bb3. If you do not follow this DELi can have weird behavior
+So you cannot start with bb2 and then have the next be bb5 and bb16.
+It must be bb1, bb2 and bb3. If you do not follow this DELi to raise an exception.
+
+.. note::
+    DELi also assumes that the order of the building blocks matches the order they appear
+    in tag. You should *not* order the bbs as bb1, bb3 and bb2
 
 - pre-umi
 This is an optional static region that comes before the umi region.
@@ -79,13 +84,13 @@ noise added during random sampling of PCR.
 - closing
 This is a final static region behind the umi region.
 
-Most DEL barcode design follow is exact order, but if yours does not,
+Most DEL barcode design follow this exact order, but if yours does not,
 sections can be placed in any order.
 The only exception is the Index, Library and Primer sections, which must come before all bb sections.
 This is more a limitation of DEL than of DELi, as these section should be present before synthesis or attached after selection occurs, thus it is not possible to
 get the bb sections before them.
 
-DELi iterpurts the order of the sections listed in the file as the order they
+DELi interprets the order of the sections listed in the file as the order they
 appear in the barcode, so for the example defined above, the full barcode would look like:
 "NNNNNNNNNNCCTTGGCACCCGAGAATTCCANNNNNNNNAGNNNNNGTNNNNNGANNNNNTTAATGCCAGTACGNNNNNNNNNNN".
 
@@ -107,7 +112,7 @@ For example
         }
     }
 
-Is a valid section, but
+Is a valid schema, but
 ::
     {
         "sections": {
@@ -125,8 +130,10 @@ appear. It makes no sense for a overhang to be after a umi region if it was for 
 Hamming
 =======
 DELi can handle hamming encoded tags. The barcode schema defines which sections are hamming
-encoded AND which hamming code they are using (see Defining Hamming Codes). This specification is
-done in a seperate section in the json file keyed as 'hamming'
+encoded *AND* which hamming code they are using.
+You do not need specify the hamming code in this section,
+rather you link it to a hamming code file (see Defining Hamming Codes).
+
 ::
     {
         "id": "MyExampleSchema",
@@ -145,13 +152,13 @@ done in a seperate section in the json file keyed as 'hamming'
             "umi": "NNNNNNNNNNN"
         },
         "hamming": {
-            "bb2": "hamming7"
-            "bb3": "hamming9"
+            "bb2": "hamming4_8"
+            "bb3": "hamming4_8"
         }
     }
 
 In the hamming section, just specify the name of the section and attach it the correct hamming code used.
-Just like with any DELi Data Dir compatable files, the hamming code could be the path to the hamming code file OR the name of it if it is in the hamming sub dir in the deli data dir.
+Just like with any DELi Data Dir compatible files, the hamming code could be the path to the hamming code file OR the name of it if it is in the hamming sub dir in the deli data dir.
 
 DELi Data Dir
 =============
