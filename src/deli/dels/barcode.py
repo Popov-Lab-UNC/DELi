@@ -233,9 +233,9 @@ class BarcodeSection:
                 _leftover = 0
 
             if error_tolerance > 0:
-                _pattern = f"(?:{self.section_tag}){{e<={error_tolerance}}}"
+                _pattern = f"(?:{_section_tag}){{e<={error_tolerance}}}"
             else:
-                _pattern = f"{self.section_tag}"
+                _pattern = f"{_section_tag}"
 
             if _leftover > 0:
                 _pattern += f".{{{_leftover}}}"
