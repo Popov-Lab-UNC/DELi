@@ -16,12 +16,14 @@ process Decode {
 
     output:
     path '*_calls.csv', emit: calls
-    path '*.log', emit: logs
+    path '*.log', emit: log
     path '*_report_stats.json', emit: decode_stats
 
     script:
     """
     deli decode $fastq $exp --save_report_data --skip_report
+    export sub_job_id=`echo $fastq | awk -F'.' '{print $2}'`
+    mv deli.log "deli.$sub_job_id.log"
     """
 }
 
