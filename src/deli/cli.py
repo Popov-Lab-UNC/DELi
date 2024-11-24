@@ -121,12 +121,14 @@ def decode(
 
     # prep call file
     call_file_name = f"{prefix}_{_experiment_name}_{_timestamp()}_calls.csv"
-    failed_call_file_name = f"{prefix}_{_experiment_name}_{_timestamp()}_FAILED_calls.csv"
+    failed_call_file_name = f"{prefix}_{_experiment_name}_{_timestamp()}_calls_FAILED.csv"
     call_file_path = out_dir / call_file_name
     failed_call_file_path = out_dir / failed_call_file_name
     logger.debug(f"writing calls to {call_file_path}")
     if save_failed_calls:
         logger.debug(f"saving failed calls to {failed_call_file_path}")
+    else:
+        logger.debug("ignoring failed called")
 
     _headers_fieldnames = list()
     for lib in _experiment.libraries:
