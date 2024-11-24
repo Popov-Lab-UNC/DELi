@@ -381,10 +381,12 @@ def merge(report_stats, name, render_report):
     for file in report_stats[1:]:
         report_stat = report_stat + DecodeReportStats.load_report_file(file)
 
+    print(render_report)
+
     if render_report:
         build_decoding_report(report_stat, os.path.join(os.getcwd(), f"{name}.html"))
 
-    json.dump(report_stat.__dict__, open(os.path.join(os.getcwd(), f"{name}.html"), "w"))
+    json.dump(report_stat.__dict__, open(os.path.join(os.getcwd(), f"{name}.json"), "w"))
 
 
 @report.command()
