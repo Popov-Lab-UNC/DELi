@@ -53,7 +53,19 @@ def cli():
 @click.option("--debug", is_flag=True, help="Enable debug mode")
 @click.option("--save_report_data", is_flag=True, help="Save data required for reporting")
 @click.option("--skip_report", is_flag=True, help="Do not render a decoding report")
-def decode(fastq_file, experiment_file, out_dir, prefix, debug, save_report_data, skip_report):
+@click.option(
+    "--save_failed_calls", is_flag=True, help="save failed calls to a separate failed call file"
+)
+def decode(
+    fastq_file,
+    experiment_file,
+    out_dir,
+    prefix,
+    debug,
+    save_report_data,
+    skip_report,
+    save_failed_calls,
+):
     """
     run decoding on a given fastq file of DEL sequences
 
@@ -73,6 +85,8 @@ def decode(fastq_file, experiment_file, out_dir, prefix, debug, save_report_data
         save data required for reporting
     skip_report: bool, default=False
         do not render a decoding report
+    save_failed_calls: bool, default=False
+        save failed calls to a separate failed call file
     """
     logger = setup_logger("deli-decode", debug=debug)
     out_dir = _setup_outdir(out_dir)
@@ -107,8 +121,12 @@ def decode(fastq_file, experiment_file, out_dir, prefix, debug, save_report_data
 
     # prep call file
     call_file_name = f"{prefix}_{_experiment_name}_{_timestamp()}_calls.csv"
+    failed_call_file_name = f"{prefix}_{_experiment_name}_{_timestamp()}_FAILED_calls.csv"
     call_file_path = out_dir / call_file_name
+    failed_call_file_path = out_dir / failed_call_file_name
     logger.debug(f"writing calls to {call_file_path}")
+    if save_failed_calls:
+        logger.debug(f"saving failed calls to {failed_call_file_path}")
 
     _headers_fieldnames = list()
     for lib in _experiment.libraries:
@@ -216,23 +234,48 @@ def decode(fastq_file, experiment_file, out_dir, prefix, debug, save_report_data
             for _seq in _seq_with_calls:
                 _sub_reads_with_calls.add(_seq)
 
-            _passed_calls = len(_seq_with_calls)
+            _num_passed_calls = len(_seq_with_calls)
             _call_attempts = len(calls)
             _sub_total_call_count += _call_attempts
-            _sub_total_valid_call_count += _passed_calls
+            _sub_total_valid_call_count += _num_passed_calls
 
             logger.debug(
-                f"calling cycle {j} called {_passed_calls:,} "
+                f"calling cycle {j} called {_num_passed_calls:,} "
                 f"matches out of {_call_attempts:,} attempts"
             )
 
+            # split out calls
+            _passed_calls = []
+            _failed_calls = []
+            for c in calls:
+                if c.called_successfully():
+                    _passed_calls.append(c)
+                else:
+                    _failed_calls.append(c)
+
             with open(call_file_path, "a") as csv_file:
                 csv_writer = DictWriter(csv_file, fieldnames=_headers_fieldnames)
-                for _call in calls:
+                csv_writer.writeheader()
+                for _call in _passed_calls:
                     csv_writer.writerow(_call.to_row_dict())
+
             logger.debug(
                 f"wrote calls {_call_attempts:,} for calling cycle {j} to {call_file_path}"
             )
+
+            # write failed calls if asked
+            if save_failed_calls:
+                with open(failed_call_file_path, "a") as csv_file:
+                    csv_writer = DictWriter(csv_file, fieldnames=_headers_fieldnames)
+                    csv_writer.writeheader()
+                    for _call in _failed_calls:
+                        csv_writer.writerow(_call.to_row_dict())
+
+                logger.debug(
+                    f"wrote {len(_failed_calls)} failed calls for "
+                    f"calling cycle {j} to {failed_call_file_path}"
+                )
+
             logger.debug(
                 f"call cycle {i + 1} completed in {datetime.datetime.now() - _call_cycle_start}"
             )
