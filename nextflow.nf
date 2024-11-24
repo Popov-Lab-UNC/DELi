@@ -22,7 +22,7 @@ process Decode {
     script:
     """
     deli decode $fastq $exp --save_report_data --skip_report
-    export sub_job_id=`echo $fastq | awk -F'.' '{print $2}'`
+    export sub_job_id=`echo $fastq | awk -F'.' '{print '$2'}'`
     mv deli.log "deli.$sub_job_id.log"
     """
 }
