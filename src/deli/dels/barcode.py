@@ -524,13 +524,13 @@ class BarcodeSchema(DeliDataLoadable):
         """
         return list(self.barcode_sections.keys())
 
-    def get_position(self, section_name: str) -> Optional[int]:
+    def get_position(self, section_name: str) -> int:
         """
         Gets the position of the given section in the barcode (starts at 0)
 
         Notes
         -----
-        Will return `None` if the section is not in the barcode
+        Will return `-1` if the section is not in the barcode
 
         Parameters
         ----------
@@ -539,12 +539,12 @@ class BarcodeSchema(DeliDataLoadable):
 
         Returns
         -------
-        int or None
+        int
         """
         if section_name in self.barcode_sections.keys():
-            return list(self.barcode_sections.keys()).index("library")
+            return list(self.barcode_sections.keys()).index(section_name)
         else:
-            return None
+            return -1
 
     def is_library_compatible(self, other: Self) -> bool:
         """

@@ -359,18 +359,33 @@ class DELibrarySchemaGroup(BaseDELibraryGroup):
         -------
         str
         """
-        _sections: List[BarcodeSection] = list()
+        _sections: List[Tuple[BarcodeSection, int]] = list()
         __index = self.libraries[0].barcode_schema.barcode_sections.get("index")
         if __index is None:
             pass
         else:
-            _sections.append(__index)
+            _sections.append((__index, self.libraries[0].barcode_schema.get_position("index")))
 
-        _sections.append(self.libraries[0].barcode_schema.barcode_sections["library"])
-        _sections.append(self.libraries[0].barcode_schema.barcode_sections["primer"])
+        _sections.append(
+            (
+                self.libraries[0].barcode_schema.barcode_sections["library"],
+                self.libraries[0].barcode_schema.get_position("library"),
+            )
+        )
+        _sections.append(
+            (
+                self.libraries[0].barcode_schema.barcode_sections["primer"],
+                self.libraries[0].barcode_schema.get_position("primer"),
+            )
+        )
+
+        # sort by order
+        _sections.sort(key=lambda x: x[1])
 
         return BarcodeSchema(
-            schema_id="TMP_DO_NOT_SAVE", barcode_sections=_sections, override_required=True
+            schema_id="TMP_DO_NOT_SAVE",
+            barcode_sections=[_[0] for _ in _sections],
+            override_required=True,
         )
 
     def _requires_multistep_calling(self) -> bool:

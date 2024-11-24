@@ -415,7 +415,10 @@ class BarcodeMatcher:
     def _make_pattern(self):
         _pattern = (
             self.experiment.primer.to_match_pattern(
-                wildcard=False, error_tolerance=self.error_tolerance, include_overhang=True
+                wildcard=False,
+                error_tolerance=self.error_tolerance,
+                include_overhang=True,
+                trim=self.primer_match_length,
             )
             + f".{{{self._back_overlap[1]}}}"
         )
@@ -496,7 +499,7 @@ class BarcodeMatcher:
             _found_a_match: bool = False
             while len(_sequence) >= self._min_seq_size:
                 # skip best match flag
-                hit = regex.search(self.pattern, _sequence)
+                hit = regex.search(self.pattern, _sequence, flags=regex.BESTMATCH)
 
                 if hit:
                     # remove current hit from sequence
