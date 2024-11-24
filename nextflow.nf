@@ -50,6 +50,7 @@ process MergeReport {
 
     output:
     path "${params.prefix}_decode_report.html"
+    path "${params.prefix}_decode_report.json"
 
     script:
     """
