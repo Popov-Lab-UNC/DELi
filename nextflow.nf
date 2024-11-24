@@ -5,7 +5,7 @@ params.experiment
 params.out_dir = "${launchDir}"
 params.prefix = "deli_test"
 params.debug = false
-params.chuck_size = 50
+params.chunk_size = 50
 
 process Decode {
     publishDir "$params.out_dir/logs/", mode: 'move', pattern: "*.log"
@@ -21,7 +21,7 @@ process Decode {
 
     script:
     """
-    deli decode $fastq $exp --save_report_data --skip_report
+    deli decode $fastq $exp --save_report_data --skip_report ${params.debug ? '--debug' : ''}
     export sub_job_id=`echo $fastq | awk -F'.' '{print \$2}'`
     mv deli.log "deli.\$sub_job_id.log"
     """
@@ -59,7 +59,7 @@ process MergeReport {
 }
 
 workflow {
-    fastq_files = Channel.fromPath(params.fastq_file).splitFastq(by: params.chuck_size, file: true)
+    fastq_files = Channel.fromPath(params.fastq_file).splitFastq(by: params.chunk_size, file: true)
     experiment = Channel.fromPath(params.experiment).first()
     Decode(fastq_files, experiment)
     MergeCalls(Decode.out.calls.collect())
