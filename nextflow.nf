@@ -6,6 +6,7 @@ params.out_dir = "${launchDir}"
 params.prefix = "deli_test"
 params.debug = false
 params.chunk_size = 50
+params.save_failed_calls = false
 
 process Decode {
     publishDir "$params.out_dir/logs/", mode: 'move', pattern: "*.log"
@@ -21,7 +22,8 @@ process Decode {
 
     script:
     """
-    deli decode $fastq $exp --save_report_data --skip_report ${params.debug ? '--debug' : ''}
+    deli decode $fastq $exp --save_report_data --skip_report ${params.debug ? '--debug' : ''} \
+    ${params.save_failed_calls ? '--save_failed_calls' : ''}
     export sub_job_id=`echo $fastq | awk -F'.' '{print \$2}'`
     mv deli.log "deli.\$sub_job_id.log"
     """
