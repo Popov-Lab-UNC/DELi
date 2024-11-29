@@ -105,6 +105,16 @@ def decode(
     primer_experiments = _experiment.break_into_matching_experiments()
     logger.debug(f"detected {len(primer_experiments)} primer experiments")
 
+    # check for hamming encoding (for logging)
+    _hamming_encoded_dict = {
+        library.library_id: library.barcode_schema.is_hamming_encoded()
+        for primer_experiment in primer_experiments
+        for library in primer_experiment.libraries
+    }
+    for _lib_id, _is_hamming_enc in _hamming_encoded_dict.items():
+        logger.debug(f"library {_lib_id} {'IS' if _is_hamming_enc else 'IS NOT'} hamming encoded")
+    _has_any_hamming_encoding = any(_hamming_encoded_dict.values())  # overall hamming in use
+
     # write the sub experiment files
     _sub_experiment_filenames = []
     for i, primer_experiment in enumerate(primer_experiments):
@@ -158,8 +168,12 @@ def decode(
         logger.info(f"running matching experiment {i + 1} of {len(primer_experiments)}")
 
         matcher = BarcodeMatcher(primer_experiment, **primer_experiment.matching_settings.__dict__)
+
         logger.debug(f"detected primer sequence {primer_experiment.primer}")
+        if matcher.primer_match_length != -1:
+            logger.debug("matching to truncated primer region")
         logger.debug(f"matching to pattern {matcher.pattern}")
+        logger.debug(f"using error tolerance of {matcher.error_tolerance}")
 
         matches = matcher.match(sequences)
 
@@ -208,6 +222,18 @@ def decode(
             )
             logger.debug(f"index calling turned {'off' if caller.skip_calling_index else 'on'}")
             logger.debug(f"library calling turned {'off' if caller.skip_calling_lib else 'on'}")
+            _hamming_turned_on = primer_experiment.caller_settings.__dict__["hamming"]
+            logger.debug(f"hamming decoding turned {'on' if _hamming_turned_on else 'off'}")
+            if not _has_any_hamming_encoding and _hamming_turned_on:
+                logger.warning(
+                    "hamming decoding turned on but no libraries have hamming encoding; "
+                    "set 'hamming' to 'false' for 'call_settings' in experiment file"
+                )
+            if _has_any_hamming_encoding and not _hamming_turned_on:
+                logger.warning(
+                    "hamming decoding turned off but some libraries have hamming encoding; "
+                    "set 'hamming' to 'true' for 'call_settings' in experiment file"
+                )
             if _sub_library_set.requires_multistep_calling:
                 logger.debug("turned on multistep (library first) calling")
                 logger.debug(

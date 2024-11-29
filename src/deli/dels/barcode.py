@@ -250,6 +250,16 @@ class BarcodeSection:
 
         return _pattern
 
+    def has_hamming_decoder(self) -> bool:
+        """
+        Returns true if the section has hamming decoder (i.e. is hamming encoded)
+
+        Returns
+        -------
+        bool
+        """
+        return self.decoder is not None
+
 
 class BarcodeSchema(DeliDataLoadable):
     """contains data and metadata about a barcode schema"""
@@ -622,3 +632,13 @@ class BarcodeSchema(DeliDataLoadable):
             _headers.append(bb_section)
 
         return _headers
+
+    def is_hamming_encoded(self) -> bool:
+        """
+        Return True if the schema has 1 or more hamming encoded barcode section
+
+        Returns
+        -------
+        bool
+        """
+        return any([section.has_hamming_decoder() for section in self.barcode_sections.values()])
