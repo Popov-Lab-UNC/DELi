@@ -34,7 +34,10 @@ class DELEnumerator(DeliDataLoadable):
         bb_sets : List[BuildingBlockSet]
             Available building block sets
         reactions : List[dict]
-            Reaction definitions with step numbers
+            Reaction definitions with
+            - Step number: int
+            - Reaction SMARTS: str
+            - Reactants: list of IDs (str)
         scaffold : Optional[str]
             Optional scaffold SMILES string
         """
