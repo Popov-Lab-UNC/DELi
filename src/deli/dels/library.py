@@ -18,12 +18,13 @@ class LibraryBuildError(Exception):
 
 
 class Reaction:
-    """struct to contain info on DEL reactions"""
+    """struct to contain info on reactions"""
 
-    def __init__(self, cycle_id_1: str, cycle_id_2: str, reaction: str):
-        self.cycle_id_1 = cycle_id_1
-        self.bb_set_id_2 = cycle_id_2
+    def __init__(self, reactant_1_id: str, reactant_2_id: str, reaction: str, reaction_order: int):
+        self.reactant_1_id = reactant_1_id
+        self.reactant_2_id = reactant_2_id
         self.reaction = reaction
+        self.reaction_order = reaction_order
 
 
 class DELibrary(DeliDataLoadable):
@@ -200,7 +201,7 @@ class DELibrary(DeliDataLoadable):
 
 
 class BaseDELibraryGroup:
-    """base class for any class that olds a group of DEL libraries"""
+    """base class for any class that holds a group of DEL libraries"""
 
     def __init__(self, libraries: List[DELibrary]):
         """

@@ -177,6 +177,7 @@ class BuildingBlockSet(DeliDataLoadable):
                 )
 
         self._dna_lookup_table = {bb.tag: i for i, bb in enumerate(self.building_blocks)}
+        self._bb_lookup_table = {bb.bb_id: i for i, bb in enumerate(self.building_blocks)}
 
     @classmethod
     @accept_deli_data_name(sub_dir="building_blocks", extension="csv")
@@ -292,6 +293,32 @@ class BuildingBlockSet(DeliDataLoadable):
 
         """
         _idx = self._dna_lookup_table.get(query, None)
+        if _idx is None:
+            return None
+        else:
+            return self.building_blocks[_idx]
+
+    def get_bb_by_id(self, query: str) -> Optional[BuildingBlock]:
+        """
+        Given a bb_id, search for corresponding BB for that ID
+
+        Notes
+        -----
+        Will return `None` if no matching building block is found
+
+        Parameters
+        ----------
+        query: str
+            bb_id to query
+
+        Returns
+        -------
+        Optional[BuildingBlock]
+            will be `None` if no matching building block is found
+            else the matching BuildingBlock object
+
+        """
+        _idx = self._bb_lookup_table.get(query, None)
         if _idx is None:
             return None
         else:
