@@ -83,6 +83,10 @@ class MultiReactionPipeline:
     def __init__(self):
         self.steps: Dict[int, tuple] = {}  # {step: (Reaction, reactants_list)}
 
+    def __len__(self) -> int:
+        """Return the number of reaction steps in the pipeline"""
+        return len(self.steps)
+
     @classmethod
     def from_json(cls, json_path: str) -> "MultiReactionPipeline":
         """Initialize pipeline from JSON file"""

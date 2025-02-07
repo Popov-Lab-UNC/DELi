@@ -9,22 +9,13 @@ from deli.configure import DeliDataLoadable, accept_deli_data_name
 
 from .barcode import BarcodeSchema, BarcodeSection
 from .building_block import BuildingBlockSet
+#from .reaction import MultiReactionPipeline
 
 
 class LibraryBuildError(Exception):
     """error raised when a library build fails"""
 
     pass
-
-
-class Reaction:
-    """struct to contain info on reactions"""
-
-    def __init__(self, reactant_1_id: str, reactant_2_id: str, reaction: str, reaction_order: int):
-        self.reactant_1_id = reactant_1_id
-        self.reactant_2_id = reactant_2_id
-        self.reaction = reaction
-        self.reaction_order = reaction_order
 
 
 class DELibrary(DeliDataLoadable):
@@ -45,7 +36,7 @@ class DELibrary(DeliDataLoadable):
         library_dna_tag: str,
         barcode_schema: BarcodeSchema,
         bb_sets: List[BuildingBlockSet],
-        reactions: List[Reaction],
+        reactions: List[dict],
         dna_barcode_on: str,
         scaffold: Optional[str] = None,
     ):
@@ -64,10 +55,11 @@ class DELibrary(DeliDataLoadable):
             the sets of building-block used to build this library
             order in list should be order of synthesis
             must have length >= 2
-        reactions : List[str]
-            the reaction SMARTS/SMIRKS that connect bb_set cycles
-            reaction at index i is the reaction between bb_sets[i] and bb_sets[i+1]
-            reactions must have length equal to the the number of `bb_sets` minus 1
+        reactions : List[dict]
+            Reaction definitions with
+            - Step number: int
+            - Reaction SMARTS: str
+            - Reactants: list of IDs
         dna_barcode_on: str
             the id of the bb_set that is linked to the DNA bases
             can be 'scaffold' if DNA bases is linked to the scaffold
@@ -179,7 +171,7 @@ class DELibrary(DeliDataLoadable):
             dna_barcode_on=data["dna_barcode_on"],
             barcode_schema=BarcodeSchema.load(data["barcode_schema"]),
             bb_sets=[BuildingBlockSet.load(bb) for bb in data["bb_sets"]],
-            reactions=[Reaction(**react) for react in data["reactions"]],
+            reactions=data["reactions"],
             scaffold=data["scaffold"],
         )
 
