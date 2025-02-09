@@ -25,3 +25,4 @@ tzdata==2024.1
 numba==0.59.1
 numpy==2.2.2
 rdkit==2024.09.5
+levenshtein==0.26.1
