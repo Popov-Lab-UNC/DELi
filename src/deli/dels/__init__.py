@@ -8,11 +8,12 @@ from .library import (
     DELibrary,
     DELibraryGroup,
     DELibrarySchemaGroup,
-    Reaction,
     get_min_library_tag_distance,
 )
 from .synthon import Disynthon, HasDisynthonMixin, HasMonosynthonMixin, Monosynthon
 from .umi import Umi
+from .enumerator import DELEnumerator
+from .reaction import Reaction, MultiReactionPipeline
 
 
 __all__ = [
@@ -24,6 +25,8 @@ __all__ = [
     "DELibraryGroup",
     "DELibrarySchemaGroup",
     "Reaction",
+    "MultiReactionPipeline",
+    "DELEnumerator",
     "get_min_library_tag_distance",
     "BaseBuildingBlock",
     "BuildingBlock",
