@@ -50,7 +50,8 @@ def generate_report(base_dir, indexes, control_cols, nsc_max_dict, sd_min_dict, 
         for exp_name, value in sampling_depth_dict.items()
     ]
 
-    env = Environment(loader=FileSystemLoader('/Users/brandonnovy/Desktop/popov_lab/deli_repo/DELi/src/deli/'))
+    template_dir = os.path.dirname(__file__)
+    env = Environment(loader=FileSystemLoader(template_dir))
     template = env.get_template("report_test_template.html")
 
     rendered_html = template.render(

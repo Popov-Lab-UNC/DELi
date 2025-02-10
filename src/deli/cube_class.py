@@ -13,12 +13,13 @@ from tqdm import tqdm
 import seaborn as sns
 
 class DELi_Cube:
-    def __init__(self, data, indexes, control_cols=None, lib_size=None):
+    def __init__(self, data, indexes, control_cols=None, lib_size=None, raw_indexes=None):
         """
         Initialize the DELi_Cube object with the provided data, indexes, and control columns.
 
         Parameters:
             data (pd.DataFrame): The DataFrame containing the data.
+            raw_indexes (dict): A dictionary mapping experimental IDs to raw index ranges, used for SD calculation.
             indexes (dict): A dictionary mapping experimental IDs to index ranges.
                 ex. tri_synth_dict = {
                 'protein_replicates': ['corrected_index3', 'corrected_index4', 'corrected_index6'],
@@ -35,6 +36,7 @@ class DELi_Cube:
         self.indexes = indexes 
         self.control_cols = control_cols 
         self.lib_size = lib_size
+        self.raw_indexes = raw_indexes
 
     def SD_min(self):
         """This is an empirical sampling depth minimum meant to be an additional QC check for a given DEL run.
@@ -50,16 +52,18 @@ class DELi_Cube:
         """
         if self.lib_size is None:
             raise ValueError("Library size must be provided during initialization to run SD_min method.")
+        if self.raw_indexes is None:
+            raise ValueError("Raw indexes must be provided during initialization to run SD_min method.")
 
         NSC_max_dict = {}
         SD_min_dict = {}
         sampling_depth_dict = {}
 
-        for exp_name, columns in self.indexes.items():
-            row_avg = self.data[columns].mean(axis=1)
-            total_sampling_depth = row_avg.sum() / self.lib_size
-            exp_NSC = row_avg / total_sampling_depth
-            exp_NSC_max = exp_NSC.max()
+        for exp_name, columns in self.raw_indexes.items():
+            row_sum = self.data[columns].sum(axis=1)
+            total_sampling_depth = row_sum.sum() / self.lib_size
+            exp_NSC = row_sum / total_sampling_depth
+            exp_NSC_max = round(exp_NSC.max(), 2)
             NSC_max_dict[f"{exp_name}_NSC_max"] = exp_NSC_max
             SD_min_dict[f"{exp_name}_SD_min"] = 10 / exp_NSC_max
             sampling_depth_dict[f"{exp_name}_sampling_depth"] = total_sampling_depth
@@ -437,7 +441,7 @@ class DELi_Cube:
             if len(indices) == 2:
                 plt.figure(figsize=(8, 6))
                 venn2([set_a, set_b], set_labels=(indices[0], indices[1]))
-                plt.title(f'Venn Diagram for {exp_name}', fontsize=16)
+                plt.title(f'Venn Diagram for {exp_name} (Threshold: {threshold})', fontsize=16)
                 plt.xlabel('Sets', fontsize=14)
                 plt.ylabel('Counts', fontsize=14)
                 plt.xticks(fontsize=12)
@@ -447,13 +451,13 @@ class DELi_Cube:
                     text.set_fontsize(18)  # Increase font size for numbers in circles and overlaps
                 if output_dir is None:
                     output_dir = '.'
-                plt.savefig(f'{output_dir}/{exp_name}_venn_diagram.png')
+                plt.savefig(f'{output_dir}/{exp_name}_venn_diagram.png', bbox_inches='tight')
 
             elif len(indices) == 3:
                 set_c = set(filtered_data[filtered_data[indices[2]] > threshold][disynthon_type])
                 plt.figure(figsize=(8, 6))
                 venn3([set_a, set_b, set_c], set_labels=(indices[0], indices[1], indices[2]))
-                plt.title(f'Venn Diagram for {exp_name}', fontsize=16)
+                plt.title(f'Venn Diagram for {exp_name} (Threshold: {threshold})', fontsize=16)
                 plt.xlabel('Sets', fontsize=14)
                 plt.ylabel('Counts', fontsize=14)
                 plt.xticks(fontsize=12)
@@ -463,7 +467,7 @@ class DELi_Cube:
                     text.set_fontsize(18)  # Increase font size for numbers in circles and overlaps
                 if output_dir is None:
                     output_dir = '.'
-                plt.savefig(f'{output_dir}/{exp_name}_venn_diagram.png')
+                plt.savefig(f'{output_dir}/{exp_name}_venn_diagram.png', bbox_inches='tight')
                 
             else:
                 raise ValueError(f"Only 2 or 3 indices are supported for Venn diagrams, got {len(indices)}.")
@@ -627,7 +631,9 @@ class DELi_Cube:
             Directory to save the image, by default None (current directory)
         """
         for exp_name, indices in self.indexes.items():
-            top_n = self.data.nlargest(n, f'{exp_name}_{metric}')
+            # Ensure the compound is present at least once in each replicate
+            filtered_data = self.data[(self.data[indices] > 0).all(axis=1)]
+            top_n = filtered_data.nlargest(n, f'{exp_name}_{metric}')
             mols = [Chem.MolFromSmiles(smiles) for smiles in top_n['SMILES']]
             legends = [f"{row['DEL_ID']}\n\n{metric}: {row[f'{exp_name}_{metric}']:.2f}" for _, row in top_n.iterrows()]
             
