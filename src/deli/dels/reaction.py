@@ -1,201 +1,225 @@
 """define reaction classes"""
 
-import json
-import numpy as np
-from rdkit import Chem
-from rdkit.Chem import AllChem, rdChemReactions
-from typing import Dict, List, Union, Optional
+from typing import List, Tuple
 
-def clean_smi(smi):
-    comps = smi.split('.')
-    smi = comps[np.argmax([len(_) for _ in comps])]
-    return smi
+from rdkit import Chem
+from rdkit.Chem import rdChemReactions
+
+from deli.utils.mol_utils import Molable, to_mol
+
+
+class ReactionError(Exception):
+    """error for generic reaction failure"""
+
+    pass
+
 
 class Reaction:
-    """Class for reaction definition"""
+    """Class for describing a singular chemical reaction"""
+
     def __init__(self, rxn_smarts: str):
         """
-        Initialize the reaction. Describes a singular chemical reaction.
+        Initialize the reaction object
 
         Parameters
         ----------
         rxn_smarts: str
             SMARTS or SMIRKS to define a reaction
         """
-        self.rxn = AllChem.ReactionFromSmarts(rxn_smarts)
+        self.rxn = rdChemReactions.ReactionFromSmarts(rxn_smarts)
         self.num_reactants = self.rxn.GetNumReactantTemplates()
-        
-    def run(self, reactants: Union[List[Union[str, Chem.Mol]], Union[str, Chem.Mol]]):
+
+        if self.rxn.GetNumReactants() != 1:
+            raise ReactionError(
+                "reaction must produce exactly one product; " "found {}".format(
+                    self.rxn.GetNumReactants()
+                )
+            )
+
+    def react(self, *args: Tuple[Chem.Mol, ...]) -> Chem.Mol:
         """
         Run reaction on input molecules/SMILES
-        
+
         Parameters
         ----------
-        reactants: list of SMILES/mol or SMILES/mol if only one reactant
+        *args: Tuple[Chem.Mol, ...]
+            the molecules to use as reactants
 
         Returns
         -------
-        Products
-        
+        product: Chem.Mol
+            the product of the reaction
         """
-        # Handle single reactant case
-        if self.num_reactants == 1 and not isinstance(reactants, list):
-            reactants = [reactants]
-            
         # Validate input count
-        if len(reactants) != self.num_reactants:
-            raise ValueError(f"Expected {self.num_reactants} reactants, got {len(reactants)}")
-            
-        # Convert SMILES to Mol objects and validate
-        processed = []
-        for i, mol in enumerate(reactants):
-            if isinstance(mol, str):
-                mol = Chem.MolFromSmiles(mol)
-                if not mol:
-                    raise ValueError(f"Invalid SMILES at position {i}")
-            if not isinstance(mol, Chem.Mol):
-                raise TypeError(f"Expected SMILES string or Mol object at position {i}")
-            processed.append(mol)
-            
+        if len(args) != self.num_reactants:
+            raise ReactionError(f"Expected {self.num_reactants} reactants, got {len(args)}")
+
         # Run reaction
-        products = self.rxn.RunReactants(processed)
+        products = self.rxn.RunReactants(args)
         if not products:
-            return None
-            
-        # Check each reaction outcome produces exactly one product
-        for outcome in products:
-            if len(outcome) != 1:
-                raise ValueError("Reaction produced an outcome with more than one product.")
-        
+            raise ReactionError("Failed to generate product from reactants")
+
         # Take the first outcome's product
         product = products[0][0]
-        
-        # Sanitize the product
-        try:
-            Chem.SanitizeMol(product)
-        except:
-            return None
-        
-        return product
 
-class MultiReactionPipeline:
-    """Class for managing and executing a sequence of chemical reactions."""
-    def __init__(self):
-        self.steps: Dict[int, tuple] = {}  # {step: (Reaction, reactants_list)}
+        # Sanitize the product before return
+        try:
+            return Chem.SanitizeMol(product)
+        except Exception as e:
+            raise RuntimeError(f"Failed to sanitize reaction product: {e}") from e
+
+
+class ReactionVial(dict[str, Chem.Mol]):
+    """holds the chemicals that are current exist as a reaction progresses"""
+
+    def add_product(self, product_id: str, product: Chem.Mol):
+        """
+        Add a product to the reaction "soup"
+
+        Notes
+        -----
+        This is no different than just assigning the key value pair like a normal dict.
+        This is just to help with readability
+
+        Parameters
+        ----------
+        product_id: str
+            the id of the product
+        product: Chem.Mol
+            the product molecule
+        """
+        self[product_id] = product
+
+
+class ReactionStep:
+    """
+    Contains required information to carry out a reaction step
+
+    Reaction steps are abstract guidelines for how a reaction is carried out.
+    It include the reaction itself, and info about the reactants that should be used.
+
+    This separates "static" reactants from "variable" ones.
+    "variable" reactants can have chemical structures vary between ReactantVials,
+    and are instead identified by their reactant ID (from the ReactantVial).
+    "static" reactants are always the same chemical.
+    These are identified by their SMILES rather than an ID
+
+    Attributes
+    ----------
+    product_id: str
+        the id of the product produced by the reaction
+        by default this is always "product_<step_id>"
+    requires: List[str]
+        the ids of the reactants that are necessary for the reaction
+        same as the "variable_reactions" parameter that is passed
+    """
+
+    def __init__(
+        self,
+        step_id: int,
+        reaction: Reaction,
+        variable_reactant: List[str],
+        static_reactants: List[Molable],
+    ):
+        """
+        initialize a reaction step
+
+        Parameters
+        ----------
+        step_id: int
+            the id of the step
+        reaction: Reaction
+            the reaction to be carried out in the step
+        variable_reactant: List[str]
+            the ids of the reactants to be used during the step
+        static_reactants: List[Molable]
+            any chemicals that are always present during the reaction
+        """
+        self.step_id = step_id
+        self.reaction = reaction
+        self.requires = set(variable_reactant)
+        self.static_reactants = [
+            to_mol(static_reactant, fail_on_error=True) for static_reactant in static_reactants
+        ]
+        self.product_id = f"product_{self.step_id}"
+
+    def run_step(self, possible_reactants: ReactionVial):
+        """
+        Run the reaction step
+
+        This will update the ReactionVial inplace, adding the product to the vial with
+        with the steps `product_id`
+
+        Parameters
+        ----------
+        possible_reactants: ReactionVial
+            the pool of possible reactants to be used during the step
+        """
+        reactants = [possible_reactants[req] for req in self.requires] + self.static_reactants
+        possible_reactants.add_product(self.product_id, self.reaction.react(*reactants))
+
+
+class ReactionWorkflowError(Exception):
+    """error raised if a reaction workflow fails (during build or execution)"""
+
+    pass
+
+
+class ReactionWorkflow:
+    """
+    Merge a series of ReactionSteps into a single workflow
+    """
+
+    def __init__(self, rxn_steps: List[ReactionStep]):
+        """
+        Initialize the reaction workflow
+
+        Notes
+        -----
+        The passed reaction steps must have unique ids and grow
+        sequentially from 1 (e.g. 1, 2, 3, 4, ...).
+        `0` is not a valid ID.
+        Steps do not need to be passed in order, they will be sorted based on their ID
+        (lower ids come first).
+
+        Parameters
+        ----------
+        rxn_steps: List[ReactionStep]
+            the list of reaction steps
+        """
+        # check that step ids are unique and sequential
+        _step_ids = sorted([step.step_id for step in rxn_steps])
+        if list(range(1, len(_step_ids) + 1)) != _step_ids:
+            raise ReactionWorkflowError(
+                f"step ids must start from 1 and increase sequentially; "
+                f"expected ids {list(range(1, len(_step_ids) + 1))}, "
+                f"found ids {_step_ids}"
+            )
+
+        # sort the steps
+        self.rxn_steps = sorted(rxn_steps, key=lambda x: x.step_id)
+        self._final_product_id = f"product_{self.rxn_steps[-1].step_id}"
 
     def __len__(self) -> int:
-        """Return the number of reaction steps in the pipeline"""
-        return len(self.steps)
+        """Number of reaction steps in workflow"""
+        return len(self.rxn_steps)
 
-    @classmethod
-    def from_json(cls, json_path: str) -> "MultiReactionPipeline":
-        """Initialize pipeline from JSON file"""
-        with open(json_path, "r") as f:
-            data = json.load(f)
-        return cls.from_dict(data)
-
-    @classmethod
-    def from_dict(cls, data: dict) -> "MultiReactionPipeline":
-        """Initialize pipeline from dictionary (matches JSON structure)"""
-        pipeline = cls()
-        
-        # Validate and sort reactions
-        reactions = sorted(data["reactions"], key=lambda x: x["step"])
-        seen_steps = set()
-        
-        for rxn in reactions:
-            step = rxn["step"]
-            if step in seen_steps:
-                raise ValueError(f"Duplicate step number {step} in reaction definition")
-            seen_steps.add(step)
-            
-            pipeline.add_reaction(
-                step=step,
-                rxn_smarts=rxn["rxn_smarts"],
-                reactants=rxn["reactants"]
-            )
-        
-        return pipeline
-        
-    def add_reaction(
-        self,
-        step: int,
-        rxn_smarts: str,
-        reactants: Union[List[str], str]
-    ) -> None:
+    def run_workflow(self, starting_reactants: ReactionVial) -> Chem.Mol:
         """
-        Add a reaction step to the pipeline.
+        Execute the reaction workflow for a given ReactionVial
+
+        The ReactionVial should only contain the starting reactants
+        pulled from the DEL Building Block libraries
 
         Parameters
         ----------
-        step: int
-            The step number (execution order).
-        rxn_smarts: str
-            SMARTS/SMIRKS defining the reaction.
-        reactants: list of str or str
-            Reactant identifiers (e.g., ["product_0", "reactant_1"]).
-        """
-        # Ensure reactants is a list
-        if not isinstance(reactants, list):
-            reactants = [reactants]
-        
-        # Create Reaction instance and validate reactant count
-        reaction = Reaction(rxn_smarts)
-        if reaction.num_reactants != len(reactants):
-            raise ValueError(
-                f"Step {step}: Reaction expects {reaction.num_reactants} reactants, "
-                f"but {len(reactants)} were provided."
-            )
-        
-        self.steps[step] = (reaction, reactants)
-        
-    def run(
-        self,
-        reactants_dict: Dict[str, Union[str, Chem.Mol]]
-    ) -> Dict[int, Optional[Chem.Mol]]:
-        """
-        Execute the multi-step reaction pipeline.
-
-        Parameters
-        ----------
-        reactants_dict: dict
-            Maps reactant identifiers (e.g., "reactant_1") to SMILES/Chem.Mol.
+        starting_reactants: ReactionVial
 
         Returns
         -------
-        dict
-            Maps step numbers to their products. Returns `None` if any step fails.
+        product: Chem.Mol
+            the final enumerated DEL
         """
-        # Sort steps by step number
-        sorted_steps = sorted(self.steps.items(), key=lambda x: x[0])
-        products: Dict[int, Optional[Chem.Mol]] = {}
-        
-        for step, (reaction, reactants) in sorted_steps:
-            resolved_reactants = []
-            for r in reactants:
-                # Resolve reactant references (e.g., "product_0" or "reactant_1")
-                if r.startswith("product_"):
-                    # Get product from previous step
-                    product_step = int(r.split("_")[1])
-                    if product_step not in products:
-                        raise ValueError(f"Step {step}: Missing product_{product_step}.")
-                    mol = products[product_step]
-                    if mol is None:
-                        return products  # Pipeline failed earlier
-                else:
-                    # Get reactant from input dictionary
-                    if r not in reactants_dict:
-                        raise ValueError(f"Step {step}: Reactant '{r}' not provided.")
-                    mol = reactants_dict[r]
-                
-                resolved_reactants.append(mol)
-            
-            # Run the reaction
-            product = reaction.run(resolved_reactants)
-            products[step] = product
-            
-            # Stop if any step fails
-            if product is None:
-                break
-        
-        return products
+        for step in self.rxn_steps:
+            step.run_step(starting_reactants)
+        return starting_reactants[self._final_product_id]

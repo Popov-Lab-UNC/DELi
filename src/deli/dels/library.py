@@ -6,10 +6,11 @@ from typing import Any, Iterator, List, Optional, Self, Tuple, Union, overload
 from Levenshtein import distance
 
 from deli.configure import DeliDataLoadable, accept_deli_data_name
+from deli.utils.mol_utils import check_valid_smiles
 
 from .barcode import BarcodeSchema, BarcodeSection
 from .building_block import BuildingBlockSet
-#from .reaction import MultiReactionPipeline
+from .reaction import Reaction, ReactionStep, ReactionWorkflow
 
 
 class LibraryBuildError(Exception):
@@ -36,7 +37,7 @@ class DELibrary(DeliDataLoadable):
         library_dna_tag: str,
         barcode_schema: BarcodeSchema,
         bb_sets: List[BuildingBlockSet],
-        reactions: List[dict],
+        library_reaction_workflow: ReactionWorkflow,
         dna_barcode_on: str,
         scaffold: Optional[str] = None,
     ):
@@ -55,11 +56,8 @@ class DELibrary(DeliDataLoadable):
             the sets of building-block used to build this library
             order in list should be order of synthesis
             must have length >= 2
-        reactions : List[dict]
-            Reaction definitions with
-            - Step number: int
-            - Reaction SMARTS: str
-            - Reactants: list of IDs
+        library_reaction_workflow : ReactionWorkflow
+            The reaction workflow/schema used to build this library
         dna_barcode_on: str
             the id of the bb_set that is linked to the DNA bases
             can be 'scaffold' if DNA bases is linked to the scaffold
@@ -77,7 +75,7 @@ class DELibrary(DeliDataLoadable):
         self.library_tag = library_dna_tag
         self.barcode_schema = barcode_schema
         self.bb_sets = bb_sets
-        self.reactions = reactions
+        self.library_reaction_workflow = library_reaction_workflow
         self.dna_barcode_on = dna_barcode_on
         self.scaffold = scaffold
 
@@ -87,11 +85,12 @@ class DELibrary(DeliDataLoadable):
             )
         self.num_cycles = len(self.bb_sets)
 
-        if self.num_cycles - (1 if self.scaffold is None else 0) < len(self.reactions):
-            raise LibraryBuildError(
-                f"Library requires at least N-1 reactions for N cycles+scaffolds; "
-                f"found {len(self.bb_sets)} cycles and {len(self.reactions)} reactions"
-            )
+        # not sure this check makes sense anymore
+        # if self.num_cycles + (0 if self.scaffold is None else -1) > len(self.reactions):
+        #     raise LibraryBuildError(
+        #         f"Library requires at least N-1 reactions for N cycles+scaffolds; "
+        #         f"found {len(self.bb_sets)} cycles and {len(self.reactions)} reactions"
+        #     )
 
         if self.num_cycles != barcode_schema.num_cycles:
             raise LibraryBuildError(
@@ -165,13 +164,42 @@ class DELibrary(DeliDataLoadable):
         if "scaffold" not in data.keys():
             data["scaffold"] = None
 
+        # load bb sets (needed for reaction setup)
+        bb_sets: list[BuildingBlockSet] = [BuildingBlockSet.load(bb) for bb in data["bb_sets"]]
+        bb_set_ids = [bb_set.bb_set_id for bb_set in bb_sets]
+        # handle loading the reaction data
+
+        rxn_steps: list[ReactionStep] = list()
+        for rxn_data in data["reactions"]:
+            step_id = rxn_data["step_id"]
+            rxn_smarts = rxn_data["rxn_smarts"]
+            reactant_ids = rxn_data["reactants"]
+
+            # check if a reactant is static
+            # static reactants are those that are valid SMILES and do not map to a bb_set id
+            static_reactants: list[str] = list()
+            variable_reactants: list[str] = list()
+            for reactant_id in reactant_ids:
+                if (reactant_id not in bb_set_ids) and (check_valid_smiles(reactant_id)):
+                    static_reactants.append(reactant_id)
+                else:
+                    variable_reactants.append(reactant_id)
+            rxn_steps.append(
+                ReactionStep(
+                    step_id=step_id,
+                    reaction=Reaction(rxn_smarts),
+                    variable_reactant=variable_reactants,
+                    static_reactants=static_reactants,
+                )
+            )
+
         return cls(
             library_id=data["id"],
             library_dna_tag=data["library_tag"],
             dna_barcode_on=data["dna_barcode_on"],
             barcode_schema=BarcodeSchema.load(data["barcode_schema"]),
-            bb_sets=[BuildingBlockSet.load(bb) for bb in data["bb_sets"]],
-            reactions=data["reactions"],
+            bb_sets=bb_sets,
+            library_reaction_workflow=ReactionWorkflow(rxn_steps),
             scaffold=data["scaffold"],
         )
 
