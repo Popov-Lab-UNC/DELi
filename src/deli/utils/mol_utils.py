@@ -1,6 +1,6 @@
 """utility functions related to molecules"""
 
-from typing import Any, Literal, Optional, overload
+from typing import Literal, Optional, Union, overload
 
 from rdkit import Chem
 from rdkit.Chem.MolStandardize import LargestFragmentChooser
@@ -9,16 +9,18 @@ from rdkit.rdBase import BlockLogs
 
 _LARGEST_FRAGMENT_CHOOSER = LargestFragmentChooser(preferOrganic=True)
 
-
-@overload
-def to_mol(smi: str, fail_on_error: Literal[False]) -> Chem.Mol: ...
+Molable = Union[str, Chem.Mol]
 
 
 @overload
-def to_mol(smi: str, fail_on_error: Literal[True]) -> Optional[Chem.Mol]: ...
+def to_mol(smi: Molable, fail_on_error: Literal[False]) -> Chem.Mol: ...
 
 
-def to_mol(smi: Any, fail_on_error: bool = False) -> Optional[Chem.Mol]:
+@overload
+def to_mol(smi: Molable, fail_on_error: Literal[True]) -> Optional[Chem.Mol]: ...
+
+
+def to_mol(smi: Molable, fail_on_error: bool = True) -> Optional[Chem.Mol]:
     """
     Given an object, attempt to convert it to a Chem.Mol object
 
@@ -60,6 +62,23 @@ def to_mol(smi: Any, fail_on_error: bool = False) -> Optional[Chem.Mol]:
             raise TypeError(f"cannot convert type {type(smi)} to type rdkit.Mol")
         else:
             return None
+
+
+def check_valid_smiles(smi: str) -> bool:
+    """
+    Checks if a SMILES string is valid (readable by RDKit)
+
+    Parameters
+    ----------
+    smi: str
+        SMILES string to check
+
+    Returns
+    -------
+    bool
+    """
+    _block = BlockLogs()
+    return Chem.MolFromSmiles(smi) is not None
 
 
 def get_largest_fragment(mol: Chem.Mol) -> Chem.Mol:
