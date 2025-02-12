@@ -38,17 +38,18 @@ class DELi_Cube:
         self.lib_size = lib_size
         self.raw_indexes = raw_indexes
 
+
     def SD_min(self):
         """This is an empirical sampling depth minimum meant to be an additional QC check for a given DEL run.
-            Functionally it uses the standard that an enrichment minimum of 10 will be reproducible across replicates,
-            thus if we evaluate our NSC_max we can determine if the minimum sampling depth is met.
-            DOI: https://doi.org/10.1177/2472555218757718
+        Functionally it uses the standard that an enrichment minimum of 10 will be reproducible across replicates,
+        thus if we evaluate our NSC_max we can determine if the minimum sampling depth is met.
+        DOI: https://doi.org/10.1177/2472555218757718
 
-            Returns:
-                tuple: (NSC_max, SD_min) where:
-                    - NSC_max is the highest NSC value in the dataset.
-                    - SD_min is the minimum sampling depth required to discover enriched compounds using the 
-                    empirical threshold of 10.
+        Returns:
+            tuple: (NSC_max, SD_min, sampling_depth_dict) where:
+            - NSC_max is the highest NSC value in the dataset.
+            - SD_min is the minimum sampling depth required to discover enriched compounds using the 
+            empirical threshold of 10.
         """
         if self.lib_size is None:
             raise ValueError("Library size must be provided during initialization to run SD_min method.")
@@ -60,15 +61,25 @@ class DELi_Cube:
         sampling_depth_dict = {}
 
         for exp_name, columns in self.raw_indexes.items():
+
             row_sum = self.data[columns].sum(axis=1)
+            print(f"Row sum for {exp_name}: {row_sum.head()}")
+            
             total_sampling_depth = row_sum.sum() / self.lib_size
-            exp_NSC = row_sum / total_sampling_depth
+            print(f"Total sampling depth for {exp_name}: {total_sampling_depth}")
+
+            # Perform calculations without altering self.indexes
+            exp_row_sum = self.data[columns].sum(axis=1)
+            exp_NSC = exp_row_sum / total_sampling_depth
+            
             exp_NSC_max = round(exp_NSC.max(), 2)
             NSC_max_dict[f"{exp_name}_NSC_max"] = exp_NSC_max
+            
             SD_min_dict[f"{exp_name}_SD_min"] = 10 / exp_NSC_max
             sampling_depth_dict[f"{exp_name}_sampling_depth"] = total_sampling_depth
 
         return NSC_max_dict, SD_min_dict, sampling_depth_dict
+
 
     def NSC_values(self):
         """Enrichment factor using normalized counts for given library member normalized to mean sequence reads
@@ -79,12 +90,19 @@ class DELi_Cube:
         """
         if self.lib_size is None:
             raise ValueError("Library size must be provided during initialization to run NSC_values method.")
-        
-        df = self.data.copy()
-        for exp_name, columns in self.indexes.items():
-            df[f"{exp_name}_sum"] = df[columns].sum(axis=1)
-            df[f"{exp_name}_NSC"] = df[f"{exp_name}_sum"] / (df[f"{exp_name}_sum"].sum(axis=0)/ self.lib_size)
-        self.data = df
+        if self.raw_indexes is None:
+            raise ValueError("Raw indexes must be provided during initialization to run NSC_values method.")
+
+        for exp_name, columns in self.raw_indexes.items():
+            row_sum = self.data[columns].sum(axis=1)
+            total_sampling_depth = row_sum.sum() / self.lib_size
+
+            exp_row_sum = self.data[columns].sum(axis=1)
+            exp_NSC = exp_row_sum / total_sampling_depth
+
+            self.data[f"{exp_name}_sum"] = exp_row_sum
+            self.data[f"{exp_name}_NSC"] = exp_NSC
+
         return self.data
     
     def NSC_enrichment_intervals(self, nsc_df):
@@ -113,11 +131,11 @@ class DELi_Cube:
 
     def maximum_likelihood_enrichment_ratio(self):
         """Formulation of enrichment ratio that avoids division by zero for members without sequence reads
-           in control. doi: https://doi.org/10.1021/acsomega.3c02152?
+        in control. DOI: https://doi.org/10.1021/acsomega.3c02152
 
-           Calculated using: (n_controlsequences/n_selection_sequences) * (c_selection_reads + 3/8)/(c_control_reads + 3/8)
-           where c is the number of sequence reads for a given library member and n is total number of sequence reads for all library members.
-        
+        Calculated using: (n_controlsequences/n_selection_sequences) * (c_selection_reads + 3/8)/(c_control_reads + 3/8)
+        where c is the number of sequence reads for a given library member and n is total number of sequence reads for all library members.
+
         Returns:
             pd.DataFrame: DataFrame with maximum likelihood enrichment ratio for each library member
         """
@@ -125,55 +143,85 @@ class DELi_Cube:
             raise ValueError("Control columns must be provided during initialization to run maximum_likelihood_enrichment_ratio method.")
         
         df = self.data.copy()
+
         for exp_name, columns in self.indexes.items():
-            control_col = self.control_cols.get(exp_name)
-            if control_col is None:
-                raise ValueError(f"Control column for {exp_name} not provided.")
-            df[f"{exp_name}_sum"] = df[columns].sum(axis=1)
-            df[f"{exp_name}_MLE"] = (df[control_col].sum(axis=0)) / (df[f"{exp_name}_sum"].sum(axis=0)) * ((df[columns].sum(axis=1) + 3/8) / (df[control_col] + 3/8))
+            control_cols = self.control_cols.get(exp_name)
+            if control_cols is None:
+                raise ValueError(f"Missing control columns for experiment '{exp_name}'.")
+
+            for control_col in control_cols:
+                if control_col not in df.columns:
+                    raise ValueError(f"Control column '{control_col}' is missing in data.")
+
+                control_total = df[control_col].sum()
+                selection_total = df[f"{exp_name}_sum"].sum()
+
+                # # to avoid division by zero, but with the MLE shouldn't be a problem due to smoothing factor
+                # control_total = max(control_total, 1e-10)
+                # selection_total = max(selection_total, 1e-10)
+
+                df[f"{exp_name}_MLE"] = (
+                    (control_total / selection_total) *
+                    ((df[f"{exp_name}_sum"] + 3/8) / (df[control_col] + 3/8))
+                )
+
         self.data = df
         return self.data
 
+
     def z_score(self):
         """Calculate the z-score for each experimental group compared to the control column.
-        The z-score is calculated for each experimental group by comparing the proportion of 
-        observations in the experimental group to the proportion of observations in the control group,
-        using MAD instead of standard deviation for scaling.
+
+        The z-score is calculated using the proportion of observations in the experimental 
+        group compared to the proportion in the control group, with MAD for scaling.
+
         DOI: 10.1021/acscombsci.8b00116
 
         Raises:
-            ValueError: If the control column is not provided during initialization.
-            pandas.DataFrame: A DataFrame with additional columns for the sum and z-score of each experimental group.
+            ValueError: If control columns are missing or contain only zeros.
 
         Returns:
-            pd.DataFrame: DataFrame with z-score values for each library member
+            pd.DataFrame: DataFrame with sum, average, and z-score columns.
         """
-
-        if self.control_cols is None:
+        if not self.control_cols:
             raise ValueError("Control columns must be provided during initialization to run z_score method.")
-        
+
         df = self.data.copy()
 
         for exp_name, columns in self.indexes.items():
-            control_col = self.control_cols.get(exp_name)
-            if control_col is None:
-                raise ValueError(f"Control column for {exp_name} not provided.")
-            df[f"{exp_name}_sum"] = df[columns].sum(axis=1)
-            df[f"{exp_name}_avg"] = df[f"{exp_name}_sum"] / len(columns)
-            
-            p_o = df[f"{exp_name}_avg"] / df[f"{exp_name}_avg"].sum(axis=0)
-            p_i = df[control_col] / df[control_col].sum(axis=0)
-            
-            # Filter out zero control values due to NTC having lots of 0's
-            non_zero_control = df[control_col].loc[df[control_col] > 0]
-            median_control = np.median(non_zero_control)
+            control_cols = self.control_cols.get(exp_name)
 
-            # (absolute deviation from the median with scaling factor)
-            mad = (1.4286 * np.median(np.abs(non_zero_control - median_control)))
-            
-            # calculate the z-score using this MAD
-            df[f"{exp_name}_z_score"] = (p_i - p_o) / mad
-            
+            if control_cols is None:
+                raise ValueError(f"Missing control columns for experiment '{exp_name}'.")
+
+            df[f"{exp_name}_avg"] = df[f"{exp_name}_sum"] / len(columns)
+
+            for control_col in control_cols:
+                if control_col not in df.columns:
+                    raise ValueError(f"Control column '{control_col}' is missing in data.")
+
+                total_exp = df[f"{exp_name}_avg"].sum()
+                total_ctrl = df[control_col].sum()
+
+                if total_exp == 0 or total_ctrl == 0:
+                    raise ValueError(f"Total sum for experiment '{exp_name}' or its control is zero, cannot compute proportions.")
+
+                p_o = df[f"{exp_name}_avg"] / total_exp
+                p_i = df[control_col] / total_ctrl
+
+                control_nonzero = df[control_col][df[control_col] > 0]
+
+                if control_nonzero.empty:
+                    raise ValueError(f"Control column '{control_col}' for experiment '{exp_name}' contains only zeros.")
+
+                median_control = np.median(control_nonzero)
+                mad = 1.4286 * np.median(np.abs(control_nonzero - median_control))
+
+                if mad == 0:
+                    df[f"{exp_name}_z_score_{control_col}"] = np.nan
+                else:
+                    df[f"{exp_name}_z_score_{control_col}"] = (p_i - p_o) / mad
+
         self.data = df
         return self.data
 
@@ -186,7 +234,7 @@ class DELi_Cube:
         3. Applies a log transformation to the average values of the experimental group and the control group.
         4. Computes the mean and standard deviation of the log-transformed control group.
         5. Calculates the log-transformed z-scores for the experimental group based on the control group's statistics.
-        
+
         Returns
         -------
         pd.DataFrame
@@ -195,29 +243,38 @@ class DELi_Cube:
         df = self.data.copy()
 
         if self.control_cols is None:
-            raise ValueError("Control columns must be provided during initialization to run z_score method.")
+            raise ValueError("Control columns must be provided during initialization to run z_score_log_data method.")
         
         for exp_name, columns in self.indexes.items():
-            control_col = self.control_cols.get(exp_name)
-            if control_col is None:
-                raise ValueError(f"Control column for {exp_name} not provided.")
+            control_cols = self.control_cols.get(exp_name)
+
+            if control_cols is None:
+                raise ValueError(f"Missing control columns for experiment '{exp_name}'.")
+
             df[f"{exp_name}_sum"] = df[columns].sum(axis=1)
             df[f"{exp_name}_avg"] = df[f"{exp_name}_sum"] / len(columns)
 
-            # Log-transform the experimental group and control group
-            df[f"{exp_name}_log"] = np.log1p(df[f"{exp_name}_avg"])  # log(x + 1) to avoid log(0)
-            df[f"control_log"] = np.log1p(df[control_col])  # Same for control group
-            
-            # log-transformed mean (lambda) and standard deviation for control group
-            control_mean_log = np.mean(df[f"control_log"])
-            control_sd_log = np.std(df[f"control_log"])
-            
-            # Calculate the log-transformed z-score 
-            df[f"{exp_name}_z_score_log"] = (df[f"{exp_name}_log"] - control_mean_log) / control_sd_log
+            for control_col in control_cols:
+                if control_col not in df.columns:
+                    raise ValueError(f"Control column '{control_col}' is missing in data.")
+
+                df[f"{exp_name}_control_log_{control_col}"] = np.log1p(df[control_col])  # Log-transform control group
+                df[f"{exp_name}_log"] = np.log1p(df[f"{exp_name}_avg"])  # Log-transform experimental group
+
+                # Calculate mean and standard deviation of the log-transformed control group
+                control_mean_log = df[f"{exp_name}_control_log_{control_col}"].mean()
+                control_sd_log = df[f"{exp_name}_control_log_{control_col}"].std()
+
+                # Avoid zero standard deviation in control group
+                if control_sd_log == 0:
+                    df[f"{exp_name}_z_score_log_{control_col}"] = np.nan  # Assign NaN if SD is zero
+                else:
+                    df[f"{exp_name}_z_score_log_{control_col}"] = (
+                        (df[f"{exp_name}_log"] - control_mean_log) / control_sd_log
+                    )
 
         self.data = df
         return self.data
-
 
     def normalize(self):
         """
@@ -324,32 +381,27 @@ class DELi_Cube:
     def simple_spotfire_version(self):
         """
         Create a Spotfire-friendly version of the DataFrame using normalized data if available
-        with corrected indexes, renaming based on experiment IDs.
+        with corrected indexes, renaming based on experiment IDs and adding an average column for each experiment.
 
         Returns:
             pd.DataFrame: The Spotfire-friendly DataFrame.
         """
-        if self.control_col is not None:
-            normalized_data = self.normalize()
-        else:
-            normalized_data = self.data
+        df = self.data.copy()
+        smiles_index = df.columns.get_loc('SMILES')
+        cols_to_keep = df.columns[:smiles_index + 1].tolist() + [col for col in df.columns[smiles_index + 1:] if any(pattern in col for pattern in ['_sum', '_NSC', '_MLE'])]
+        for col in cols_to_keep:
+            if any(pattern in col for pattern in ['_sum', '_NSC', '_MLE']):
+                df[col] = df[col].round(2)
+        spotfire_df = df[cols_to_keep]
 
-           
-        corrected_indexes = self.indexes
-    
-        spotfire_df = normalized_data.copy()
+        for exp_name, index_range in self.indexes.items():
+            for column in index_range:
+                spotfire_df.rename(columns={column: f'{exp_name}_{column}'}, inplace=True)
+            spotfire_df[f'{exp_name}_avg'] = df[index_range].mean(axis=1).round(2)
 
-        for exp_id, index_range in self.indexes.items():
-            for column in index_range:  #
-                spotfire_df.rename(columns={column: f'{exp_id}_{column}'}, inplace=True)
-        
-        if 'SMILES' in self.data.columns:
-            spotfire_df['SMILES'] = self.data['SMILES']
-        
         return spotfire_df
+
     
-
-
     def trisynthon_overlap(self, output_dir=None, normalized_data=None, threshold=0.0):
         """
         Create overlap diagrams for tri-synth experiments using normalized data and corrected indexes.

@@ -1,0 +1,34 @@
+general:
+  data: "sample_data/2_7_DEL_DEL006_cube.csv"
+  lib_size: 800000
+  output_dir: "test"
+
+indexes:
+  BRD4: ["corrected_index2", "corrected_index3", "corrected_index9"]
+  53bp1: ["corrected_index4", "corrected_index6", "corrected_index7"]
+
+control_cols:
+  BRD4: ["corrected_index8"]
+  53bp1: ["corrected_index8"]
+
+raw_indexes:
+  BRD4: ["raw_index2", "raw_index3", "raw_index9"]
+  53bp1: ["raw_index4", "raw_index6", "raw_index7"]
+
+flags:
+  SD_min: True
+  NSC_values: True
+  MLE: True
+  Z_score: True
+  z_score_log_data: True
+  normalized_data: False
+  disynthon_data: true
+  trisynthon_overlap: true
+  disynthon_overlap: true
+  disynthon_threshold: 20
+  simple_spotfire_version: true
+  ml_fingerprints_to_RF_reg: true
+  ml_fingerprints_to_RF_clf: true
+  clf_thresh: 10
+  top_hits: 20
+  report: true
