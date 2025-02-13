@@ -18,7 +18,7 @@ def get_experiment_info(indexes, control_cols):
         })
     return experiment_info
 
-def generate_report(base_dir, indexes, control_cols, nsc_max_dict, sd_min_dict, sampling_depth_dict):
+def generate_report(base_dir, indexes, control_cols, nsc_max_dict=None, sd_min_dict=None, sampling_depth_dict=None):
     today_date = datetime.today().strftime('%Y%m%d')
     analysis_dir = os.path.join(base_dir, f"{today_date}_analysis")
     disynthon_dir = os.path.join(analysis_dir, "disynthon")
@@ -40,6 +40,10 @@ def generate_report(base_dir, indexes, control_cols, nsc_max_dict, sd_min_dict, 
 
     experiment_info = get_experiment_info(indexes, control_cols)
     
+    nsc_max_dict = nsc_max_dict or {}
+    sd_min_dict = sd_min_dict or {}
+    sampling_depth_dict = sampling_depth_dict or {}
+
     sampling_depth_values = [
         f"{exp_name}: {round(nsc_max, 2)}, SD_min = {round(sd_min_dict.get(exp_name.replace('_NSC_max', '_SD_min'), 'N/A'), 2)}"
         for exp_name, nsc_max in nsc_max_dict.items()
@@ -53,7 +57,7 @@ def generate_report(base_dir, indexes, control_cols, nsc_max_dict, sd_min_dict, 
     template_dir = os.path.dirname(__file__)
     env = Environment(loader=FileSystemLoader(template_dir))
     template = env.get_template("report_test_template.html")
-
+        
     rendered_html = template.render(
         experiment_info=experiment_info,
         sampling_depth_values=sampling_depth_values,

@@ -154,7 +154,7 @@ class DELi_Cube:
                     raise ValueError(f"Control column '{control_col}' is missing in data.")
 
                 control_total = df[control_col].sum()
-                selection_total = df[f"{exp_name}_sum"].sum()
+                selection_total = df[columns].sum(axis=1).sum()
 
                 # # to avoid division by zero, but with the MLE shouldn't be a problem due to smoothing factor
                 # control_total = max(control_total, 1e-10)
@@ -162,7 +162,7 @@ class DELi_Cube:
 
                 df[f"{exp_name}_MLE"] = (
                     (control_total / selection_total) *
-                    ((df[f"{exp_name}_sum"] + 3/8) / (df[control_col] + 3/8))
+                    (((df[columns].sum(axis=1).sum()) + 3/8) / (df[control_col] + 3/8))
                 )
 
         self.data = df
@@ -194,7 +194,7 @@ class DELi_Cube:
             if control_cols is None:
                 raise ValueError(f"Missing control columns for experiment '{exp_name}'.")
 
-            df[f"{exp_name}_avg"] = df[f"{exp_name}_sum"] / len(columns)
+            df[f"{exp_name}_avg"] = (df[columns].sum(axis=1).sum()) / len(columns)
 
             for control_col in control_cols:
                 if control_col not in df.columns:

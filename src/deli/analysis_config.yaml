@@ -1,7 +1,11 @@
 general:
-  data: "sample_data/2_7_DEL_DEL006_cube.csv"
+  data: "/Users/brandonnovy/Desktop/2_7_25_del6/2_7_DEL_DEL006_cube.csv"
   lib_size: 800000
   output_dir: "test"
+
+#If indexes are not provided, raw_indexes will be used. If only indexes are provided, SD_min and NSC_values can't be calculated 
+#due to necessity of raw reads for depth. You can still run deli, but the top of the report will be NA for these values.
+#Control cols necessary for MLE, Z-scores
 
 indexes:
   BRD4: ["corrected_index2", "corrected_index3", "corrected_index9"]
@@ -31,4 +35,5 @@ flags:
   ml_fingerprints_to_RF_clf: true
   clf_thresh: 10
   top_hits: 20
+  top_hits_metric: "sum"
   report: true

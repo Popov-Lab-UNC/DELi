@@ -72,6 +72,8 @@ def main():
     indexes = read_dict_from_file(indexes_path)
     control_cols = read_dict_from_file(control_cols_path)
     raw_indexes = read_dict_from_file(raw_indexes_path)
+    if not indexes:
+        indexes = raw_indexes
 
     cube = DELi_Cube(df, indexes, control_cols, int(config['general'].get('lib_size', 0)), raw_indexes)
 
@@ -113,6 +115,9 @@ def main():
             top_hits_dir = create_output_dir(os.path.join(output_dir, "top_hits"))
             cube.top_n_compounds(int(flags['top_hits']), flags.get('top_hits_metric', 'sum'), output_dir=top_hits_dir)
         if 'report' in flags and flags.get('report', False):
+            nsc_max_dict = nsc_max_dict if 'SD_min' in flags and flags.get('SD_min', False) else None
+            sd_min_dict = sd_min_dict if 'SD_min' in flags and flags.get('SD_min', False) else None
+            sampling_depth_dict = sampling_depth_dict if 'SD_min' in flags and flags.get('SD_min', False) else None
             report.generate_report(output_dir_base, indexes, control_cols, nsc_max_dict, sd_min_dict, sampling_depth_dict)
             print("Report generation completed!")
             today_date = datetime.now().strftime("%Y%m%d")
