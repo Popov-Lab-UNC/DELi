@@ -1,5 +1,6 @@
 """defines DEL enumerator functions and classes"""
 
+import json
 from collections.abc import Iterator
 from functools import reduce
 from itertools import product as iter_product
@@ -8,12 +9,14 @@ from pathlib import Path
 from typing import Callable, List, Optional, Union
 
 import pandas as pd
-from building_block import BuildingBlock, BuildingBlockSet
 from rdkit import Chem
-from reaction import ReactionError, ReactionVial, ReactionWorkflow
 from tqdm import tqdm
 
 from deli.utils.mol_utils import to_smi
+
+from ..configure import DeliDataLoadable, accept_deli_data_name
+from .building_block import BuildingBlock, BuildingBlockSet
+from .reaction import ReactionError, ReactionVial, ReactionWorkflow
 
 
 FAILED_ENUMERATION_STR = "ENUMERATION_FAILED"
@@ -77,7 +80,7 @@ class EnumeratorRunError(Exception):
     pass
 
 
-class DELEnumerator:
+class DELEnumerator(DeliDataLoadable):
     """Handles DNA-encoded library enumeration using library reaction workflows"""
 
     def __init__(
@@ -118,16 +121,21 @@ class DELEnumerator:
 
         # check that the enumerator reaction workflow requires the bb_sets used
         _required_bb_set_ids = set(
-            [_ for step in self.reaction_workflow.rxn_steps for _ in step.requires]
+            [
+                _
+                for step in self.reaction_workflow.rxn_steps
+                for _ in step.requires
+                if not _.startswith("product_")
+            ]
         )
         _found_bb_set_ids = set(list(self.bb_sets.keys()))
 
-        if _required_bb_set_ids - _found_bb_set_ids == set():
+        if (_required_bb_set_ids - _found_bb_set_ids) != set():
             raise EnumeratorBuildError(
                 f"missing required building block set(s) "
                 f"'{_required_bb_set_ids - _found_bb_set_ids}'"
             )
-        if _found_bb_set_ids - _required_bb_set_ids == set():
+        if (_found_bb_set_ids - _required_bb_set_ids) != set():
             raise EnumeratorBuildError(
                 f"found extra building block set(s) "
                 f"'{_found_bb_set_ids - _required_bb_set_ids}'"
@@ -138,6 +146,29 @@ class DELEnumerator:
             raise EnumeratorBuildError(
                 "enumeration reaction requires a scaffold but no scaffold was specified"
             )
+
+    @classmethod
+    @accept_deli_data_name("libraries", "json")
+    def load(cls, path: str):
+        """Load in a enumerator from a library json file"""
+        return cls.from_json(path)
+
+    @classmethod
+    def from_json(cls, path: str):
+        """Load in a enumerator from a library json file"""
+        data = json.load(open(path))
+
+        # load bb sets (needed for reaction setup)
+        bb_sets: list[BuildingBlockSet] = [BuildingBlockSet.load(bb) for bb in data["bb_sets"]]
+        bb_set_ids = set([bb_set.bb_set_id for bb_set in bb_sets] + ["scaffold"])
+
+        reaction_workflow = ReactionWorkflow.load_from_json_list(data["reactions"], bb_set_ids)
+
+        return cls(
+            bb_sets=bb_sets,
+            reaction_workflow=reaction_workflow,
+            scaffold=data.get("scaffold"),
+        )
 
     def __repr__(self) -> str:
         """Represent the enumerator as number of BB sets and reactions in it"""
@@ -278,8 +309,3 @@ class DELEnumerator:
         pd.DataFrame
         """
         return pd.DataFrame([comp.__dict__ for comp in self.enumerate()])
-
-
-# enumerator = DELEnumerator.load(
-#     "C:\\Users\\James\\Projects\\Programing\\deli2\\tests\\test_data\\example_enumerator.json"
-# )
