@@ -7,7 +7,7 @@ from collections import OrderedDict
 from typing import Dict, List, Optional, Self, Tuple
 
 from deli.configure import DeliDataLoadable, accept_deli_data_name
-from deli.decode.hamming import QuaternaryHammingDecoder
+from deli.design.hamming import QuaternaryHammingDecoder
 
 
 class BarcodeSectionTrait(enum.Enum):

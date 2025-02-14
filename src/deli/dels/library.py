@@ -1,16 +1,17 @@
 """defines DEL library functions and classes"""
 
 import json
+from pathlib import Path
 from typing import Any, Iterator, List, Optional, Self, Tuple, Union, overload
 
 from Levenshtein import distance
 
 from deli.configure import DeliDataLoadable, accept_deli_data_name
-from deli.utils.mol_utils import check_valid_smiles
 
 from .barcode import BarcodeSchema, BarcodeSection
 from .building_block import BuildingBlockSet
-from .reaction import Reaction, ReactionStep, ReactionWorkflow
+from .enumerator import DELEnumerator
+from .reaction import ReactionWorkflow
 
 
 class LibraryBuildError(Exception):
@@ -109,6 +110,10 @@ class DELibrary(DeliDataLoadable):
             if scaffold is None and self.dna_barcode_on == "scaffold":
                 raise LibraryBuildError("no scaffold to attach DNA barcode to")
 
+        self.enumerator = DELEnumerator(
+            self.library_reaction_workflow, self.bb_sets, self.scaffold
+        )
+
     def __repr__(self):
         """Represent the library as its name"""
         return self.library_id
@@ -166,32 +171,9 @@ class DELibrary(DeliDataLoadable):
 
         # load bb sets (needed for reaction setup)
         bb_sets: list[BuildingBlockSet] = [BuildingBlockSet.load(bb) for bb in data["bb_sets"]]
-        bb_set_ids = [bb_set.bb_set_id for bb_set in bb_sets]
-        # handle loading the reaction data
+        bb_set_ids = set([bb_set.bb_set_id for bb_set in bb_sets] + ["scaffold"])
 
-        rxn_steps: list[ReactionStep] = list()
-        for rxn_data in data["reactions"]:
-            step_id = rxn_data["step_id"]
-            rxn_smarts = rxn_data["rxn_smarts"]
-            reactant_ids = rxn_data["reactants"]
-
-            # check if a reactant is static
-            # static reactants are those that are valid SMILES and do not map to a bb_set id
-            static_reactants: list[str] = list()
-            variable_reactants: list[str] = list()
-            for reactant_id in reactant_ids:
-                if (reactant_id not in bb_set_ids) and (check_valid_smiles(reactant_id)):
-                    static_reactants.append(reactant_id)
-                else:
-                    variable_reactants.append(reactant_id)
-            rxn_steps.append(
-                ReactionStep(
-                    step_id=step_id,
-                    reaction=Reaction(rxn_smarts),
-                    variable_reactant=variable_reactants,
-                    static_reactants=static_reactants,
-                )
-            )
+        reaction_workflow = ReactionWorkflow.load_from_json_list(data["reactions"], bb_set_ids)
 
         return cls(
             library_id=data["id"],
@@ -199,7 +181,7 @@ class DELibrary(DeliDataLoadable):
             dna_barcode_on=data["dna_barcode_on"],
             barcode_schema=BarcodeSchema.load(data["barcode_schema"]),
             bb_sets=bb_sets,
-            library_reaction_workflow=ReactionWorkflow(rxn_steps),
+            library_reaction_workflow=reaction_workflow,
             scaffold=data["scaffold"],
         )
 
@@ -218,6 +200,32 @@ class DELibrary(DeliDataLoadable):
     def get_library_barcode_pattern(self) -> str:
         """Get the part of the barcode that is needed to decode the library"""
         return self.barcode_schema.full_barcode
+
+    def enumerate_library_to_file(
+        self, out_path: Union[str, Path], use_tqdm: bool = False
+    ) -> None:
+        """
+        Enumerate the compound encoded in the DEL to a csv file
+
+        Will auto generate DEL ids as <LIB_ID>-[<BB_ID>]
+        for all building block sets in the lib
+        e.g. L04-234-567-789 for a 3 cycle library with the id 'L04'
+
+        Parameters
+        ----------
+        out_path: Union[str, Path]
+            path to save csv file
+        use_tqdm: bool, default False
+            whether to use tqdm progress bar
+        """
+        bb_set_order = [bb_set.bb_set_id for bb_set in self.bb_sets]
+
+        def del_id_func(bb_id_mapping: dict[str, str]) -> str:
+            return f"{self.library_id}-" + "-".join(
+                [bb_id_mapping[bb_set_id] for bb_set_id in bb_set_order]
+            )
+
+        self.enumerator.enumerate_to_csv_file(out_path, del_id_func, use_tqdm=use_tqdm)
 
 
 class BaseDELibraryGroup:

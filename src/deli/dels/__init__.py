@@ -2,7 +2,7 @@
 
 from .barcode import BarcodeSchema
 from .building_block import BaseBuildingBlock, BuildingBlock, BuildingBlockSet, MaskedBuildingBlock
-from .enumerated import FullyEnumeratedCompound
+from .enumerator import DELEnumerator
 from .index import Index, IndexSet, get_min_index_distance
 from .library import (
     DELibrary,
@@ -12,8 +12,6 @@ from .library import (
 )
 from .synthon import Disynthon, HasDisynthonMixin, HasMonosynthonMixin, Monosynthon
 from .umi import Umi
-from .enumerator import DELEnumerator
-from .reaction import Reaction, MultiReactionPipeline
 
 
 __all__ = [
@@ -24,8 +22,6 @@ __all__ = [
     "DELibrary",
     "DELibraryGroup",
     "DELibrarySchemaGroup",
-    "Reaction",
-    "MultiReactionPipeline",
     "DELEnumerator",
     "get_min_library_tag_distance",
     "BaseBuildingBlock",
@@ -36,6 +32,5 @@ __all__ = [
     "HasDisynthonMixin",
     "Disynthon",
     "HasMonosynthonMixin",
-    "FullyEnumeratedCompound",
     "Umi",
 ]

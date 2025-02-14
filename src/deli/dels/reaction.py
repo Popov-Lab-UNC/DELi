@@ -29,10 +29,10 @@ class Reaction:
         self.rxn = rdChemReactions.ReactionFromSmarts(rxn_smarts)
         self.num_reactants = self.rxn.GetNumReactantTemplates()
 
-        if self.rxn.GetNumReactants() != 1:
+        if self.rxn.GetNumProductTemplates() != 1:
             raise ReactionError(
                 "reaction must produce exactly one product; " "found {}".format(
-                    self.rxn.GetNumReactants()
+                    self.rxn.GetNumProductTemplates()
                 )
             )
 
@@ -64,7 +64,9 @@ class Reaction:
 
         # Sanitize the product before return
         try:
-            return Chem.SanitizeMol(product)
+            product.UpdatePropertyCache()
+            Chem.SanitizeMol(product)
+            return product
         except Exception as e:
             raise RuntimeError(f"Failed to sanitize reaction product: {e}") from e
 
@@ -223,3 +225,49 @@ class ReactionWorkflow:
         for step in self.rxn_steps:
             step.run_step(starting_reactants)
         return starting_reactants[self._final_product_id]
+
+    @classmethod
+    def load_from_json_list(cls, rxn_list: list[dict], bb_set_ids: set[str]) -> "ReactionWorkflow":
+        """
+        Load a reaction workflow from a list of reaction steps defined in json format
+
+        This requires the building blocks sets ids to determine what is
+        a static reactant
+
+        Parameters
+        ----------
+        rxn_list: list[dict]
+            the list of reaction steps defined in json dict format
+        bb_set_ids: set[str]
+            the set of building block set ids
+
+        Returns
+        -------
+        ReactionWorkflow
+        """
+        rxn_steps: list[ReactionStep] = list()
+        for rxn_data in rxn_list:
+            step_id = rxn_data["step"]
+            rxn_smarts = rxn_data["rxn_smarts"]
+            reactant_ids = rxn_data["reactants"]
+
+            bb_set_ids.add(f"product_{step_id}")  # to make it skip products
+
+            # check if a reactant is static
+            # static reactants are those that are valid SMILES and do not map to a bb_set id
+            static_reactants: list[str] = list()
+            variable_reactants: list[str] = list()
+            for reactant_id in reactant_ids:
+                if reactant_id not in bb_set_ids:
+                    static_reactants.append(reactant_id)
+                else:
+                    variable_reactants.append(reactant_id)
+            rxn_steps.append(
+                ReactionStep(
+                    step_id=step_id,
+                    reaction=Reaction(rxn_smarts),
+                    variable_reactant=variable_reactants,
+                    static_reactants=static_reactants,
+                )
+            )
+        return cls(rxn_steps)
