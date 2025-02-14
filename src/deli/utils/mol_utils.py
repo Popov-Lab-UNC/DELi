@@ -3,7 +3,7 @@
 from typing import Literal, Optional, Union, overload
 
 from rdkit import Chem
-from rdkit.Chem.MolStandardize import LargestFragmentChooser
+from rdkit.Chem.MolStandardize.rdMolStandardize import LargestFragmentChooser
 from rdkit.rdBase import BlockLogs
 
 
@@ -62,6 +62,28 @@ def to_mol(smi: Molable, fail_on_error: bool = True) -> Optional[Chem.Mol]:
             raise TypeError(f"cannot convert type {type(smi)} to type rdkit.Mol")
         else:
             return None
+
+
+def to_smi(mol: Chem.Mol) -> str:
+    """
+    Given a Chem.Mol object, convert it to a SMILES
+
+    Notes
+    -----
+    It is my understanding that the Chem.MolToSmiles function cannot fail
+    for sanitized Mols. This function expects all Mols passed are sanitized
+
+    Parameters
+    ----------
+    mol: Any
+        object to convert to a Chem.Mol
+
+    Returns
+    -------
+    str
+    """
+    _lock = BlockLogs()  # this turns off the rdkit logger
+    return Chem.MolToSmiles(mol)
 
 
 def check_valid_smiles(smi: str) -> bool:
