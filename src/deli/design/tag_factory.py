@@ -3,7 +3,7 @@
 import math
 from typing import List, Optional
 
-from deli.decode.hamming import BaseQuaternaryHamming
+from .hamming import BaseQuaternaryHamming
 
 
 class QuaternaryHammingTagFactory(BaseQuaternaryHamming):
