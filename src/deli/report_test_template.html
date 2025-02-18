@@ -100,25 +100,32 @@
 
         /* Flexbox for disynthon plots */
         .disynthon-inline {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 15px;
-        justify-content: flex-start; /* Align to the left */
-        align-items: center; /* Center vertically */
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            justify-content: flex-start; /* Align to the left */
+            align-items: center; /* Center vertically */
         }
 
         .plot {
-        flex: 1 1 auto; /* Allows flexible resizing */
-        max-width: calc(33.333% - 15px); /* Ensures 3 items per row */
-        text-align: center;
+            flex: 1 1 auto; /* Allows flexible resizing */
+            max-width: calc(33.333% - 15px); /* Ensures 3 items per row */
+            text-align: center;
         }
 
         .plot img {
-        max-width: 100%;
-        height: auto;
-        border-radius: 8px;
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
         }
 
+        /* Style for a single plot to behave like a normal picture (centered) */
+        .single-plot {
+            display: block;
+            margin: 0 auto;
+            max-width: 100%;
+            height: auto;
+        }
     </style>
 </head>
 <body>
@@ -192,11 +199,6 @@
         <img src="{{ plot }}" alt="Trisynthon Plot">
         {% endfor %}
     </section>
-    {% else %}
-    <section>
-        <h2>Trisynthon Overlap</h2>
-        <p class="placeholder">No Trisynthon plots available.</p>
-    </section>
     {% endif %}
 
     <!-- Disynthon Overlap Section -->
@@ -222,23 +224,22 @@
         <div class="experiment-group">
             <h3>{{ experiment }}</h3>
             <div class="disynthon-inline">
-                {% for plot in plots %}
+                {% if plots|length == 1 %}
+                    <!-- logic for one plot -->
+                    <img src="{{ plots[0] }}" alt="Disynthon Plot for {{ experiment }}" class="single-plot">
+                {% else %}
+                    {% for plot in plots %}
                     <div class="plot">
                         <img src="{{ plot }}" alt="Disynthon Plot for {{ experiment }}">
                     </div>
-                {% endfor %}
+                    {% endfor %}
+                {% endif %}
             </div>
         </div>
         {% endfor %}
 
     </section>
-    {% else %}
-    <section>
-        <h2>Disynthon Overlap</h2>
-        <p class="placeholder">No Disynthon plots available.</p>
-    </section>
     {% endif %}
-
 
 
     <!-- Top Hit Compound Plots Section -->

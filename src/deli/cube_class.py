@@ -13,7 +13,7 @@ from tqdm import tqdm
 import seaborn as sns
 
 class DELi_Cube:
-    def __init__(self, data, indexes, control_cols=None, lib_size=None, raw_indexes=None):
+    def __init__(self, data, id_col, indexes, control_cols=None, lib_size=None, raw_indexes=None):
         """
         Initialize the DELi_Cube object with the provided data, indexes, and control columns.
 
@@ -33,10 +33,27 @@ class DELi_Cube:
         """
 
         self.data = data
+        self.id_col = id_col
         self.indexes = indexes 
         self.control_cols = control_cols 
         self.lib_size = lib_size
         self.raw_indexes = raw_indexes
+     
+        if not all(col in self.data.columns for col in ['ID_A', 'ID_B', 'ID_C']):
+            first_row_id = self.data[self.id_col].iloc[0]
+            parts_count = len(first_row_id.split('-'))
+
+            if parts_count == 2:
+                new_cols = self.data[self.id_col].str.split('-', expand=True)
+                new_cols.columns = ['ID_A', 'ID_B']
+                self.data = pd.concat([self.data.iloc[:, :self.data.columns.get_loc(self.id_col) + 1], new_cols, self.data.iloc[:, self.data.columns.get_loc(self.id_col) + 1:]], axis=1)
+            elif parts_count == 3:
+                new_cols = self.data[self.id_col].str.split('-', expand=True)
+                new_cols.columns = ['ID_A', 'ID_B', 'ID_C']
+                self.data = pd.concat([self.data.iloc[:, :self.data.columns.get_loc(self.id_col) + 1], new_cols, self.data.iloc[:, self.data.columns.get_loc(self.id_col) + 1:]], axis=1)
+            else:
+                raise ValueError("DEL_ID must be split into 2 or 3 parts.")
+
 
 
     def SD_min(self):
@@ -332,22 +349,29 @@ class DELi_Cube:
 
         if len(synthon_ids) not in [2, 3]:
             raise ValueError("synthon_ids must contain exactly two or three elements.")
+        
+    
+        new_cols = {}
+        new_cols['AB'] = df[synthon_ids[0]] + '-' + df[synthon_ids[1]]
+        if len(synthon_ids) == 3:
+            new_cols['AC'] = df[synthon_ids[0]] + '-' + df[synthon_ids[2]]
+            new_cols['BC'] = df[synthon_ids[1]] + '-' + df[synthon_ids[2]]
 
         
-        if len(synthon_ids) == 2:
-            df['AB'] = df[synthon_ids[0]] + '-' + df[synthon_ids[1]]
-        elif len(synthon_ids) == 3:
-            df['AB'] = df[synthon_ids[0]] + '-' + df[synthon_ids[1]]
-            df['AC'] = df[synthon_ids[0]] + '-' + df[synthon_ids[2]]
-            df['BC'] = df[synthon_ids[1]] + '-' + df[synthon_ids[2]]
+        col_order = list(df.columns)
+        if 'DEL_ID' in col_order:
+            del_idx = col_order.index('DEL_ID') + 1  
+            for col_name, col_values in reversed(new_cols.items()):
+                df.insert(del_idx, col_name, col_values)
+        else:
+            for col_name, col_values in new_cols.items():
+                df[col_name] = col_values  
 
         exp_dict = {}
 
-        
         for exp_id, index_range in self.indexes.items():
-           
             ab_count = df.groupby('AB')[index_range].sum().reset_index()
-            ab_count.columns = ['AB'] + [f'count_AB_{exp_id}_{idx}' for idx in index_range]  
+            ab_count.columns = ['AB'] + [f'count_AB_{exp_id}_{idx}' for idx in index_range]
 
             if len(synthon_ids) == 3:
                 ac_count = df.groupby('AC')[index_range].sum().reset_index()
@@ -356,20 +380,17 @@ class DELi_Cube:
                 bc_count = df.groupby('BC')[index_range].sum().reset_index()
                 bc_count.columns = ['BC'] + [f'count_BC_{exp_id}_{idx}' for idx in index_range]
 
-            
             df = df.merge(ab_count, on='AB', how='left')
             if len(synthon_ids) == 3:
                 df = df.merge(ac_count, on='AC', how='left')
                 df = df.merge(bc_count, on='BC', how='left')
 
-            # dynamically build exp_dict based on exp_id and index ranges for future fxns involving disynth
             for idx in index_range:
                 exp_dict[f'AB_{exp_id}'] = exp_dict.get(f'AB_{exp_id}', []) + [f'count_AB_{exp_id}_{idx}']
                 if len(synthon_ids) == 3:
                     exp_dict[f'AC_{exp_id}'] = exp_dict.get(f'AC_{exp_id}', []) + [f'count_AC_{exp_id}_{idx}']
                     exp_dict[f'BC_{exp_id}'] = exp_dict.get(f'BC_{exp_id}', []) + [f'count_BC_{exp_id}_{idx}']
 
-        # Used to fill NaN values with 0 in the count columns
         for count_cols in exp_dict.values():
             for col in count_cols:
                 df[col].fillna(0, inplace=True)
@@ -415,40 +436,46 @@ class DELi_Cube:
         if normalized_data is None:
             normalized_data = self.data
 
+        if output_dir is None:
+            output_dir = '.'
+
+        valid_experiments = 0  # Track how many experiments have at least two valid indices
+
         for exp_name, indices in self.indexes.items():
+            valid_indices = [idx for idx in indices if idx in normalized_data.columns]
+            num_valid_indices = len(valid_indices)
 
-            num_indices = len(indices)
+            if num_valid_indices < 2:
+                print(f"Skipping experiment '{exp_name}' - not enough valid indices ({num_valid_indices} found).")
+                continue
+            elif num_valid_indices < len(indices):
+                print(f"Warning: Experiment '{exp_name}' has missing indices. Proceeding with {num_valid_indices} valid indices.")
 
-            
-            if num_indices not in [2, 3]:
-                raise ValueError(f"Expected exactly two or three indices for '{exp_name}', got {num_indices}")
+            valid_experiments += 1
 
-            
             filtered_data = normalized_data[
-                (normalized_data[indices[0]] > threshold) |
-                (normalized_data[indices[1]] > threshold) |
-                (normalized_data[indices[2]] > threshold) if num_indices == 3 else
-                (normalized_data[indices[0]] > threshold) |
-                (normalized_data[indices[1]] > threshold)
+                (normalized_data[valid_indices[0]] > threshold) |
+                (normalized_data[valid_indices[1]] > threshold)
             ]
 
-            
-            set_a = set(filtered_data[filtered_data[indices[0]] > threshold]['DEL_ID'])
-            set_b = set(filtered_data[filtered_data[indices[1]] > threshold]['DEL_ID'])
-            if num_indices == 3:
-                set_c = set(filtered_data[filtered_data[indices[2]] > threshold]['DEL_ID'])
+            set_a = set(filtered_data[filtered_data[valid_indices[0]] > threshold]['DEL_ID'])
+            set_b = set(filtered_data[filtered_data[valid_indices[1]] > threshold]['DEL_ID'])
 
-           
             plt.figure(figsize=(8, 6))
-            if num_indices == 3:
-                venn3([set_a, set_b, set_c], set_labels=(indices[0], indices[1], indices[2]))
+            if num_valid_indices == 3:
+                set_c = set(filtered_data[filtered_data[valid_indices[2]] > threshold]['DEL_ID'])
+                venn3([set_a, set_b, set_c], set_labels=(valid_indices[0], valid_indices[1], valid_indices[2]))
                 plt.title(f'Overlap Diagram for {exp_name} (Three Indices)')
             else:
-                venn2([set_a, set_b], set_labels=(indices[0], indices[1]))
+                venn2([set_a, set_b], set_labels=(valid_indices[0], valid_indices[1]))
                 plt.title(f'Overlap Diagram for {exp_name} (Two Indices)')
-            if output_dir is None:
-                output_dir = '.'
+
             plt.savefig(f'{output_dir}/{exp_name}_overlap_diagram.png')
+            plt.close()
+
+        if valid_experiments == 0:
+            raise ValueError("No experiments had at least two valid indices. Cannot generate overlap diagrams.")
+
 
 
     def disynthon_overlap(self, output_dir=None, disynthon_data=None, disynth_exp_dict=None, threshold=0.0):
@@ -472,57 +499,50 @@ class DELi_Cube:
 
         disynthon_data = disynthon_data.copy()
 
-        for exp_name, indices in disynth_exp_dict.items():
-           
-            if not all(col in disynthon_data.columns for col in indices):
-                raise ValueError(f"One or more columns in {indices} are missing from the DataFrame.")
+        if output_dir is None:
+            output_dir = '.'
 
-            
-            mask = disynthon_data[indices].gt(threshold).any(axis=1)
+        valid_experiments = 0  # Track number of valid experiments
+
+        for exp_name, indices in disynth_exp_dict.items():
+            # Filter valid indices that exist in the dataframe
+            valid_indices = [idx for idx in indices if idx in disynthon_data.columns]
+            num_valid_indices = len(valid_indices)
+
+            if num_valid_indices < 2:
+                print(f"Skipping experiment '{exp_name}' - not enough valid indices ({num_valid_indices} found).")
+                continue
+            elif num_valid_indices < len(indices):
+                print(f"Warning: Experiment '{exp_name}' has missing indices. Proceeding with {num_valid_indices} valid indices.")
+
+            valid_experiments += 1
+
+            mask = disynthon_data[valid_indices].gt(threshold).any(axis=1)
             filtered_data = disynthon_data[mask]
 
-            #
             disynthon_type = exp_name.split('_')[0]
             if disynthon_type not in filtered_data.columns:
-                raise ValueError(f"Column '{disynthon_type}' not found in the DataFrame.")
+                print(f"Skipping experiment '{exp_name}' - column '{disynthon_type}' not found in the DataFrame.")
+                continue
 
-            
-            set_a = set(filtered_data[filtered_data[indices[0]] > threshold][disynthon_type])
-            set_b = set(filtered_data[filtered_data[indices[1]] > threshold][disynthon_type])
-            
-            if len(indices) == 2:
-                plt.figure(figsize=(8, 6))
-                venn2([set_a, set_b], set_labels=(indices[0], indices[1]))
-                plt.title(f'Venn Diagram for {exp_name} (Threshold: {threshold})', fontsize=16)
-                plt.xlabel('Sets', fontsize=14)
-                plt.ylabel('Counts', fontsize=14)
-                plt.xticks(fontsize=12)
-                plt.yticks(fontsize=12)
-                venn3_circles = plt.gca().findobj(match=plt.Text)
-                for text in venn3_circles:
-                    text.set_fontsize(18)  # Increase font size for numbers in circles and overlaps
-                if output_dir is None:
-                    output_dir = '.'
-                plt.savefig(f'{output_dir}/{exp_name}_venn_diagram.png', bbox_inches='tight')
+            set_a = set(filtered_data[filtered_data[valid_indices[0]] > threshold][disynthon_type])
+            set_b = set(filtered_data[filtered_data[valid_indices[1]] > threshold][disynthon_type])
 
-            elif len(indices) == 3:
-                set_c = set(filtered_data[filtered_data[indices[2]] > threshold][disynthon_type])
-                plt.figure(figsize=(8, 6))
-                venn3([set_a, set_b, set_c], set_labels=(indices[0], indices[1], indices[2]))
-                plt.title(f'Venn Diagram for {exp_name} (Threshold: {threshold})', fontsize=16)
-                plt.xlabel('Sets', fontsize=14)
-                plt.ylabel('Counts', fontsize=14)
-                plt.xticks(fontsize=12)
-                plt.yticks(fontsize=12)
-                venn3_circles = plt.gca().findobj(match=plt.Text)
-                for text in venn3_circles:
-                    text.set_fontsize(18)  # Increase font size for numbers in circles and overlaps
-                if output_dir is None:
-                    output_dir = '.'
-                plt.savefig(f'{output_dir}/{exp_name}_venn_diagram.png', bbox_inches='tight')
-                
+            plt.figure(figsize=(8, 6))
+            if num_valid_indices == 3:
+                set_c = set(filtered_data[filtered_data[valid_indices[2]] > threshold][disynthon_type])
+                venn3([set_a, set_b, set_c], set_labels=(valid_indices[0], valid_indices[1], valid_indices[2]))
+                plt.title(f'Venn Diagram for {exp_name} (Three Indices) \n Threshold = {threshold}', fontsize=16)
             else:
-                raise ValueError(f"Only 2 or 3 indices are supported for Venn diagrams, got {len(indices)}.")
+                venn2([set_a, set_b], set_labels=(valid_indices[0], valid_indices[1]))
+                plt.title(f'Venn Diagram for {exp_name} (Two Indices) \n Threshold = {threshold}', fontsize=16)
+
+            plt.savefig(f'{output_dir}/{exp_name}_venn_diagram.png', bbox_inches='tight')
+            plt.close()
+
+        if valid_experiments == 0:
+            raise ValueError("No experiments had at least two valid indices. Cannot generate overlap diagrams.")
+
 
     def ml_fingerprints_to_RF(self, output_dir=None):
         """Trains a Random Forest regressor and a Dummy regressor on trisynthon SMILES fingerprints 

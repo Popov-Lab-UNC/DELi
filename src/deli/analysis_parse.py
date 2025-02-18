@@ -50,6 +50,10 @@ def main():
         raise ValueError("Data file must be specified in the YAML config.")
     df = pd.read_csv(data_file)
 
+    if 'ID_col' in config['general']:
+        id_col = config['general']['ID_col']
+    else:
+        id_col = df.columns[0]  # Default to the first column if ID_col is not specified
     indexes = config.get('indexes', {})
     control_cols = config.get('control_cols', {})
     raw_indexes = config.get('raw_indexes', {})
@@ -75,7 +79,7 @@ def main():
     if not indexes:
         indexes = raw_indexes
 
-    cube = DELi_Cube(df, indexes, control_cols, int(config['general'].get('lib_size', 0)), raw_indexes)
+    cube = DELi_Cube(df, id_col, indexes, control_cols, int(config['general'].get('lib_size', 0)), raw_indexes)
 
     print(cube.data.head())
     if 'flags' in config:

@@ -7,6 +7,8 @@ general:
 #due to necessity of raw reads for depth. You can still run deli, but the top of the report will be NA for these values.
 #Control cols necessary for MLE, Z-scores
 
+id_col: "DEL_ID"
+
 indexes:
   BRD4: ["corrected_index2", "corrected_index3", "corrected_index9"]
   53bp1: ["corrected_index4", "corrected_index6", "corrected_index7"]
