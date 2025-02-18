@@ -1,15 +1,23 @@
 """define reaction classes"""
 
+import abc
+import warnings
 from typing import List, Tuple
 
 from rdkit import Chem
 from rdkit.Chem import rdChemReactions
 
-from deli.utils.mol_utils import Molable, to_mol
+from deli.utils.mol_utils import to_mol
 
 
 class ReactionError(Exception):
     """error for generic reaction failure"""
+
+    pass
+
+
+class ReactionWarning(UserWarning):
+    """warning for abnormal reaction behavior that is not a failure"""
 
     pass
 
@@ -35,6 +43,36 @@ class Reaction:
                     self.rxn.GetNumProductTemplates()
                 )
             )
+
+    def _order_reactants(self, *args: Chem.Mol) -> Tuple[Chem.Mol, ...]:
+        """RDKit needs reactants in the right order, this will do that"""
+        matches: List[List[Chem.Mol]] = list()
+        for i in range(self.num_reactants):
+            react_matches: List[Chem.Mol] = list()
+            _react_temp = self.rxn.GetReactantTemplate(i)
+            for mol in args:
+                if mol.HasSubstructMatch(_react_temp):
+                    react_matches.append(mol)
+            matches.append(react_matches)
+
+        reactant_tuple: List[Chem.Mol] = []
+        for i, match_set in enumerate(matches):
+            if len(match_set) > 1:
+                warnings.warn(
+                    f"found multiple matches for reactant template {i} in reaction "
+                    f"{rdChemReactions.ReactionToSmarts(self.rxn)}. "
+                    f"selecting first match by default; could cause invalid product",
+                    ReactionWarning,
+                    stacklevel=1,
+                )
+            elif len(match_set) == 0:
+                raise ReactionError(
+                    f"failed to match reactants to reactant template {i} in reaction "
+                    f"{rdChemReactions.ReactionToSmarts(self.rxn)}"
+                )
+            reactant_tuple.append(match_set[0])
+
+        return tuple(reactant_tuple)
 
     def react(self, *args: Tuple[Chem.Mol, ...]) -> Chem.Mol:
         """
@@ -65,7 +103,6 @@ class Reaction:
         # Sanitize the product before return
         try:
             product.UpdatePropertyCache()
-            Chem.SanitizeMol(product)
             return product
         except Exception as e:
             raise RuntimeError(f"Failed to sanitize reaction product: {e}") from e
@@ -93,6 +130,88 @@ class ReactionVial(dict[str, Chem.Mol]):
         self[product_id] = product
 
 
+class Reactant(abc.ABC):
+    """abstract class for all reactants"""
+
+    @abc.abstractmethod
+    def get_from_vial(self, vial: ReactionVial) -> Chem.Mol:
+        """Return a mol of the reactant from the pass vial"""
+        raise NotImplementedError
+
+
+class StaticReactant(Reactant):
+    """A reactant that is the same for all DEL pools"""
+
+    def __init__(self, mol: Chem.Mol):
+        """
+        Initialize a static reactant
+
+        Parameters
+        ----------
+        mol: Chem.Mol
+            the molecule of the static reactant
+        """
+        self.mol = mol
+
+    def get_from_vial(self, vial: ReactionVial) -> Chem.Mol:
+        """
+        Returns the static molecule
+
+        The vial is ignored, as static reactants never change.
+        Argument is for compatability
+
+        Parameters
+        ----------
+        vial: ReactionVial
+            ignored; for compatability
+
+        Returns
+        -------
+        Chem.Mol
+        """
+        return self.mol
+
+
+class BBSetReactant(Reactant):
+    """A reactant that varies based on the BB_ID from the BB_Set it comes from"""
+
+    def __init__(self, bb_set_id: str):
+        """
+        Initialize a BBSet reactant
+
+        Parameters
+        ----------
+        bb_set_id: the BuildingBlockSet ID for the reactant to be pulled from
+        """
+        self.bb_set_id = bb_set_id
+
+    def get_from_vial(self, vial: ReactionVial) -> Chem.Mol:
+        """
+        Returns the variable molecule from the BB set with matching ID from the vial
+
+        Parameters
+        ----------
+        vial: ReactionVial
+            vial to search in
+
+        Returns
+        -------
+        Chem.Mol
+
+        Raises
+        ------
+        ReactionError
+            if there is no matching BB set id in the reaction vial
+        """
+        reactant = vial.get(self.bb_set_id, None)
+        if reactant is None:
+            raise ReactionError(
+                f"failed to find a reactant from BB Set {self.bb_set_id} "
+                f"in current reactant set {list(vial.keys())}"
+            )
+        return reactant
+
+
 class ReactionStep:
     """
     Contains required information to carry out a reaction step
@@ -100,29 +219,14 @@ class ReactionStep:
     Reaction steps are abstract guidelines for how a reaction is carried out.
     It include the reaction itself, and info about the reactants that should be used.
 
-    This separates "static" reactants from "variable" ones.
-    "variable" reactants can have chemical structures vary between ReactantVials,
-    and are instead identified by their reactant ID (from the ReactantVial).
-    "static" reactants are always the same chemical.
-    These are identified by their SMILES rather than an ID
-
     Attributes
     ----------
     product_id: str
         the id of the product produced by the reaction
         by default this is always "product_<step_id>"
-    requires: List[str]
-        the ids of the reactants that are necessary for the reaction
-        same as the "variable_reactions" parameter that is passed
     """
 
-    def __init__(
-        self,
-        step_id: int,
-        reaction: Reaction,
-        variable_reactant: List[str],
-        static_reactants: List[Molable],
-    ):
+    def __init__(self, step_id: int, reaction: Reaction, reactants: List[Reactant]):
         """
         initialize a reaction step
 
@@ -132,17 +236,14 @@ class ReactionStep:
             the id of the step
         reaction: Reaction
             the reaction to be carried out in the step
-        variable_reactant: List[str]
-            the ids of the reactants to be used during the step
-        static_reactants: List[Molable]
-            any chemicals that are always present during the reaction
+        reactants: List[Reactants]
+            the reactants to be used for this step
+            must be passed in order that the rxn smarts uses them
+            See https://github.com/rdkit/rdkit/issues/4361
         """
         self.step_id = step_id
         self.reaction = reaction
-        self.requires = set(variable_reactant)
-        self.static_reactants = [
-            to_mol(static_reactant, fail_on_error=True) for static_reactant in static_reactants
-        ]
+        self.reactants = reactants
         self.product_id = f"product_{self.step_id}"
 
     def run_step(self, possible_reactants: ReactionVial):
@@ -157,8 +258,12 @@ class ReactionStep:
         possible_reactants: ReactionVial
             the pool of possible reactants to be used during the step
         """
-        reactants = [possible_reactants[req] for req in self.requires] + self.static_reactants
-        possible_reactants.add_product(self.product_id, self.reaction.react(*reactants))
+        possible_reactants.add_product(
+            self.product_id,
+            self.reaction.react(
+                *[reactant.get_from_vial(possible_reactants) for reactant in self.reactants]
+            ),
+        )
 
 
 class ReactionWorkflowError(Exception):
@@ -255,19 +360,13 @@ class ReactionWorkflow:
 
             # check if a reactant is static
             # static reactants are those that are valid SMILES and do not map to a bb_set id
-            static_reactants: list[str] = list()
-            variable_reactants: list[str] = list()
+            reactants: list[Reactant] = list()
             for reactant_id in reactant_ids:
                 if reactant_id not in bb_set_ids:
-                    static_reactants.append(reactant_id)
+                    reactants.append(StaticReactant(to_mol(reactant_id, fail_on_error=True)))
                 else:
-                    variable_reactants.append(reactant_id)
+                    reactants.append(BBSetReactant(reactant_id))
             rxn_steps.append(
-                ReactionStep(
-                    step_id=step_id,
-                    reaction=Reaction(rxn_smarts),
-                    variable_reactant=variable_reactants,
-                    static_reactants=static_reactants,
-                )
+                ReactionStep(step_id=step_id, reaction=Reaction(rxn_smarts), reactants=reactants)
             )
         return cls(rxn_steps)

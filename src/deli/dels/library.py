@@ -1,6 +1,8 @@
 """defines DEL library functions and classes"""
 
 import json
+from functools import reduce
+from operator import mul
 from pathlib import Path
 from typing import Any, Iterator, List, Optional, Self, Tuple, Union, overload
 
@@ -9,7 +11,7 @@ from Levenshtein import distance
 from deli.configure import DeliDataLoadable, accept_deli_data_name
 
 from .barcode import BarcodeSchema, BarcodeSection
-from .building_block import BuildingBlockSet
+from .building_block import BuildingBlock, BuildingBlockSet
 from .enumerator import DELEnumerator
 from .reaction import ReactionWorkflow
 
@@ -99,7 +101,7 @@ class DELibrary(DeliDataLoadable):
                 f"got {self.num_cycles} and {barcode_schema.num_cycles}"
             )
 
-        self.library_size = sum([len(bb_set) for bb_set in self.bb_sets])
+        self.library_size = reduce(mul, [len(bb_set) for bb_set in self.bb_sets])
 
         # handle the dna bases location
         if self.dna_barcode_on not in [bb_set.bb_set_id for bb_set in self.bb_sets]:
@@ -220,9 +222,9 @@ class DELibrary(DeliDataLoadable):
         """
         bb_set_order = [bb_set.bb_set_id for bb_set in self.bb_sets]
 
-        def del_id_func(bb_id_mapping: dict[str, str]) -> str:
+        def del_id_func(bb_id_mapping: dict[str, BuildingBlock]) -> str:
             return f"{self.library_id}-" + "-".join(
-                [bb_id_mapping[bb_set_id] for bb_set_id in bb_set_order]
+                [bb_id_mapping[bb_set_id].bb_id for bb_set_id in bb_set_order]
             )
 
         self.enumerator.enumerate_to_csv_file(out_path, del_id_func, use_tqdm=use_tqdm)

@@ -1,0 +1,17 @@
+{
+    "id": "Make6",
+    "sections": {
+        "index": "NNNNNNNNNN",
+        "primer": "CCTTGGCACCCGAGAATTCCA",
+        "library": "NNNNNNNN",
+        "library_overhang": "CTA",
+        "bb1": "NNNNNNNN",
+        "bb1_overhang": "ACG",
+        "bb2": "NNNNNNNN",
+        "bb2_overhang": "GAT",
+        "bb3": "NNNNNNNN",
+        "bb3_overhang": "TGC",
+        "pre-umi": "AATGCCAGTACG",
+        "umi": "NNNNNNNNNNN"
+    }
+}
