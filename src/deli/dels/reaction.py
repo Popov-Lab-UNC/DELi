@@ -74,13 +74,13 @@ class Reaction:
 
         return tuple(reactant_tuple)
 
-    def react(self, *args: Tuple[Chem.Mol, ...]) -> Chem.Mol:
+    def react(self, *args: Chem.Mol) -> Chem.Mol:
         """
         Run reaction on input molecules/SMILES
 
         Parameters
         ----------
-        *args: Tuple[Chem.Mol, ...]
+        *args: Chem.Mol
             the molecules to use as reactants
 
         Returns
