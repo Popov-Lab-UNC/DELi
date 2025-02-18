@@ -21,6 +21,11 @@ CONFIG_DIR_PATH = Path(os.path.join(os.path.expanduser("~"), ".deli"))
 DELI_DATA_SUB_DIRS = ["hamming", "barcodes", "libraries", "indexes", "building_blocks"]
 
 
+def set_deli_data_dir(data_dir: Union[str, Path]) -> None:
+    """Sets the deli data directory path"""
+    DELI_CONFIG.deli_data_dir = Path(data_dir) if isinstance(data_dir, str) else data_dir
+
+
 class DeliDataNotFound(Exception):
     """raised when a file cannot be found in DELi data directory"""
 

@@ -2,6 +2,7 @@
 
 import json
 from collections.abc import Iterator
+from copy import deepcopy
 from functools import reduce
 from itertools import product as iter_product
 from operator import mul
@@ -16,7 +17,7 @@ from deli.utils.mol_utils import to_smi
 
 from ..configure import DeliDataLoadable, accept_deli_data_name
 from .building_block import BuildingBlock, BuildingBlockSet
-from .reaction import ReactionError, ReactionVial, ReactionWorkflow
+from .reaction import BBSetReactant, ReactionError, ReactionVial, ReactionWorkflow
 
 
 FAILED_ENUMERATION_STR = "ENUMERATION_FAILED"
@@ -122,10 +123,10 @@ class DELEnumerator(DeliDataLoadable):
         # check that the enumerator reaction workflow requires the bb_sets used
         _required_bb_set_ids = set(
             [
-                _
+                _.bb_set_id
                 for step in self.reaction_workflow.rxn_steps
-                for _ in step.requires
-                if not _.startswith("product_")
+                for _ in step.reactants
+                if isinstance(_, BBSetReactant) and not _.bb_set_id.startswith("product_")
             ]
         )
         _found_bb_set_ids = set(list(self.bb_sets.keys()))
@@ -201,7 +202,7 @@ class DELEnumerator(DeliDataLoadable):
             bb_id_map = {bb[0]: bb[1] for bb in bb_combo}
             try:
                 enumerated_mol = self.reaction_workflow.run_workflow(
-                    ReactionVial({bb[0]: bb[1].mol for bb in bb_combo})
+                    ReactionVial({bb[0]: deepcopy(bb[1].mol) for bb in bb_combo})
                 )
                 yield EnumeratedDELCompound(enumerated_mol, bb_id_map)
             except ReactionError:
