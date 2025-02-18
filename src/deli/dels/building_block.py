@@ -3,9 +3,10 @@
 import abc
 import os
 import warnings
-from typing import List, Optional, Self
+from typing import List, Literal, Optional, Self, overload
 
 from deli.configure import DELI_CONFIG, DeliDataLoadable, accept_deli_data_name
+from deli.utils.mol_utils import to_mol
 
 
 class BuildingBlockSetError(Exception):
@@ -91,9 +92,17 @@ class MaskedBuildingBlock(BaseBuildingBlock):
 
 
 class BuildingBlock(BaseBuildingBlock):
-    """define building block class"""
+    """
+    Define building block class
 
-    def __init__(self, bb_id: str, tag: str, smiles: Optional[str] = None):
+    Attributes
+    ----------
+    mol: Chem.Mol
+        the rdkit mol for the building block
+        if smiles is None will be None
+    """
+
+    def __init__(self, bb_id: str, tag: str, smiles: Optional[str] = None, load_mol: bool = False):
         """
         Initialize the building block
 
@@ -105,11 +114,36 @@ class BuildingBlock(BaseBuildingBlock):
             the dna tag associated with this building block
         smiles: Optional[str], default = None
             SMILES of the building block
+        load_mol: bool, default = False
+            load the rdkit mol for this smiles
+            requires smiles is not None
         """
         super().__init__()
         self.bb_id = bb_id
         self.smiles = smiles
         self.tag = tag
+
+        self._mol = None
+        if load_mol:
+            if self.smiles is not None:
+                self._mol = to_mol(self.smiles, fail_on_error=True)
+            else:
+                warnings.warn(
+                    f"cannot load mol for building block {self.bb_id} because smiles is None",
+                    stacklevel=1,
+                )
+
+    @property
+    def mol(self):
+        """The rdkit mol for the building block if smiles is None will be None"""
+        if self._mol is None and self.smiles is not None:
+            self._mol = to_mol(self.smiles, fail_on_error=True)
+        return self._mol
+
+    @mol.deleter
+    def mol(self):
+        """Set the mol property to None"""
+        self._mol = None
 
     @classmethod
     def from_dict(cls, data: dict):
@@ -148,6 +182,11 @@ class BuildingBlock(BaseBuildingBlock):
 class BuildingBlockSet(DeliDataLoadable):
     """
     Define a set of building blocks
+
+    Attributes
+    ----------
+    has_smiles: bool
+        True if all BuildingBlocks in this set have a non-None `smiles` attribute
     """
 
     def __init__(self, bb_set_id: str, building_blocks: List[BuildingBlock]):
@@ -177,10 +216,21 @@ class BuildingBlockSet(DeliDataLoadable):
                 )
 
         self._dna_lookup_table = {bb.tag: i for i, bb in enumerate(self.building_blocks)}
+        self._bb_lookup_table = {bb.bb_id: i for i, bb in enumerate(self.building_blocks)}
+
+        self.has_smiles = False
+        if all([bb.smiles for bb in self.building_blocks]):
+            self.has_smiles = True
 
     @classmethod
     @accept_deli_data_name(sub_dir="building_blocks", extension="csv")
-    def load(cls, path: str) -> Self:
+    def load(
+        cls,
+        path: str,
+        set_id: Optional[str] = None,
+        no_smiles: bool = False,
+        load_mols: bool = False,
+    ) -> Self:
         """
         Load a building block set from the DELi data directory
 
@@ -201,17 +251,31 @@ class BuildingBlockSet(DeliDataLoadable):
         ----------
         path: str
             path of the building block set to load
+        set_id: Optional[str]
+            name of the building block set
+        no_smiles: bool, default False
+            set to true if bb_set lacks a smiles column
+        load_mols: bool, default False
+            set to true if you want to load the mols for each building block
+            this is useful when you expect to be operating on the BBs chemically
+            for example, doing enumeration
 
         Returns
         -------
         BuildingBlockSet
         """
-        _cls = cls.load_from_csv(path)
+        _cls = cls.load_from_csv(path, set_id=set_id, no_smiles=no_smiles, load_mols=load_mols)
         _cls.loaded_from = path
         return _cls
 
     @classmethod
-    def load_from_csv(cls, path: str, set_id: Optional[str] = None, no_smiles: bool = False):
+    def load_from_csv(
+        cls,
+        path: str,
+        set_id: Optional[str] = None,
+        no_smiles: bool = False,
+        load_mols: bool = False,
+    ) -> Self:
         """
         Read a building block set from a csv file
 
@@ -227,6 +291,10 @@ class BuildingBlockSet(DeliDataLoadable):
             name of the building block set
         no_smiles: bool, default False
             set to true if bb_set lacks a smiles column
+        load_mols: bool, default False
+            set to true if you want to load the mols for each building block
+            this is useful when you expect to be operating on the BBs chemically
+            for example, doing enumeration
 
         Returns
         -------
@@ -251,7 +319,7 @@ class BuildingBlockSet(DeliDataLoadable):
                         f"set `no_smiles` to `True` to turn off this message",
                         stacklevel=0,
                     )
-                no_smiles = True
+                    no_smiles = True
 
             _smi_col_idx = header.index("smiles") if not no_smiles else None
 
@@ -260,7 +328,9 @@ class BuildingBlockSet(DeliDataLoadable):
                 _id = splits[_id_col_idx]
                 _smiles = splits[_smi_col_idx] if _smi_col_idx is not None else None
                 _dna = splits[_dna_col_idx]
-                _building_blocks.append(BuildingBlock(bb_id=_id, smiles=_smiles, tag=_dna))
+                _building_blocks.append(
+                    BuildingBlock(bb_id=_id, smiles=_smiles, tag=_dna, load_mol=load_mols)
+                )
         return cls(_set_id, _building_blocks)
 
     def __len__(self):
@@ -271,7 +341,15 @@ class BuildingBlockSet(DeliDataLoadable):
         """Iterate over the building blocks"""
         return iter(self.building_blocks)
 
-    def search_tags(self, query: str) -> Optional[BuildingBlock]:
+    @overload
+    def search_tags(
+        self, query: str, fail_on_missing: Literal[False]
+    ) -> Optional[BuildingBlock]: ...
+
+    @overload
+    def search_tags(self, query: str, fail_on_missing: Literal[True]) -> BuildingBlock: ...
+
+    def search_tags(self, query: str, fail_on_missing: bool = False) -> Optional[BuildingBlock]:
         """
         Given a query DNA bases, search for corresponding BB with that bases
 
@@ -283,6 +361,9 @@ class BuildingBlockSet(DeliDataLoadable):
         ----------
         query: str
             DNA bases to query
+        fail_on_missing: bool, default False
+            if `True` raise a KeyError is no match is found
+            else return `None`
 
         Returns
         -------
@@ -293,6 +374,52 @@ class BuildingBlockSet(DeliDataLoadable):
         """
         _idx = self._dna_lookup_table.get(query, None)
         if _idx is None:
+            if fail_on_missing:
+                raise KeyError(
+                    f"BuildingBlock DNA tag '{query}' not found "
+                    f"in BuildingBlockSet '{self.bb_set_id}'"
+                )
+            return None
+        else:
+            return self.building_blocks[_idx]
+
+    @overload
+    def get_bb_by_id(
+        self, query: str, fail_on_missing: Literal[False]
+    ) -> Optional[BuildingBlock]: ...
+
+    @overload
+    def get_bb_by_id(self, query: str, fail_on_missing: Literal[True]) -> BuildingBlock: ...
+
+    def get_bb_by_id(self, query: str, fail_on_missing: bool = False) -> Optional[BuildingBlock]:
+        """
+        Given a bb_id, search for corresponding BB for that ID
+
+        Notes
+        -----
+        Will return `None` if no matching building block is found
+
+        Parameters
+        ----------
+        query: str
+            bb_id to query
+        fail_on_missing: bool, default False
+            if `True` raise a KeyError is no match is found
+            else return `None`
+
+        Returns
+        -------
+        Optional[BuildingBlock]
+            will be `None` if no matching building block is found
+            else the matching BuildingBlock object
+
+        """
+        _idx = self._bb_lookup_table.get(query, None)
+        if _idx is None:
+            if fail_on_missing:
+                raise KeyError(
+                    f"BuildingBlock id '{query}' not found in BuildingBlockSet '{self.bb_set_id}'"
+                )
             return None
         else:
             return self.building_blocks[_idx]

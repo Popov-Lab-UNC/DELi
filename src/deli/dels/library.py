@@ -1,6 +1,9 @@
 """defines DEL library functions and classes"""
 
 import json
+from functools import reduce
+from operator import mul
+from pathlib import Path
 from typing import Any, Iterator, List, Optional, Self, Tuple, Union, overload
 
 from Levenshtein import distance
@@ -8,22 +11,15 @@ from Levenshtein import distance
 from deli.configure import DeliDataLoadable, accept_deli_data_name
 
 from .barcode import BarcodeSchema, BarcodeSection
-from .building_block import BuildingBlockSet
+from .building_block import BuildingBlock, BuildingBlockSet
+from .enumerator import DELEnumerator
+from .reaction import ReactionWorkflow
 
 
 class LibraryBuildError(Exception):
     """error raised when a library build fails"""
 
     pass
-
-
-class Reaction:
-    """struct to contain info on DEL reactions"""
-
-    def __init__(self, cycle_id_1: str, cycle_id_2: str, reaction: str):
-        self.cycle_id_1 = cycle_id_1
-        self.bb_set_id_2 = cycle_id_2
-        self.reaction = reaction
 
 
 class DELibrary(DeliDataLoadable):
@@ -44,7 +40,7 @@ class DELibrary(DeliDataLoadable):
         library_dna_tag: str,
         barcode_schema: BarcodeSchema,
         bb_sets: List[BuildingBlockSet],
-        reactions: List[Reaction],
+        library_reaction_workflow: ReactionWorkflow,
         dna_barcode_on: str,
         scaffold: Optional[str] = None,
     ):
@@ -63,10 +59,8 @@ class DELibrary(DeliDataLoadable):
             the sets of building-block used to build this library
             order in list should be order of synthesis
             must have length >= 2
-        reactions : List[str]
-            the reaction SMARTS/SMIRKS that connect bb_set cycles
-            reaction at index i is the reaction between bb_sets[i] and bb_sets[i+1]
-            reactions must have length equal to the the number of `bb_sets` minus 1
+        library_reaction_workflow : ReactionWorkflow
+            The reaction workflow/schema used to build this library
         dna_barcode_on: str
             the id of the bb_set that is linked to the DNA bases
             can be 'scaffold' if DNA bases is linked to the scaffold
@@ -84,7 +78,7 @@ class DELibrary(DeliDataLoadable):
         self.library_tag = library_dna_tag
         self.barcode_schema = barcode_schema
         self.bb_sets = bb_sets
-        self.reactions = reactions
+        self.library_reaction_workflow = library_reaction_workflow
         self.dna_barcode_on = dna_barcode_on
         self.scaffold = scaffold
 
@@ -94,11 +88,12 @@ class DELibrary(DeliDataLoadable):
             )
         self.num_cycles = len(self.bb_sets)
 
-        if self.num_cycles - (1 if self.scaffold is None else 0) < len(self.reactions):
-            raise LibraryBuildError(
-                f"Library requires at least N-1 reactions for N cycles+scaffolds; "
-                f"found {len(self.bb_sets)} cycles and {len(self.reactions)} reactions"
-            )
+        # not sure this check makes sense anymore
+        # if self.num_cycles + (0 if self.scaffold is None else -1) > len(self.reactions):
+        #     raise LibraryBuildError(
+        #         f"Library requires at least N-1 reactions for N cycles+scaffolds; "
+        #         f"found {len(self.bb_sets)} cycles and {len(self.reactions)} reactions"
+        #     )
 
         if self.num_cycles != barcode_schema.num_cycles:
             raise LibraryBuildError(
@@ -106,7 +101,7 @@ class DELibrary(DeliDataLoadable):
                 f"got {self.num_cycles} and {barcode_schema.num_cycles}"
             )
 
-        self.library_size = sum([len(bb_set) for bb_set in self.bb_sets])
+        self.library_size = reduce(mul, [len(bb_set) for bb_set in self.bb_sets])
 
         # handle the dna bases location
         if self.dna_barcode_on not in [bb_set.bb_set_id for bb_set in self.bb_sets]:
@@ -116,6 +111,10 @@ class DELibrary(DeliDataLoadable):
                 )
             if scaffold is None and self.dna_barcode_on == "scaffold":
                 raise LibraryBuildError("no scaffold to attach DNA barcode to")
+
+        self.enumerator = DELEnumerator(
+            self.library_reaction_workflow, self.bb_sets, self.scaffold
+        )
 
     def __repr__(self):
         """Represent the library as its name"""
@@ -172,13 +171,19 @@ class DELibrary(DeliDataLoadable):
         if "scaffold" not in data.keys():
             data["scaffold"] = None
 
+        # load bb sets (needed for reaction setup)
+        bb_sets: list[BuildingBlockSet] = [BuildingBlockSet.load(bb) for bb in data["bb_sets"]]
+        bb_set_ids = set([bb_set.bb_set_id for bb_set in bb_sets] + ["scaffold"])
+
+        reaction_workflow = ReactionWorkflow.load_from_json_list(data["reactions"], bb_set_ids)
+
         return cls(
             library_id=data["id"],
             library_dna_tag=data["library_tag"],
             dna_barcode_on=data["dna_barcode_on"],
             barcode_schema=BarcodeSchema.load(data["barcode_schema"]),
-            bb_sets=[BuildingBlockSet.load(bb) for bb in data["bb_sets"]],
-            reactions=[Reaction(**react) for react in data["reactions"]],
+            bb_sets=bb_sets,
+            library_reaction_workflow=reaction_workflow,
             scaffold=data["scaffold"],
         )
 
@@ -198,9 +203,35 @@ class DELibrary(DeliDataLoadable):
         """Get the part of the barcode that is needed to decode the library"""
         return self.barcode_schema.full_barcode
 
+    def enumerate_library_to_file(
+        self, out_path: Union[str, Path], use_tqdm: bool = False
+    ) -> None:
+        """
+        Enumerate the compound encoded in the DEL to a csv file
+
+        Will auto generate DEL ids as <LIB_ID>-[<BB_ID>]
+        for all building block sets in the lib
+        e.g. L04-234-567-789 for a 3 cycle library with the id 'L04'
+
+        Parameters
+        ----------
+        out_path: Union[str, Path]
+            path to save csv file
+        use_tqdm: bool, default False
+            whether to use tqdm progress bar
+        """
+        bb_set_order = [bb_set.bb_set_id for bb_set in self.bb_sets]
+
+        def del_id_func(bb_id_mapping: dict[str, BuildingBlock]) -> str:
+            return f"{self.library_id}-" + "-".join(
+                [bb_id_mapping[bb_set_id].bb_id for bb_set_id in bb_set_order]
+            )
+
+        self.enumerator.enumerate_to_csv_file(out_path, del_id_func, use_tqdm=use_tqdm)
+
 
 class BaseDELibraryGroup:
-    """base class for any class that olds a group of DEL libraries"""
+    """base class for any class that holds a group of DEL libraries"""
 
     def __init__(self, libraries: List[DELibrary]):
         """
