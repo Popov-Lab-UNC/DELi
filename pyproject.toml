@@ -59,7 +59,6 @@ optional = true
 pytest = "~7.2.0"
 pytest-cov = "~4.0.0"
 pytest-html = "^3.2.0"
-pytest-xdist = "^3.5.0"
 
 [tool.poetry.group.docs]
 optional = true
@@ -89,9 +88,7 @@ fail_under = 75
 [tool.pytest.ini_options]
 addopts = """
     --color=yes
-    --junixml=test-results/unit-test-results.xml
     --html=test-results/unit-tests-results.html
-    --dist=loadgroup
 """
 markers = [
     "unit: marks tests as unit tests",
