@@ -9,7 +9,7 @@ from pathlib import Path
 
 import click
 
-from deli.configure import init_deli_data_dir
+from deli.configure import init_deli_config_dir, init_deli_data_directory, load_deli_config
 from deli.decode import (
     BarcodeCaller,
     BarcodeMatcher,
@@ -41,6 +41,68 @@ def cli():
     pass
 
 
+@cli.group()
+def config():
+    """Group for config related commands"""
+    pass
+
+
+@config.command(name="init-config")
+@click.argument(
+    "path",
+    type=click.Path(exists=True),
+    required=False,
+    default=os.path.join(os.getcwd(), ".deli"),
+)
+@click.option(
+    "--include-data-dir",
+    is_flag=True,
+    help="include a default deli data directory in the new config directory",
+)
+@click.option(
+    "--include-hamming", is_flag=True, help="include a default hamming files (if include-data-dir)"
+)
+@click.option(
+    "--use-extra-parity-hamming",
+    is_flag=True,
+    help="include a extra parity hamming files (if include-hamming)",
+)
+def init_config(path, include_data_dir, include_hamming, use_extra_parity_hamming):
+    """Initialize the configuration directory"""
+    init_deli_config_dir(
+        path,
+        fail_on_exist=True,
+        include_deli_data_dir=include_data_dir,
+        create_default_hamming_files=include_hamming,
+        use_extra_parity=use_extra_parity_hamming,
+    )
+
+
+@config.command(name="init-deli-data-dir")
+@click.argument(
+    "path",
+    type=click.Path(exists=True),
+    required=False,
+    default=os.path.join(os.getcwd(), ".deli"),
+)
+@click.option(
+    "--include-hamming", is_flag=True, help="include a default hamming files (if include-data-dir)"
+)
+@click.option(
+    "--use-extra-parity-hamming",
+    is_flag=True,
+    help="include a extra parity hamming files (if include-hamming)",
+)
+def init_deli_data_dir(path, include_hamming, use_extra_parity_hamming):
+    """Initialize the configuration directory"""
+    init_deli_data_directory(
+        path,
+        fail_on_exist=True,
+        create_default_hamming_files=include_hamming,
+        use_extra_parity=use_extra_parity_hamming,
+    )
+
+
 @cli.command()
 @click.argument("fastq_file", type=click.Path(exists=True), required=True)
 @click.argument("experiment_file", type=click.Path(exists=True), required=True)
@@ -56,6 +118,14 @@ def cli():
 @click.option(
     "--save_failed_calls", is_flag=True, help="save failed calls to a separate failed call file"
 )
+@click.option(
+    "--deli-config",
+    "-o",
+    type=click.Path(),
+    required=False,
+    default="",
+    help="Path to DELi config file to use",
+)
 def decode(
     fastq_file,
     experiment_file,
@@ -65,6 +135,7 @@ def decode(
     save_report_data,
     skip_report,
     save_failed_calls,
+    deli_config,
 ):
     """
     run decoding on a given fastq file of DEL sequences
@@ -87,9 +158,15 @@ def decode(
         do not render a decoding report
     save_failed_calls: bool, default=False
         save failed calls to a separate failed call file
+    deli_config: str, default=""
+        Path to DELi config file to use
     """
     logger = setup_logger("deli-decode", debug=debug)
     out_dir = _setup_outdir(out_dir)
+
+    if deli_config != "":
+        load_deli_config(deli_config)
+
     _start = datetime.datetime.now()
 
     # load in the experiment data
@@ -426,22 +503,3 @@ def render(report_stat):
     name = os.path.basename(os.path.abspath(report_stat)).split(".")[0] + ".html"
     _report_stat = DecodeReportStats.load_report_file(report_stat)
     build_decoding_report(_report_stat, os.path.join(os.getcwd(), name))
-
-
-@cli.group()
-def data():
-    """Group for deli data dir functions"""
-    pass
-
-
-@data.command()
-@click.argument("data_dir", nargs=1, type=click.Path(exists=True, dir_okay=False))
-@click.option("--fix", is_flag=True, help="will add any missing sub-dirs to the deli_data_dir")
-def init(data_dir, fix):
-    """
-    Creates a DELI_DATA_DIR with the correct sub-folders
-
-    Will also create hamming files for code of length 5-16 in both
-    normal and extra parity mode
-    """
-    init_deli_data_dir(data_dir, not fix)
