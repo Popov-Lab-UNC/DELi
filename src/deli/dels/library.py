@@ -131,7 +131,6 @@ class DELibrary(DeliDataLoadable):
         This is decorated by `accept_deli_data`
         which makes this function actually take
           path_or_name: str
-          deli_config: DeliConfig
 
         `path_or_name` can be the full path to the file
         or it can be the name of the object to load
@@ -464,7 +463,7 @@ class DELibraryGroup(BaseDELibraryGroup):
     #     This is decorated by `accept_deli_data`
     #     which makes this function actually take
     #       path_or_name: str
-    #       deli_config: DeliConfig
+    #       deli_config: _DeliConfig
     #
     #     `path_or_name` can be the full path to the file
     #     or it can be the name of the object to load
