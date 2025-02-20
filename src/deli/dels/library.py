@@ -40,7 +40,7 @@ class DELibrary(DeliDataLoadable):
         library_dna_tag: str,
         barcode_schema: BarcodeSchema,
         bb_sets: List[BuildingBlockSet],
-        library_reaction_workflow: ReactionWorkflow,
+        library_reaction_workflow: Optional[ReactionWorkflow],
         dna_barcode_on: str,
         scaffold: Optional[str] = None,
     ):
@@ -112,9 +112,11 @@ class DELibrary(DeliDataLoadable):
             if scaffold is None and self.dna_barcode_on == "scaffold":
                 raise LibraryBuildError("no scaffold to attach DNA barcode to")
 
-        self.enumerator = DELEnumerator(
-            self.library_reaction_workflow, self.bb_sets, self.scaffold
-        )
+        self.enumerator: Optional[DELEnumerator] = None
+        if isinstance(self.library_reaction_workflow, ReactionWorkflow):
+            self.enumerator = DELEnumerator(
+                self.library_reaction_workflow, self.bb_sets, self.scaffold
+            )
 
     def __repr__(self):
         """Represent the library as its name"""
@@ -174,7 +176,10 @@ class DELibrary(DeliDataLoadable):
         bb_sets: list[BuildingBlockSet] = [BuildingBlockSet.load(bb) for bb in data["bb_sets"]]
         bb_set_ids = set([bb_set.bb_set_id for bb_set in bb_sets] + ["scaffold"])
 
-        reaction_workflow = ReactionWorkflow.load_from_json_list(data["reactions"], bb_set_ids)
+        if "reactions" in data.keys():
+            reaction_workflow = ReactionWorkflow.load_from_json_list(data["reactions"], bb_set_ids)
+        else:
+            reaction_workflow = None
 
         return cls(
             library_id=data["id"],
@@ -226,7 +231,12 @@ class DELibrary(DeliDataLoadable):
                 [bb_id_mapping[bb_set_id].bb_id for bb_set_id in bb_set_order]
             )
 
-        self.enumerator.enumerate_to_csv_file(out_path, del_id_func, use_tqdm=use_tqdm)
+        if isinstance(self.enumerator, DELEnumerator):
+            self.enumerator.enumerate_to_csv_file(out_path, del_id_func, use_tqdm=use_tqdm)
+        else:
+            raise RuntimeError(
+                f"cannot enumerate library {self.library_id} without reaction information"
+            )
 
 
 class BaseDELibraryGroup:
