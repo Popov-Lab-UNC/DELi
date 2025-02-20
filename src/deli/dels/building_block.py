@@ -340,13 +340,13 @@ class BuildingBlockSet(DeliDataLoadable):
         """Iterate over the building blocks"""
         return iter(self.building_blocks)
 
-    @overload
-    def search_tags(
-        self, query: str, fail_on_missing: Literal[False]
-    ) -> Optional[BuildingBlock]: ...
-
-    @overload
-    def search_tags(self, query: str, fail_on_missing: Literal[True]) -> BuildingBlock: ...
+    # @overload
+    # def search_tags(
+    #     self, query: str, fail_on_missing: Literal[False]
+    # ) -> Optional[BuildingBlock]: ...
+    #
+    # @overload
+    # def search_tags(self, query: str, fail_on_missing: Literal[True]) -> BuildingBlock: ...
 
     def search_tags(self, query: str, fail_on_missing: bool = False) -> Optional[BuildingBlock]:
         """

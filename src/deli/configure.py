@@ -2,21 +2,22 @@
 
 import abc
 import configparser
-import dataclasses
 import functools
-import getpass
 import inspect
 import math
 import os
-import warnings
 from pathlib import Path
-from typing import Any, Callable, Dict, Literal, ParamSpec, Self, TypeVar, Union
+from typing import Any, Callable, Literal, Optional, ParamSpec, Self, TypeVar, Union
 
 
 P = ParamSpec("P")
 R = TypeVar("R")
 
-CONFIG_DIR_PATH = Path(os.path.join(os.path.expanduser("~"), ".deli"))
+BB_MASK_TOKEN_DEFAULT: str = "###"
+MAX_INDEX_RISK_DIST_THRESHOLD_DEFAULT: int = 3
+MAX_LIBRARY_RISK_DIST_THRESHOLD_DEFAULT: int = 4
+NUC_2_INT_DEFAULT: dict[str, int] = {"A": 0, "T": 1, "C": 2, "G": 3}
+
 
 DELI_DATA_SUB_DIRS = ["hamming", "barcodes", "libraries", "indexes", "building_blocks"]
 
@@ -24,6 +25,16 @@ DELI_DATA_SUB_DIRS = ["hamming", "barcodes", "libraries", "indexes", "building_b
 def set_deli_data_dir(data_dir: Union[str, Path]) -> None:
     """Sets the deli data directory path"""
     DELI_CONFIG.deli_data_dir = Path(data_dir) if isinstance(data_dir, str) else data_dir
+
+
+def load_deli_config(path: Union[str, Path]) -> None:
+    """
+    Load a new deli config from a given path
+
+    Overrides any existing DELi config settings
+    """
+    global DELI_CONFIG
+    DELI_CONFIG = _DeliConfig.load_config(path)
 
 
 class DeliDataNotFound(Exception):
@@ -38,8 +49,7 @@ class DeliDataDirError(Exception):
     pass
 
 
-@dataclasses.dataclass
-class DeliConfig:
+class _DeliConfig:
     """
     Struct to hold info on DELi settings
 
@@ -52,61 +62,46 @@ class DeliConfig:
     bb_mask: str
         the 3 char long token to replace any masked building blocks
         masked building blocks result from synthon-based analysis
-    bb_null: str
-        the 3 char long token to replace any null building blocks
     max_index_risk_dist_threshold: int
         the maximum risk willing to make in an index call
         if risk is above this number will fail the call
     max_library_risk_dist_threshold: int
         the maximum risk willing to make in a library call
         if risk is above this number will fail the call
+    nuc_2_int: dict[str, int]
+        the nucleotide to integer mapping
     """
 
-    deli_data_dir: Path
+    def __init__(self, **kwargs):
+        # process deli data director
+        self.deli_data_dir: Path
+        if kwargs.get("DELI_DATA_DIR", None) is None:
+            self.deli_data_dir = Path(os.path.join(os.path.expanduser("~"), ".deli", "deli_data"))
+        else:
+            self.deli_data_dir = Path(os.fspath(os.path.expanduser(kwargs.get("DELI_DATA_DIR"))))
+        _validate_deli_data_dir(self.deli_data_dir)
 
-    bb_mask: str
-    bb_null: str
-
-    max_index_risk_dist_threshold: int
-    max_library_risk_dist_threshold: int
-
-    nuc_2_int: Dict[str, int]
-
-    def __post_init__(self):
-        """Validate the passed DELi config parameters"""
-        self.deli_data_dir = Path(os.fspath(os.path.expanduser(self.deli_data_dir)))
-        self.bb_mask = str(self.bb_mask)
-        self.bb_null = str(self.bb_null)
-        self.max_index_risk_dist_threshold = int(self.max_index_risk_dist_threshold)
-        self.max_library_risk_dist_threshold = int(self.max_library_risk_dist_threshold)
-        self.nuc_2_int = {
-            pair.split(":")[0].strip(): int(pair.split(":")[1].strip())
-            for pair in self.nuc_2_int.strip().split(",")
-        }
-
-        # check for a valid Deli Data Dir
-        if not os.path.exists(self.deli_data_dir):
-            raise DeliDataDirError(
-                f"DELi data directory '{self.deli_data_dir}' does not exist; "
-                f"create it using 'deli create_data_dir {self.deli_data_dir}' OR "
-                f"change your '.deli' config file to point to a valid DELi data directory"
-            )
-
-        sub_dirs = os.listdir(self.deli_data_dir)
-        missing_sub_dirs = set(DELI_DATA_SUB_DIRS) - set(sub_dirs)
-        if len(missing_sub_dirs) > 0:
-            raise DeliDataDirError(
-                f"DELi data directory '{self.deli_data_dir}' is invalid; "
-                f"missing sub-directories {list(missing_sub_dirs)}"
-                f"create missing sub-directories manually OR "
-                f"use 'deli create_data_dir {self.deli_data_dir} --fix' OR "
-                f"change your '.deli' config file to point to a valid DELi data directory"
-            )
-
-        os.environ["DELI_DATA_DIR"] = str(self.deli_data_dir)
+        self.bb_mask: str = (
+            str(kwargs["BB_MASK"]) if kwargs.get("BB_MASK") is not None else BB_MASK_TOKEN_DEFAULT
+        )
+        self.max_index_risk_dist_threshold: int = (
+            int(kwargs["MAX_INDEX_RISK_DIST_THRESHOLD"])
+            if (kwargs.get("MAX_INDEX_RISK_DIST_THRESHOLD") is not None)
+            else (MAX_INDEX_RISK_DIST_THRESHOLD_DEFAULT)
+        )
+        self.max_library_risk_dist_threshold: int = (
+            int(kwargs["MAX_LIBRARY_RISK_DIST_THRESHOLD"])
+            if (kwargs.get("MAX_LIBRARY_RISK_DIST_THRESHOLD") is not None)
+            else (MAX_LIBRARY_RISK_DIST_THRESHOLD_DEFAULT)
+        )
+        self.nuc_2_int: dict[str, int] = (
+            kwargs["NUC_2_INT"]
+            if (kwargs.get("NUC_2_INT", None) is not None)
+            else (NUC_2_INT_DEFAULT)
+        )
 
     @classmethod
-    def _load_config(cls, path: Union[str, Path]) -> dict[str, Any]:
+    def load_config(cls, path: Union[str, Path], use_env: bool = False) -> Self:
         """Helper func to load in config data"""
         config = configparser.RawConfigParser()
         config.read(os.path.normpath(path))
@@ -115,39 +110,54 @@ class DeliConfig:
         if len(settings) == 0:
             raise FileNotFoundError(f"cannot find config file at '{os.path.normpath(path)}'")
 
-        for field in dataclasses.fields(cls):
-            if settings.get(field.name) is None:
-                _system_var = os.getenv(field.name.upper())
-                if _system_var is None:
-                    raise ValueError(f"Missing DELi configuration setting: {field.name}")
-                else:
-                    settings[field.name] = _system_var
+        nuc_2_int = (
+            {
+                pair.split(":")[0].strip(): int(pair.split(":")[1].strip())
+                for pair in settings["NUC_2_INT"].strip().split(",")
+            }
+            if settings.get("NUC_2_INT", None) is not None
+            else NUC_2_INT_DEFAULT
+        )
 
-        return settings
+        __deli_data_dir: Optional[str] = settings.get("DELI_DATA_DIR")
+        if use_env:
+            deli_data_dir_env = os.environ.get("DELI_DATA_DIR", None)
+            if isinstance(deli_data_dir_env, str):
+                __deli_data_dir = deli_data_dir_env
 
-    @classmethod
-    def load_defaults(cls) -> Self:
-        """
-        Load default DELi configuration settings
-
-        Notes
-        -----
-        Default DELi configuration files are saved in
-        `~/.deli/.deli` where `~` if your USER home directory
-
-        If a given DELI parameter is unfilled in the config
-        file then DELI will try and load it from the system
-        arguments (if they are set). System args should be
-        all caps versions of the variables
-
-        Returns
-        -------
-        DeliConfig
-        """
-        return cls(**cls._load_config(CONFIG_DIR_PATH / ".deli"))
+        return cls(
+            deli_data_dir=__deli_data_dir,
+            bb_mask=settings.get("BB_MASK"),
+            max_index_risk_dist_threshold=settings.get("MAX_INDEX_RISK_DIST_THRESHOLD"),
+            max_library_risk_dist_threshold=settings.get("MAX_LIBRARY_RISK_DIST_THRESHOLD"),
+            nuc_2_int=nuc_2_int,
+        )
 
 
-def init_deli_data_dir(path: Union[str, os.PathLike], fail_on_exist: bool = True):
+def _validate_deli_data_dir(deli_data_dir: Union[str, Path]) -> bool:
+    if not os.path.exists(deli_data_dir):
+        raise DeliDataDirError(
+            f"DELi data directory '{deli_data_dir}' does not exist; "
+            f"create it using 'deli create_data_dir {deli_data_dir}'"
+        )
+
+    sub_dirs = os.listdir(deli_data_dir)
+    missing_sub_dirs = set(DELI_DATA_SUB_DIRS) - set(sub_dirs)
+    if len(missing_sub_dirs) > 0:
+        raise DeliDataDirError(
+            f"DELi data directory '{deli_data_dir}' is invalid; "
+            f"missing sub-directories {list(missing_sub_dirs)}"
+            f"use 'deli create_data_dir {deli_data_dir} --fix'"
+        )
+    return True
+
+
+def init_deli_data_directory(
+    path: Union[str, os.PathLike],
+    fail_on_exist: bool = True,
+    create_default_hamming_files: bool = True,
+    use_extra_parity: bool = True,
+):
     """
     Create a new Deli Data Directory with all the necessary sub folders
 
@@ -158,6 +168,13 @@ def init_deli_data_dir(path: Union[str, os.PathLike], fail_on_exist: bool = True
     fail_on_exist: bool, default = True
         if True, will raise an exception if the directory path already exists
         if False, will try and create the sub-dirs in the existing directory
+    create_default_hamming_files: bool, default = True
+        if True, will create the default hamming files in the new directory
+        if False, will not create default hamming files
+    use_extra_parity: bool, default = True
+        if True, will create extra parity bit hamming files
+        if False, will not create parity bit hamming files
+        only relevant if create_default_hamming_files is True
     """
     _path = Path(path)
     os.makedirs(_path, exist_ok=not fail_on_exist)
@@ -166,42 +183,82 @@ def init_deli_data_dir(path: Union[str, os.PathLike], fail_on_exist: bool = True
     os.makedirs(_path / "barcodes", exist_ok=not fail_on_exist)
     os.makedirs(_path / "hamming", exist_ok=not fail_on_exist)
     os.makedirs(_path / "building_blocks", exist_ok=not fail_on_exist)
-    _create_default_hamming_files(_path / "hamming")
+
+    # create hamming files
+    if create_default_hamming_files:
+        for i in range(5, 16):
+            file_path = _path / "hamming" / f"hamming3_{i}.txt"
+
+            hamming_order = []
+            for j in range(1, i + 1):
+                hamming_order.append(f"p{j}" if math.log2(j).is_integer() else f"d{j}")
+            extra_hamming_order = ["p0"] + hamming_order[:-1]
+
+            with open(file_path, "w") as f:
+                f.write(f"hamming_order: {','.join(hamming_order)}\n")
+                f.write(f"custom_order: {','.join(hamming_order)}\n")
+
+            if use_extra_parity:
+                extra_parity_file_path = _path / "hamming" / f"hamming4_{i}.txt"
+                with open(extra_parity_file_path, "w") as f:
+                    f.write(f"hamming_order: {','.join(extra_hamming_order)}\n")
+                    f.write(f"custom_order: {','.join(extra_hamming_order)}\n")
 
 
-def _create_default_hamming_files(path: Path):
-    """Will generate generic hamming files for all hamming coded tags length 5-16"""
-    for i in range(5, 16):
-        file_path = path / f"hamming3_{i}.txt"
-        extra_parity_file_path = path / f"hamming4_{i}.txt"
+def init_deli_config_dir(
+    path: Optional[Union[str, os.PathLike]] = None,
+    fail_on_exist: bool = True,
+    include_deli_data_dir: bool = True,
+    create_default_hamming_files: bool = True,
+    use_extra_parity: bool = True,
+):
+    """
+    Create a default Deli config directory
 
-        hamming_order = []
-        for j in range(1, i + 1):
-            hamming_order.append(f"p{j}" if math.log2(j).is_integer() else f"d{j}")
-        extra_hamming_order = ["p0"] + hamming_order[:-1]
+    Parameters
+    ----------
+    path: Optional[Union[str, os.PathLike]]
+        path to create deli config dir at
+        will be at $USER/.deli if left as None
+    fail_on_exist: bool, default = True
+        if True, will raise an exception if the directory path already exists
+        if False, will try and create the sub-dirs in the existing directory
+    include_deli_data_dir: bool, default = True
+        if True create a deli data directory within the deli config dir
+        will be named 'deli_data'
+    create_default_hamming_files: bool, default = True
+        if True, will create the default hamming files in the new directory
+        if False, will not create default hamming files
+    use_extra_parity: bool, default = True
+        if True, will create extra parity bit hamming files
+        if False, will not create parity bit hamming files
+        only relevant if create_default_hamming_files is True
+    """
+    if path is not None:
+        _path = Path(path)
+    else:
+        _path = Path(os.path.join(os.path.expanduser("~"), ".deli"))
 
-        with open(file_path, "w") as f:
-            f.write(f"hamming_order: {','.join(hamming_order)}\n")
-            f.write(f"custom_order: {','.join(hamming_order)}\n")
+    os.makedirs(_path, exist_ok=not fail_on_exist)
 
-        with open(extra_parity_file_path, "w") as f:
-            f.write(f"hamming_order: {','.join(extra_hamming_order)}\n")
-            f.write(f"custom_order: {','.join(extra_hamming_order)}\n")
-
-
-def _create_deli_config_default(path: Path):
-    """Create a default .deli config file"""
     _config = (
         f"[DEFAULT]\n"
-        f"DELI_DATA_DIR = {CONFIG_DIR_PATH / 'deli_data'}\n"
-        f"BB_MASK = ###\n"
-        f"BB_NULL = NUL\n"
-        f"MAX_INDEX_RISK_DIST_THRESHOLD = 3\n"
-        f"MAX_LIBRARY_RISK_DIST_THRESHOLD = 4\n"
-        f"NUC_2_INT = A:0,T:1,C:2,G:3\n"
+        f"BB_MASK = {BB_MASK_TOKEN_DEFAULT}\n"
+        f"MAX_INDEX_RISK_DIST_THRESHOLD = {MAX_INDEX_RISK_DIST_THRESHOLD_DEFAULT}\n"
+        f"MAX_LIBRARY_RISK_DIST_THRESHOLD = {MAX_LIBRARY_RISK_DIST_THRESHOLD_DEFAULT}\n"
+        f"NUC_2_INT = "
+        + ",".join([f"{key}:{val}" for key, val in NUC_2_INT_DEFAULT.items()])
+        + "\n"
     )
-    with open(path, "w") as f:
+    with open(_path / ".deli", "w") as f:
         f.write(_config)
+
+    if include_deli_data_dir:
+        init_deli_data_directory(
+            path=_path / "deli_data",
+            create_default_hamming_files=create_default_hamming_files,
+            use_extra_parity=use_extra_parity,
+        )
 
 
 def accept_deli_data_name(
@@ -315,24 +372,19 @@ class DeliDataLoadable(abc.ABC):
         raise NotImplementedError()
 
 
-# load in the deli config file
-if not os.path.exists(CONFIG_DIR_PATH):
-    warnings.warn(
-        f"user {getpass.getuser()} has no '.deli' config directory in their home directory; "
-        f"creating one",
-        stacklevel=0,
+# load the DELi config
+_deli_config_dir = os.environ.get("DELI_CONFIG", None)
+if _deli_config_dir is not None and _deli_config_dir != "":
+    DELI_CONFIG = _DeliConfig.load_config(_deli_config_dir, use_env=True)
+elif os.path.exists(os.path.join(os.path.expanduser("~"), ".deli")):
+    DELI_CONFIG = _DeliConfig.load_config(
+        Path(os.path.join(os.path.expanduser("~"), ".deli")), use_env=True
     )
-    os.makedirs(CONFIG_DIR_PATH, exist_ok=True)
-    _create_deli_config_default(CONFIG_DIR_PATH / ".deli")
-    init_deli_data_dir(CONFIG_DIR_PATH / "deli_data")
-
-try:
-    DELI_CONFIG = DeliConfig.load_defaults()
-except FileNotFoundError:
-    warnings.warn(
-        f"user {getpass.getuser()} has no '.deli' config file in their user directory; "
-        f"creating default",
-        stacklevel=0,
-    )
-    _create_deli_config_default(CONFIG_DIR_PATH / ".deli")
-    DELI_CONFIG = DeliConfig.load_defaults()
+else:
+    _deli_data_dir = os.environ.get("DELI_DATA_DIR", None)
+    deli_data_dir: Optional[str]
+    if isinstance(_deli_data_dir, str) and _deli_data_dir != "":
+        deli_data_dir = os.fspath(os.path.expanduser(_deli_data_dir))
+    else:
+        deli_data_dir = None
+    DELI_CONFIG = _DeliConfig(DELI_DATA_DIR=deli_data_dir)
