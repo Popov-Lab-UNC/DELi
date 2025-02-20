@@ -111,60 +111,6 @@ class IndexSet:
         """IndexSet is False when it is empty"""
         return len(self) > 0
 
-    # @classmethod
-    # @accept_deli_data_name("indexes", "json")
-    # def load(cls, path: str) -> Self:
-    #     """
-    #     Load a index set from the DELi data directory
-    #
-    #     Notes
-    #     -----
-    #     This is decorated by `accept_deli_data`
-    #     which makes this function actually take
-    #       path_or_name: str
-    #       deli_config: DeliConfig
-    #
-    #     `path_or_name` can be the full path to the file
-    #     or it can be the name of the object to load
-    #
-    #     See `Storing DEL info` in docs for more details
-    #
-    #
-    #     Parameters
-    #     ----------
-    #     path: str
-    #         path of the index set to load
-    #
-    #     Returns
-    #     -------
-    #     IndexSet
-    #     """
-    #     _cls = cls.from_json(path)
-    #     _cls.loaded_from = path
-    #     return _cls
-    #
-    # @classmethod
-    # def from_json(cls, path: str) -> Self:
-    #     """
-    #     Load a index set from a JSON file
-    #
-    #     Notes
-    #     -----
-    #     See the "De-multiplexing with DELi" docs for more info
-    #
-    #     Parameters
-    #     ----------
-    #     path: str
-    #         path to json string
-    #
-    #     Returns
-    #     -------
-    #     IndexSet
-    #
-    #     """
-    #     data = json.load(open(path))
-    #     return cls(index_set=[Index(index_id=key, dna_tag=val) for key, val in data.items()])
-
     def _check_validity(self):
         """Checks that there are no duplicate or conflicts in index set"""
         _ids = []
