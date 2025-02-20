@@ -376,9 +376,9 @@ class DeliDataLoadable(abc.ABC):
 _deli_config_dir = os.environ.get("DELI_CONFIG", None)
 if _deli_config_dir is not None and _deli_config_dir != "":
     DELI_CONFIG = _DeliConfig.load_config(_deli_config_dir, use_env=True)
-elif os.path.exists(os.path.join(os.path.expanduser("~"), ".deli")):
+elif os.path.exists(os.path.join(os.path.expanduser("~"), ".deli", ".deli")):
     DELI_CONFIG = _DeliConfig.load_config(
-        Path(os.path.join(os.path.expanduser("~"), ".deli")), use_env=True
+        Path(os.path.join(os.path.expanduser("~"), ".deli", ".deli")), use_env=True
     )
 else:
     _deli_data_dir = os.environ.get("DELI_DATA_DIR", None)
