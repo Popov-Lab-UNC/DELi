@@ -502,7 +502,9 @@ class BarcodeCaller:
                 bb_calls.append(FailedCall(section_name=bb_region))
                 continue
 
-            bb_call = bb_set.search_tags(aligned_bb_seq)
+            bb_call: Optional[BuildingBlock] = bb_set.search_tags(
+                query=aligned_bb_seq, fail_on_missing=False
+            )
             if isinstance(bb_call, BuildingBlock):
                 bb_calls.append(BBCall(bb_region, bb_call))
             else:
