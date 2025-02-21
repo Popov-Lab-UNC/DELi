@@ -98,7 +98,26 @@ def main():
             cube.normalize()
         if 'disynthon_data' in flags and flags.get('disynthon_data', False):
             disynthon_data, disynth_exp_dict = cube.disynthonize()
+            cube.data = disynthon_data
             print(disynth_exp_dict)
+        if 'top_disynthons' in flags and flags.get('top_disynthons', False):
+            comparison_type = flags.get('top_disynthons', {}).get('comparison', 'control')
+            exp_name = flags.get('top_disynthons', {}).get('exp_name', 'None')
+            exp2_name = flags.get('top_disynthons', {}).get('exp2_name', 'None')
+            control_name = flags.get('top_disynthons', {}).get('control_name', 'None')
+            top_count = int(flags.get('top_disynthons', {}).get('top_count', 10))
+            comparison_metric = flags.get('top_disynthons', {}).get('comparison_metric', 'avg')
+            top_disynthons_dir = create_output_dir(os.path.join(output_dir, "top_disynthons"))
+            cube.get_top_disynthons(
+                disynthon_data=disynthon_data,
+                exp_name1=exp_name,
+                comparison_type=comparison_type,
+                exp_name2=exp2_name,
+                control_name=control_name,
+                comparison_metric=comparison_metric,
+                top_count=top_count,
+                output_dir=top_disynthons_dir
+            )
         if 'trisynthon_overlap' in flags and flags.get('trisynthon_overlap', False):
             trisynthon_dir = create_output_dir(os.path.join(output_dir, "trisynthon"))
             cube.trisynthon_overlap(output_dir=trisynthon_dir)
@@ -115,6 +134,9 @@ def main():
         if 'ml_fingerprints_to_RF_clf' in flags and flags.get('ml_fingerprints_to_RF_clf', False):
             ml_fingerprints_to_RF_clf_dir = create_output_dir(os.path.join(output_dir, "ml_fingerprints_to_clf"))
             cube.ml_fingerprints_to_classifier(output_dir=ml_fingerprints_to_RF_clf_dir, threshold=int(flags.get('clf_thresh', 10)))
+        if 'gnn_classifier' in flags and flags.get('gnn_classifier', False):
+            gnn_dir = create_output_dir(os.path.join(output_dir, "gnn"))
+            cube.gnn_classifier(output_dir=gnn_dir, threshold=int(flags.get('gnn_threshold', 10)), arch=flags.get('gnn_arch', 'GAT'))
         if 'top_hits' in flags:
             top_hits_dir = create_output_dir(os.path.join(output_dir, "top_hits"))
             cube.top_n_compounds(int(flags['top_hits']), flags.get('top_hits_metric', 'sum'), output_dir=top_hits_dir)

@@ -3,14 +3,20 @@ import matplotlib.pyplot as plt
 from matplotlib_venn import venn2, venn3
 from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
 from sklearn.dummy import DummyRegressor, DummyClassifier
+from sklearn.model_selection import train_test_split, KFold
 from sklearn.metrics import accuracy_score, r2_score, confusion_matrix
-from sklearn.model_selection import KFold
 from rdkit import Chem
 from rdkit.Chem import AllChem, Draw
 from rdkit.Chem.Draw import rdMolDraw2D
 import numpy as np
 from tqdm import tqdm
 import seaborn as sns
+import torch
+from torch_geometric.loader import DataLoader
+import torch.optim as optim
+import torch.nn as nn
+from gnn import Final_Network, smi_to_pyg
+# from poly_o import calculate_polyO, classify_polyO_score
 
 class DELi_Cube:
     def __init__(self, data, id_col, indexes, control_cols=None, lib_size=None, raw_indexes=None):
@@ -235,9 +241,9 @@ class DELi_Cube:
                 mad = 1.4286 * np.median(np.abs(control_nonzero - median_control))
 
                 if mad == 0:
-                    df[f"{exp_name}_z_score_{control_col}"] = np.nan
+                    df[f"{exp_name}_z_score"] = np.nan
                 else:
-                    df[f"{exp_name}_z_score_{control_col}"] = (p_i - p_o) / mad
+                    df[f"{exp_name}_z_score"] = (p_i - p_o) / mad
 
         self.data = df
         return self.data
@@ -271,27 +277,43 @@ class DELi_Cube:
             df[f"{exp_name}_sum"] = df[columns].sum(axis=1)
             df[f"{exp_name}_avg"] = df[f"{exp_name}_sum"] / len(columns)
 
-            for control_col in control_cols:
-                if control_col not in df.columns:
-                    raise ValueError(f"Control column '{control_col}' is missing in data.")
+            df[f"{exp_name}_log"] = np.log1p(df[f"{exp_name}_avg"])
 
-                df[f"{exp_name}_control_log_{control_col}"] = np.log1p(df[control_col])  # Log-transform control group
-                df[f"{exp_name}_log"] = np.log1p(df[f"{exp_name}_avg"])  # Log-transform experimental group
+            missing_controls = [col for col in control_cols if col not in df.columns]
+            if missing_controls:
+                raise ValueError(f"Missing control columns in data: {missing_controls}")
 
-                # Calculate mean and standard deviation of the log-transformed control group
-                control_mean_log = df[f"{exp_name}_control_log_{control_col}"].mean()
-                control_sd_log = df[f"{exp_name}_control_log_{control_col}"].std()
+            control_logs = np.log1p(df[control_cols])
+            df[f"{exp_name}_control_log_mean"] = control_logs.mean(axis=1)
+            df[f"{exp_name}_control_log_std"] = control_logs.std(axis=1)
 
-                # Avoid zero standard deviation in control group
-                if control_sd_log == 0:
-                    df[f"{exp_name}_z_score_log_{control_col}"] = np.nan  # Assign NaN if SD is zero
-                else:
-                    df[f"{exp_name}_z_score_log_{control_col}"] = (
-                        (df[f"{exp_name}_log"] - control_mean_log) / control_sd_log
-                    )
+            # Compute z-score while avoiding division by zero
+            df[f"{exp_name}_z_score_log"] = df.apply(
+                lambda row: (
+                    (row[f"{exp_name}_log"] - row[f"{exp_name}_control_log_mean"]) / row[f"{exp_name}_control_log_std"]
+                    if row[f"{exp_name}_control_log_std"] > 0 else np.nan
+                ),
+                axis=1
+            )
 
         self.data = df
         return self.data
+    
+    # def PolyO(self):
+    #     """_summary_
+    #     """
+    #     df = self.data.copy()
+
+    #     if self.control_cols is None:
+    #         raise ValueError("Control columns must be provided during initialization to run polyO method.")
+        
+    #     for exp_name, columns in self.indexes.items():
+    #         control_cols = self.control_cols.get(exp_name)
+
+
+    #     df['polyO'] = calculate_polyO()
+    #     df['polyO_score'] = classify_polyO_score()
+    #     return df
 
     def normalize(self):
         """
@@ -327,20 +349,6 @@ class DELi_Cube:
         
 
     def disynthonize(self, df=None, synthon_ids=None):
-        """
-        Create disynthon pairs, count occurrences, and construct a dictionary for disynthon overlap analysis.
-
-        Parameters:
-            df (pd.DataFrame): The input DataFrame containing synthon columns and indices. 
-            - Defaults to self.data if not provided.
-            synthon_ids (list): A list of synthon ID column names (e.g., ['ID_A', 'ID_B'] or ['ID_A', 'ID_B', 'ID_C']).
-            - Defaults to 3-cycle ['ID_A', 'ID_B', 'ID_C'].
-
-        Returns:
-            pd.DataFrame: A DataFrame with added count columns for each disynthon pair.
-            dict: A dictionary mapping disynthon types and experimental IDs to disynthon count columns.
-        """
-
         if df is None:
             df = self.data
 
@@ -350,14 +358,16 @@ class DELi_Cube:
         if len(synthon_ids) not in [2, 3]:
             raise ValueError("synthon_ids must contain exactly two or three elements.")
         
-    
+        missing_cols = [col for col in synthon_ids if col not in df.columns]
+        if missing_cols:
+            raise ValueError(f"Missing synthon columns: {', '.join(missing_cols)}")
+        
         new_cols = {}
         new_cols['AB'] = df[synthon_ids[0]] + '-' + df[synthon_ids[1]]
         if len(synthon_ids) == 3:
             new_cols['AC'] = df[synthon_ids[0]] + '-' + df[synthon_ids[2]]
             new_cols['BC'] = df[synthon_ids[1]] + '-' + df[synthon_ids[2]]
 
-        
         col_order = list(df.columns)
         if 'DEL_ID' in col_order:
             del_idx = col_order.index('DEL_ID') + 1  
@@ -395,8 +405,150 @@ class DELi_Cube:
             for col in count_cols:
                 df[col].fillna(0, inplace=True)
 
+        self.data = df
         return df, exp_dict
 
+
+    def get_top_disynthons(self, disynthon_data, exp_name1, comparison_type='control', exp_name2=None, control_name=None, comparison_metric='avg', top_count=20, output_dir='.'):
+        """
+        Plots a bar chart comparing enrichment between two experimental sets or a single experiment vs control based on a specified metric.
+        Creates a separate plot for each synthon type (e.g., AB, BC, AC).
+
+        Parameters:
+            disynthon_data (pd.DataFrame): The DataFrame containing disynthon data.
+            exp_name1 (str): The name of the first experiment.
+            comparison_type (str): The type of comparison ('control', 'exp2', or 'none').
+            exp_name2 (str, optional): The name of the second experiment for comparison_type 'exp2'.
+            control_name (str, optional): The name of the control column for comparison_type 'control'.
+            comparison_metric (str): The metric for comparison ('sum' or 'avg').
+            top_count (int): The number of top disynthons to display.
+            output_dir (str): The directory to save the plot.
+        """
+        if exp_name1 not in self.indexes:
+            raise ValueError(f"Experiment '{exp_name1}' not found in the indexes.")
+
+        if comparison_type == 'exp2':
+            if not exp_name2:
+                raise ValueError("exp_name2 must be provided for comparison_type 'exp2'.")
+            if exp_name2 not in self.indexes:
+                raise ValueError(f"Experiment '{exp_name2}' not found in the indexes.")
+
+        elif comparison_type == 'control':
+            if not control_name:
+                raise ValueError("control_name must be provided for comparison_type 'control'.")
+            if control_name not in self.control_cols:
+                raise ValueError(f"Control column '{control_name}' not found in the DataFrame.")
+
+        elif comparison_type not in ['control', 'exp2', 'none']:
+            raise ValueError("comparison_type must be either 'control', 'exp2', or 'none'.")
+
+        if comparison_metric not in ['sum', 'avg']:
+            raise ValueError("Comparison metric must be either 'sum' or 'avg'.")
+
+        synthon_ids = []
+        if any(col.startswith('AB') for col in disynthon_data.columns):
+            synthon_ids.append('AB')
+        if any(col.startswith('BC') for col in disynthon_data.columns):
+            synthon_ids.append('BC')
+        if any(col.startswith('AC') for col in disynthon_data.columns):
+            synthon_ids.append('AC')
+
+        if not synthon_ids:
+            raise ValueError("No valid synthon columns found in the DataFrame.")
+
+        for synthon in synthon_ids:
+            enrichment_results = []
+
+            synthon_cols = [col for col in disynthon_data.columns if col.startswith(synthon)]
+
+            index_cols1 = self.indexes[exp_name1]
+            grouped_counts1 = disynthon_data.groupby(synthon)[index_cols1].sum().reset_index()
+            grouped_counts1['exp'] = exp_name1
+
+            if comparison_metric == 'avg':
+                grouped_counts1['metric'] = grouped_counts1[index_cols1].mean(axis=1)
+            else:
+                grouped_counts1['metric'] = grouped_counts1[index_cols1].sum(axis=1)
+
+            grouped_counts2 = pd.DataFrame()
+
+            if comparison_type == 'exp2':
+                if exp_name2:
+                    index_cols2 = self.indexes[exp_name2]
+                    grouped_counts2 = disynthon_data.groupby(synthon)[index_cols2].sum().reset_index()
+                    grouped_counts2['exp'] = exp_name2
+
+                    if comparison_metric == 'avg':
+                        grouped_counts2['metric'] = grouped_counts2[index_cols2].mean(axis=1)
+                    else:
+                        grouped_counts2['metric'] = grouped_counts2[index_cols2].sum(axis=1)
+
+            elif comparison_type == 'control':
+                if control_name:
+                    index_cols2 = self.control_cols[control_name]
+                    grouped_counts2 = disynthon_data.groupby(synthon)[index_cols2].sum().reset_index()
+                    grouped_counts2['exp'] = control_name
+
+                    if comparison_metric == 'avg':
+                        grouped_counts2['metric'] = grouped_counts2[index_cols2].mean(axis=1)
+                    else:
+                        grouped_counts2['metric'] = grouped_counts2[index_cols2].sum(axis=1)
+
+            elif comparison_type == 'none':
+                grouped_counts2 = grouped_counts1
+
+            if not grouped_counts2.empty:
+                merged_counts = grouped_counts1.merge(grouped_counts2, on=synthon, suffixes=('_exp1', '_exp2'))
+
+                if comparison_type != 'none':
+                    merged_counts['diff'] = merged_counts['metric_exp1'] - merged_counts['metric_exp2']
+                    top_disynthons = merged_counts.nlargest(top_count, 'diff')
+                else:
+                    top_disynthons = merged_counts.nlargest(top_count, 'metric_exp1')
+
+                enrichment_results.append(top_disynthons)
+
+            if enrichment_results:
+                final_results = pd.concat(enrichment_results)
+
+                fig, ax = plt.subplots(figsize=(12, 6))
+
+                x_labels = final_results[synthon].astype(str)
+                x = range(len(x_labels))
+
+                width = 0.35
+
+                if comparison_type == 'none':
+                    ax.bar(x, final_results['metric_exp1'], width, label=exp_name1, color='skyblue')
+                    ax.set_xticks(x)
+                    ax.set_xticklabels(x_labels, rotation=90)
+                    ax.set_xlabel(f"{synthon} Disynthon")
+                    ax.set_ylabel("Enrichment")
+                    ax.set_title(f"Top {top_count} {synthon} Disynthons: {exp_name1}")
+                    ax.legend()
+
+                else:
+                    x1 = [pos - width / 2 for pos in x]
+                    x2 = [pos + width / 2 for pos in x]
+
+                    ax.bar(x1, final_results['metric_exp1'], width, label=exp_name1, color='skyblue')
+                    ax.bar(x2, final_results['metric_exp2'], width, label=exp_name2 if comparison_type == 'exp2' else control_name, color='orange')
+
+                    ax.set_xticks(x)
+                    ax.set_xticklabels(x_labels, rotation=90)
+                    ax.set_xlabel(f"{synthon} Disynthon")
+                    ax.set_ylabel("Enrichment")
+                    ax.set_title(f"Top {top_count} {synthon} Disynthons: {exp_name1}{' vs ' + (exp_name2 if comparison_type == 'exp2' else control_name) if comparison_type != 'none' else ''}")
+                    ax.legend()
+
+                plt.tight_layout()
+
+                plot_path = f"{output_dir}/top_{synthon}_disynthons_{exp_name1}{' vs ' + (exp_name2 if comparison_type == 'exp2' else control_name) if comparison_type != 'none' else ''}.png"
+                plt.savefig(plot_path)
+                print(f"Plot saved to {plot_path}")
+
+            else:
+                print(f"No valid results for {synthon} disynthon.")
 
 
     def simple_spotfire_version(self):
@@ -409,9 +561,9 @@ class DELi_Cube:
         """
         df = self.data.copy()
         smiles_index = df.columns.get_loc('SMILES')
-        cols_to_keep = df.columns[:smiles_index + 1].tolist() + [col for col in df.columns[smiles_index + 1:] if any(pattern in col for pattern in ['_sum', '_NSC', '_MLE'])]
+        cols_to_keep = df.columns[:smiles_index + 1].tolist() + [col for col in df.columns[smiles_index + 1:] if any(pattern in col for pattern in ['_sum', '_NSC', '_MLE', '_z_score'])]
         for col in cols_to_keep:
-            if any(pattern in col for pattern in ['_sum', '_NSC', '_MLE']):
+            if any(pattern in col for pattern in ['_sum', '_NSC', '_MLE', '_z_score']):
                 df[col] = df[col].round(2)
         spotfire_df = df[cols_to_keep]
 
@@ -686,6 +838,130 @@ class DELi_Cube:
             if output_dir is None:
                 output_dir = '.'
             plt.savefig(f'{output_dir}/{exp_name}_classifier.png')
+            plt.close()
+
+    def gnn_classifier(self, threshold=2, output_dir=".", arch="GAT", num_layers=3, encoding="embedding"):
+        """Train a Graph Neural Network (GNN) classifier to predict the enrichment status of compounds.
+
+        Parameters
+        ----------
+        threshold : int, optional
+            Threshold value for enrichment status, by default 2
+        output_dir : str, optional
+            Directory to save the classifier image, by default "."
+        arch : str, optional
+            GNN architecture (GAT or GCN), by default "GAT"
+        num_layers : int, optional
+            Number of GNN layers, by default 3
+        encoding : str, optional
+            Node encoding method (embedding or onehot), by default "embedding"
+        """
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        for exp_name, indices in self.indexes.items():
+            self.data[f'{exp_name}_average_enrichment'] = self.data[indices].mean(axis=1)
+
+            top_100 = self.data.nlargest(100, f'{exp_name}_average_enrichment')
+            remaining_data = self.data.drop(top_100.index)
+            random_200 = remaining_data.sample(n=200, random_state=42)
+
+            subset_data = pd.concat([top_100, random_200]).copy()
+            subset_data["graphs"] = [smi_to_pyg(smiles, 0, encoding="embedding") for smiles in tqdm(subset_data['SMILES'])]
+            subset_data.dropna(subset=["graphs"], inplace=True)
+            subset_data["target"] = (subset_data[f'{exp_name}_average_enrichment'] > threshold).astype(int)
+
+            graphs = list(subset_data["graphs"])
+            labels = torch.tensor(subset_data["target"].values, dtype=torch.long)
+
+            train_graphs, test_graphs, train_labels, test_labels = train_test_split(graphs, labels, test_size=0.2, random_state=42)
+            train_graphs, val_graphs, train_labels, val_labels = train_test_split(train_graphs, train_labels, test_size=0.1, random_state=42)
+
+
+            for i, g in enumerate(train_graphs):
+                g.y = train_labels[i]
+            for i, g in enumerate(test_graphs):
+                g.y = test_labels[i]
+
+            train_loader = DataLoader(train_graphs, batch_size=10, shuffle=True)
+            val_loader = DataLoader(val_graphs, batch_size=10, shuffle=False)
+            test_loader = DataLoader(test_graphs, batch_size=10, shuffle=False)
+
+            node_dim, edge_dim = train_graphs[0].x.shape[1], train_graphs[0].edge_attr.shape[1]
+            model = Final_Network(node_dim, edge_dim, arch=arch, num_layers=num_layers, encoding=encoding).to(device)
+            optimizer = optim.AdamW(model.parameters(), lr=1e-5)
+            scheduler = optim.lr_scheduler.OneCycleLR(optimizer, max_lr=1e-3, steps_per_epoch=len(train_loader), epochs=200)
+            criterion = nn.CrossEntropyLoss()
+
+            train_losses = []
+            val_losses = []
+
+            best_val_loss = float('inf')
+
+            for epoch in range(200):
+                model.train()
+                epoch_loss = 0
+                for batch in train_loader:
+                    batch = batch.to(device)
+                    optimizer.zero_grad()
+                    out = model(batch.x, batch.edge_index, batch.edge_attr, batch.batch)
+                    loss = criterion(out, batch.y)
+                    loss.backward()
+                    optimizer.step()
+                    scheduler.step()
+                    epoch_loss += loss.item()
+                train_losses.append(epoch_loss / len(train_loader))
+
+                model.eval()
+                val_loss = 0
+                with torch.no_grad():
+                    for batch in val_loader:
+                        batch = batch.to(device)
+                        out = model(batch.x, batch.edge_index, batch.edge_attr, batch.batch)
+                        loss = criterion(out, batch.y)
+                        val_loss += loss.item()
+                val_loss /= len(val_loader)
+                val_losses.append(val_loss)
+
+                # Early stopping (optional)
+                if val_loss < best_val_loss:
+                    best_val_loss = val_loss
+                    torch.save(model.state_dict(), f"{output_dir}/{exp_name}_{arch}_best_model.pth")
+
+
+            # # Plot Training Loss Curve
+            # plt.figure(figsize=(6, 5))
+            # plt.plot(range(1, 201), train_losses, marker='o', linestyle='-')
+            # plt.xlabel("Epoch")
+            # plt.ylabel("Training Loss")
+            # plt.title(f"{exp_name} {arch} Training Loss (Fold {fold+1})")
+            # plt.grid()
+            # plt.savefig(f'{output_dir}/{exp_name}_{arch}_loss_fold{fold+1}.png')
+            # plt.close()
+
+            model.load_state_dict(torch.load(f"{output_dir}/{exp_name}_{arch}_best_model.pth"))
+            model.eval()
+            y_true, y_pred = [], []
+
+            with torch.no_grad():
+                for batch in test_loader:
+                    batch = batch.to(device)
+                    out = model(batch.x, batch.edge_index, batch.edge_attr, batch.batch)
+                    preds = torch.argmax(out, dim=1)
+                    y_true.extend(batch.y.cpu().numpy())
+                    y_pred.extend(preds.cpu().numpy())
+
+
+            acc = accuracy_score(y_true, y_pred)
+
+            cm = confusion_matrix(y_true, y_pred)
+
+            plt.figure(figsize=(8, 6))
+            sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=["Not Enriched", "Enriched"], yticklabels=["Not Enriched", "Enriched"])
+            plt.title(f"{exp_name} {arch} Classifier (Acc = {acc:.2f}), Threshold = {threshold}")
+            plt.xlabel('Predicted')
+            plt.ylabel('True')
+            plt.tight_layout()
+            plt.savefig(f'{output_dir}/{exp_name}_{arch}_classifier.png')
             plt.close()
 
 

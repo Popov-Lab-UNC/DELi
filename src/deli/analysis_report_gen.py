@@ -23,20 +23,27 @@ def generate_report(base_dir, indexes, control_cols, nsc_max_dict=None, sd_min_d
     analysis_dir = os.path.join(base_dir, f"{today_date}_analysis")
     disynthon_dir = os.path.join(analysis_dir, "disynthon")
     trisynthon_dir = os.path.join(analysis_dir, "trisynthon")
+    top_disynthons_dir = os.path.join(analysis_dir, "top_disynthons")
     top_hits_dir = os.path.join(analysis_dir, "top_hits")
     ml_fingerprints_to_RF_dir = os.path.join(analysis_dir, "ml_fingerprints_to_RF")
     ml_fingerprints_to_clf_dir = os.path.join(analysis_dir, "ml_fingerprints_to_clf")
+    gnn_classifier = os.path.join(analysis_dir, "gnn")
 
     disynthon_plots = [os.path.relpath(plot, base_dir) for plot in get_plot_files(disynthon_dir)]
     trisynthon_plots = [os.path.relpath(plot, base_dir) for plot in get_plot_files(trisynthon_dir)]
+    top_disynthon_plots = [os.path.relpath(plot, base_dir) for plot in get_plot_files(top_disynthons_dir)]
     top_hits_plots = [os.path.relpath(plot, base_dir) for plot in get_plot_files(top_hits_dir)]
     ml_fingerprints_to_RF_plots = [os.path.relpath(plot, base_dir) for plot in get_plot_files(ml_fingerprints_to_RF_dir)]
     ml_fingerprints_to_clf_plots = [os.path.relpath(plot, base_dir) for plot in get_plot_files(ml_fingerprints_to_clf_dir)]
+    gnn_classifier_plots = [os.path.relpath(plot, base_dir) for plot in get_plot_files(gnn_classifier)]
 
     print(f"Disynthon plots: {disynthon_plots}")
     print(f"Trisynthon plots: {trisynthon_plots}")
+    print(f"Top disynthons plots: {top_disynthon_plots}")
+    print(f"Trisynthon plots: {trisynthon_plots}")
     print(f"Top hits plots: {top_hits_plots}")
     print(f"ML Fingerprints to RF plots: {ml_fingerprints_to_RF_plots}")
+    print(f"ML Fingerprints to Classifier plots: {ml_fingerprints_to_clf_plots}")
 
     experiment_info = get_experiment_info(indexes, control_cols)
     
@@ -64,9 +71,11 @@ def generate_report(base_dir, indexes, control_cols, nsc_max_dict=None, sd_min_d
         sampling_depth_only=sampling_depth_values_only,
         disynthon_plots=disynthon_plots,
         trisynthon_plots=trisynthon_plots,
+        top_disynthons_plots=top_disynthon_plots,
         top_hits_plots=top_hits_plots,
         ml_fingerprints_to_RF_plots=ml_fingerprints_to_RF_plots,
         ml_fingerprints_to_clf_plots=ml_fingerprints_to_clf_plots,
+        gnn_classifier_plots=gnn_classifier_plots
     )
 
     print("Rendered HTML preview:")
