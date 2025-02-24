@@ -244,8 +244,8 @@ class DELLibraryPool:
         self.pool_size = sum([lib.library_size for lib in self.libraries])
 
         ### VALIDATE ###
-        _ids = []
-        _tags = []
+        _ids: list[str] = []
+        _tags: list[str] = []
         for _library in self.libraries:
             # check id uniqueness
             if _library.library_id in _ids:

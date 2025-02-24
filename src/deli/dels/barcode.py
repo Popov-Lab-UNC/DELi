@@ -422,6 +422,7 @@ class BarcodeSchema:
                             section_overhang=section_info.get("overhang"),
                         )
                     )
+        return cls(barcode_sections=_sections)
 
     def __getitem__(self, item: str) -> BarcodeSection:
         """Given a barcode section name, return that BarcodeSection object"""
