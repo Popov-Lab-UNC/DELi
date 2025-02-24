@@ -203,6 +203,8 @@ class HybridSemiGlobalAlignment:
         seq2: str,
         alignment: List[Tuple[int, int]],
         alignment_lookup: Dict[int, int],
+        top_score: int,
+        edit_cost: int,
     ):
         """
         Initialize the global alignment
@@ -228,6 +230,8 @@ class HybridSemiGlobalAlignment:
         self.seq2 = seq2
         self.alignment = alignment
         self.alignment_lookup = alignment_lookup
+        self.edit_cost = edit_cost
+        self.top_score = top_score
 
     def __iter__(self):
         """Iterate over the alignment indexes"""
@@ -281,7 +285,7 @@ class HybridSemiGlobalAlignment:
         >>> my_alignment = SemiGlobalAlignment.globally_align(seq_1, seq_2)
         [(0, 0), (1, None), (2, 1), (3, 2), (None, 3)]
         """
-        return cls(seq1, seq2, *_semi_global_align(seq1, seq2))
+        return cls(seq1, seq2, *_hybrid_semi_global_align(seq1, seq2))
 
     def __str__(self) -> str:
         """Render the alignment as a a readable formatted string"""
@@ -296,13 +300,11 @@ class HybridSemiGlobalAlignment:
 @njit()
 def _hybrid_semi_global_align(
     ref_seq: str, adapt_seq: str
-) -> tuple[list[tuple[int, int]], dict[int, int]]:
+) -> tuple[list[tuple[int, int]], dict[int, int], int, int]:
     """
-    Numba accelerated hybrid semi-global alignment implementation
+    Numba accelerated semi-global alignment implementation
 
-    This was inspired by the cutadapt alignment algorithm
-
-    Should use HybridSemiGlobalAlignment.globally_align() to align two sequences
+    Should use SemiGlobalAlignment.globally_align() to align two sequences
     this function should never be called outside of this file
     """
     n, m = len(ref_seq), len(adapt_seq)
@@ -315,11 +317,11 @@ def _hybrid_semi_global_align(
     score_table[-1, -1] = 0
     # turn off gap free penalty to ref_seq
     for i in range(n):
-        edit_table[i, -1] = i
+        edit_table[i, -1] = 0
         score_table[i, -1] = 0
     for j in range(m):
         edit_table[-1, j] = j
-        score_table[-1, j] = -j * 2
+        score_table[-1, j] = -j
 
     for i in range(n):
         for j in range(m):
@@ -328,7 +330,7 @@ def _hybrid_semi_global_align(
             choice = (
                 edit_table[i - 1, j - 1] + (not base_pair_match),
                 edit_table[i - 1, j] + 1,
-                edit_table[i, j - 1] + 1,
+                edit_table[i, j - 1] + (1 if (j != (m - 1)) else 0),
             )
 
             if base_pair_match:
@@ -355,6 +357,7 @@ def _hybrid_semi_global_align(
     top_score = max(last_col_scores)
 
     i, j = last_col_scores.index(top_score), m - 1
+    edit_cost = edit_table[i, j]
 
     # this bit of code will also add tailing Gap matches
     # not sure if that is really needed and would slow
@@ -402,4 +405,4 @@ def _hybrid_semi_global_align(
     # need to add a ghost lookup at the end cause indexing from 0
     alignment_lookup[max_seq1_idx + 1] = _last_non_null + 1
 
-    return alignment, alignment_lookup
+    return alignment, alignment_lookup, top_score, edit_cost
