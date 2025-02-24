@@ -1,7 +1,36 @@
 {
     "id": "My_Library_1",
-    "library_tag": "AGCTAGCT",
-    "barcode_schema": "MyBarcode",
+    "barcode_schema": {
+        "library": {
+            "tag":  "CCTTGGCACCCGAGAATTCCAAGCTAGCT",
+            "overhang": "CTA"
+        },
+        "bb1": {
+            "tag": "NNNNNNNN",
+            "overhang": "ACG",
+            "hamming_decoder": "8_4"
+        },
+        "bb2": {
+            "tag": "NNNNNNNN",
+            "overhang": "CAT",
+            "hamming_decoder": "8_4"
+        },
+        "bb3": {
+            "tag": "NNNNNNNN",
+            "overhang": "TGC",
+            "hamming_decoder": "8_4"
+        },
+        "pre-umi": {
+            "tag": "AATGCCAGTACG"
+        },
+        "umi": {
+            "tag": "NNNNNNNNNNN"
+        },
+        "closing": {
+            "tag": "CTAGCAGCCTGACATCTTGAGACTTG"
+        }
+    },
+    "anchored": false,
     "bb_sets": [
         "BB_A",
         "BB_C",

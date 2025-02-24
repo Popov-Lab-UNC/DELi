@@ -30,6 +30,8 @@ class DELibrary(DeliDataLoadable):
         Number of building block cycles in the library
     library_size : int
         Size of the enumerated library
+    library_dna_tag : str
+        the DNA sequence associated with this library
     enumerator : DELEnumerator
         the enumerator attached to the library
     """
@@ -37,12 +39,12 @@ class DELibrary(DeliDataLoadable):
     def __init__(
         self,
         library_id: str,
-        library_dna_tag: str,
         barcode_schema: BarcodeSchema,
         bb_sets: List[BuildingBlockSet],
         library_reaction_workflow: Optional[ReactionWorkflow] = None,
         dna_barcode_on: Optional[str] = None,
         scaffold: Optional[str] = None,
+        anchored: bool = False,
     ):
         """
         Initialize a DELibrary object
@@ -51,8 +53,6 @@ class DELibrary(DeliDataLoadable):
         ----------
         library_id : str
             name/id of the library
-        library_dna_tag : str
-            the DNA sequence associated with this library
         barcode_schema : BarcodeSchema
             The barcode schema defining how the barcodes are designed
         bb_sets : List[BuildingBlockSet]
@@ -75,13 +75,14 @@ class DELibrary(DeliDataLoadable):
             error message will contain specific details of build issue
         """
         self.library_id = library_id
-        self.library_tag = library_dna_tag
         self.barcode_schema = barcode_schema
         self.bb_sets = bb_sets
         self.library_reaction_workflow = library_reaction_workflow
         self.dna_barcode_on = dna_barcode_on
         self.scaffold = scaffold
+        self.anchored = anchored
 
+        self.library_tag = self.barcode_schema.library_section.get_dna_sequence()
         self.library_size = reduce(mul, [len(bb_set) for bb_set in self.bb_sets])
         self.num_cycles = len(self.bb_sets)
         self.enumerator: Optional[DELEnumerator] = None
@@ -174,7 +175,7 @@ class DELibrary(DeliDataLoadable):
 
         return cls(
             library_id=data["id"],
-            library_dna_tag=data["library_tag"],
+            anchored=data.get("anchored", False),
             dna_barcode_on=data["dna_barcode_on"],
             barcode_schema=BarcodeSchema.from_dict(data["barcode_schema"]),
             bb_sets=bb_sets,

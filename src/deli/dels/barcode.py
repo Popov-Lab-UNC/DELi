@@ -352,7 +352,7 @@ class BarcodeSchema:
         ----------
         data: dict
             a dictionary containing the barcode schema
-            each key value pair is section name and its relvant data.
+            each key value pair is section name and its relevant data.
             the data is also a dictionary, with three (3) possible keys
             - 'tag': the section DNA tag (required)
             - 'overhang': the section overhang tag (optional)
@@ -365,7 +365,7 @@ class BarcodeSchema:
         """
         _sections: list[BarcodeSection] = list()
         for section_name, section_info in data.items():
-            if re.match(r"^library_id$", section_name):
+            if re.match(r"^library$", section_name):
                 _sections.append(
                     LibraryBarcodeSection(
                         section_name=section_name,
