@@ -19,7 +19,7 @@ MAX_LIBRARY_RISK_DIST_THRESHOLD_DEFAULT: int = 4
 NUC_2_INT_DEFAULT: dict[str, int] = {"A": 0, "T": 1, "C": 2, "G": 3}
 
 
-DELI_DATA_SUB_DIRS = ["hamming", "barcodes", "libraries", "indexes", "building_blocks"]
+DELI_DATA_SUB_DIRS = ["hamming", "libraries", "indexes", "building_blocks"]
 
 
 def set_deli_data_dir(data_dir: Union[str, Path]) -> None:
@@ -87,17 +87,17 @@ class _DeliConfig:
         self.max_index_risk_dist_threshold: int = (
             int(kwargs["MAX_INDEX_RISK_DIST_THRESHOLD"])
             if (kwargs.get("MAX_INDEX_RISK_DIST_THRESHOLD") is not None)
-            else (MAX_INDEX_RISK_DIST_THRESHOLD_DEFAULT)
+            else MAX_INDEX_RISK_DIST_THRESHOLD_DEFAULT
         )
         self.max_library_risk_dist_threshold: int = (
             int(kwargs["MAX_LIBRARY_RISK_DIST_THRESHOLD"])
             if (kwargs.get("MAX_LIBRARY_RISK_DIST_THRESHOLD") is not None)
-            else (MAX_LIBRARY_RISK_DIST_THRESHOLD_DEFAULT)
+            else MAX_LIBRARY_RISK_DIST_THRESHOLD_DEFAULT
         )
         self.nuc_2_int: dict[str, int] = (
             kwargs["NUC_2_INT"]
             if (kwargs.get("NUC_2_INT", None) is not None)
-            else (NUC_2_INT_DEFAULT)
+            else NUC_2_INT_DEFAULT
         )
 
     @classmethod
@@ -134,20 +134,20 @@ class _DeliConfig:
         )
 
 
-def _validate_deli_data_dir(deli_data_dir: Union[str, Path]) -> bool:
-    if not os.path.exists(deli_data_dir):
+def _validate_deli_data_dir(deli_data_dir_: Union[str, Path]) -> bool:
+    if not os.path.exists(deli_data_dir_):
         raise DeliDataDirError(
-            f"DELi data directory '{deli_data_dir}' does not exist; "
-            f"create it using 'deli create_data_dir {deli_data_dir}'"
+            f"DELi data directory '{deli_data_dir_}' does not exist; "
+            f"create it using 'deli create_data_dir {deli_data_dir_}'"
         )
 
-    sub_dirs = os.listdir(deli_data_dir)
+    sub_dirs = os.listdir(deli_data_dir_)
     missing_sub_dirs = set(DELI_DATA_SUB_DIRS) - set(sub_dirs)
     if len(missing_sub_dirs) > 0:
         raise DeliDataDirError(
-            f"DELi data directory '{deli_data_dir}' is invalid; "
+            f"DELi data directory '{deli_data_dir_}' is invalid; "
             f"missing sub-directories {list(missing_sub_dirs)}"
-            f"use 'deli create_data_dir {deli_data_dir} --fix'"
+            f"use 'deli create_data_dir {deli_data_dir_} --fix'"
         )
     return True
 
@@ -178,11 +178,8 @@ def init_deli_data_directory(
     """
     _path = Path(path)
     os.makedirs(_path, exist_ok=not fail_on_exist)
-    os.makedirs(_path / "libraries", exist_ok=not fail_on_exist)
-    os.makedirs(_path / "indexes", exist_ok=not fail_on_exist)
-    os.makedirs(_path / "barcodes", exist_ok=not fail_on_exist)
-    os.makedirs(_path / "hamming", exist_ok=not fail_on_exist)
-    os.makedirs(_path / "building_blocks", exist_ok=not fail_on_exist)
+    for sub_dir in DELI_DATA_SUB_DIRS:
+        os.makedirs(_path / sub_dir, exist_ok=not fail_on_exist)
 
     # create hamming files
     if create_default_hamming_files:
