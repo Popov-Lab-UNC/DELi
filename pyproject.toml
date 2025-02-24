@@ -41,6 +41,9 @@ matplotlib = "^3.9.3"
 scipy = "^1.14.1"
 rdkit = "^2024.9.5"
 pandas = "^2.2.3"
+seaborn = "^0.13.2"
+scikit-learn = "^1.5.2"
+matplotlib-venn = "^1.1.1"
 
 [tool.poetry.group.dev]
 optional = true
