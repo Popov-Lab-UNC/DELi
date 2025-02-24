@@ -227,7 +227,7 @@ class DELibrary(DeliDataLoadable):
             )
 
 
-class DELLibraryPool:
+class DELibraryPool:
     """base class for any class that holds a group of DEL libraries"""
 
     def __init__(self, libraries: List[DELibrary]):
