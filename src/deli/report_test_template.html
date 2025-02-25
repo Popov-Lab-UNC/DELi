@@ -241,6 +241,45 @@
     </section>
     {% endif %}
 
+    <!-- Top Disynthon Overlap Section -->
+    {% if top_disynthons_plots %}
+    <section>
+        <h2>Top Disynthon Enrichment</h2>
+
+        {% set grouped_top_plots = {} %}
+
+        {% for plot in top_disynthons_plots %}
+            {% set parts = plot.split('_') %}
+            {% set experiment_name = parts[3] if parts|length > 2 else 'Unknown' %}
+
+            {% if experiment_name not in grouped_top_plots %}
+                {% set _ = grouped_top_plots.update({experiment_name: []}) %}
+            {% endif %}
+
+            {% set _ = grouped_top_plots[experiment_name].append(plot) %}
+        {% endfor %}
+
+        <!-- Display grouped top plots -->
+        {% for experiment, plots in grouped_top_plots.items() %}
+        <div class="experiment-group">
+            <h3>{{ experiment }}</h3>
+            <div class="disynthon-inline">
+                {% if plots|length == 1 %}
+                    <!-- logic for one plot -->
+                    <img src="{{ plots[0] }}" alt="Top Disynthon Enrichment for {{ experiment }}" class="single-plot">
+                {% else %}
+                    {% for plot in plots %}
+                    <div class="plot">
+                        <img src="{{ plot }}" alt="Top Disynthon Enrichment for {{ experiment }}">
+                    </div>
+                    {% endfor %}
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+
+    </section>
+    {% endif %}
 
     <!-- Top Hit Compound Plots Section -->
     {% if top_hits_plots %}
@@ -265,13 +304,8 @@
         {% for plot in ml_fingerprints_to_RF_plots %}
         <img src="{{ plot }}" alt="ML Fingerprints to Regression Plot">
         {% endfor %}
-    </section>
-    {% else %}
-    <section>
-        <h2>ML Fingerprints to Regression</h2>
-        <p class="placeholder">No ML Fingerprints to Regression plots available.</p>
-    </section>
-    {% endif %}
+        </section>
+        {% endif %}
 
     <!-- Classifier Plots Section -->
     {% if ml_fingerprints_to_clf_plots %}
@@ -281,12 +315,17 @@
         <img src="{{ plot }}" alt="Classifier Plot">
         {% endfor %}
     </section>
-    {% else %}
-    <section>
-        <h2>Classifier Plots</h2>
-        <p class="placeholder">No classifier plots available.</p>
-    </section>
     {% endif %}
+
+    <!-- MPNN Classifier Plots Section -->
+    {% if gnn_classifier_plots %}
+    <section>
+        <h2>GNN Classifier Plots</h2>
+        {% for plot in gnn_classifier_plots %}
+        <img src="{{ plot }}" alt="GNN Classifier Plot">
+        {% endfor %}
+        </section>
+        {% endif %}
 
     <footer>
         <p>DEL Analysis Report &copy; 2024</p>

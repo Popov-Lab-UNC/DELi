@@ -1,25 +1,26 @@
 general:
-  data: "/Users/brandonnovy/Desktop/2_7_25_del6/2_7_DEL_DEL006_cube.csv"
-  lib_size: 800000
-  output_dir: "test"
+  data: "sample_data_1/DEL003_cube_noid.csv"
+  lib_size: 58000
+  output_dir: "DEL3"
 
-#If indexes are not provided, raw_indexes will be used. If only indexes are provided, SD_min and NSC_values can't be calculated 
-#due to necessity of raw reads for depth. You can still run deli, but the top of the report will be NA for these values.
-#Control cols necessary for MLE, Z-scores
+# If indexes are not provided, raw_indexes will be used. If only indexes are provided, SD_min and NSC_values cannot be calculated 
+# due to the necessity of raw reads for depth. You can still run the analysis, but the top of the report will display NA for these values.
+# Control columns are necessary for MLE and Z-scores calculations.
+# The id_col is used to specify the identifier column. If DEL_ID is not specified, the first column will be used by default.
 
 id_col: "DEL_ID"
 
 indexes:
-  BRD4: ["corrected_index2", "corrected_index3", "corrected_index9"]
-  53bp1: ["corrected_index4", "corrected_index6", "corrected_index7"]
+  Cycle1: ["corrected_PTMODD3index4", "corrected_PTMODD3index5", "corrected_PTMODD3index6"]
+  Cycle2: ["corrected_PTMODD3index1", "corrected_PTMODD3index2", "corrected_PTMODD3index3"]
 
 control_cols:
-  BRD4: ["corrected_index8"]
-  53bp1: ["corrected_index8"]
+  Cycle1: ["corrected_D3index7"]
+  Cycle2: ["corrected_D3index8"]
 
 raw_indexes:
-  BRD4: ["raw_index2", "raw_index3", "raw_index9"]
-  53bp1: ["raw_index4", "raw_index6", "raw_index7"]
+  Cycle1: ["raw_PTMODD3index4", "raw_PTMODD3index5", "raw_PTMODD3index6"]
+  Cycle2: ["raw_PTMODD3index1", "raw_PTMODD3index2", "raw_PTMODD3index3"]
 
 flags:
   SD_min: True
@@ -29,13 +30,25 @@ flags:
   z_score_log_data: True
   normalized_data: False
   disynthon_data: true
-  trisynthon_overlap: true
-  disynthon_overlap: true
+  trisynthon_overlap: True
+  disynthon_overlap: True
   disynthon_threshold: 20
   simple_spotfire_version: true
   ml_fingerprints_to_RF_reg: true
   ml_fingerprints_to_RF_clf: true
   clf_thresh: 10
+  gnn_classifier: true
+  gnn_threshold: 10
+  gnn_arch: "GAT"
   top_hits: 20
   top_hits_metric: "sum"
   report: true
+
+  top_disynthons:
+    enabled: True
+    comparison: "None"       # Type of comparison: "control" or "exp2" or "None"
+    exp_name: "Cycle2"
+    exp2_name: "None"
+    control_name: "None"
+    top_count: 10               # Number of top disynthons to pull
+    comparison_metric: "avg"
