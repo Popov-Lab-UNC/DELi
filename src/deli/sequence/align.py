@@ -159,7 +159,10 @@ class Aligner(abc.ABC):
     This might cause obj initialization time to take 2-3 seconds.
     """
 
-    pass
+    def __init__(self):
+        """Initialize the aligner"""
+        # dummy align to force compile
+        self.align("CCC", "CCA")
 
     @abc.abstractmethod
     def align(self, seq1: str, seq2: str) -> Alignment:
