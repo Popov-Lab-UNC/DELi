@@ -16,6 +16,7 @@ from torch_geometric.loader import DataLoader
 import torch.optim as optim
 import torch.nn as nn
 from gnn import Final_Network, smi_to_pyg
+from PIL import ImageDraw, ImageFont
 # from poly_o import calculate_polyO, classify_polyO_score
 
 class DELi_Cube:
@@ -185,18 +186,20 @@ class DELi_Cube:
 
                 df[f"{exp_name}_MLE"] = (
                     (control_total / selection_total) *
-                    (((df[columns].sum(axis=1).sum()) + 3/8) / (df[control_col] + 3/8))
+                    (((df[columns].sum(axis=1)) + 3/8) / (df[control_col] + 3/8))
                 )
 
         self.data = df
         return self.data
 
 
+ 
+   
     def z_score(self):
-        """Calculate the z-score for each experimental group compared to the control column.
+        """Calculate the normalized z-score (zn) for each experimental group compared to the control column.
 
-        The z-score is calculated using the proportion of observations in the experimental 
-        group compared to the proportion in the control group, with MAD for scaling.
+        The z-score is calculated using the observed count (C) and expected count (E), with 
+        standard deviation from a binomial distribution. The final zn is further normalized by sqrt(n).
 
         DOI: 10.1021/acscombsci.8b00116
 
@@ -204,7 +207,7 @@ class DELi_Cube:
             ValueError: If control columns are missing or contain only zeros.
 
         Returns:
-            pd.DataFrame: DataFrame with sum, average, and z-score columns.
+            pd.DataFrame: DataFrame with sum, average, and normalized z-score columns.
         """
         if not self.control_cols:
             raise ValueError("Control columns must be provided during initialization to run z_score method.")
@@ -217,36 +220,42 @@ class DELi_Cube:
             if control_cols is None:
                 raise ValueError(f"Missing control columns for experiment '{exp_name}'.")
 
-            df[f"{exp_name}_avg"] = (df[columns].sum(axis=1).sum()) / len(columns)
+            # Compute observed count (C) as the sum across experimental columns
+            df[f"{exp_name}_C"] = df[columns].sum(axis=1)
 
             for control_col in control_cols:
                 if control_col not in df.columns:
                     raise ValueError(f"Control column '{control_col}' is missing in data.")
 
-                total_exp = df[f"{exp_name}_avg"].sum()
-                total_ctrl = df[control_col].sum()
-
-                if total_exp == 0 or total_ctrl == 0:
-                    raise ValueError(f"Total sum for experiment '{exp_name}' or its control is zero, cannot compute proportions.")
-
-                p_o = df[f"{exp_name}_avg"] / total_exp
-                p_i = df[control_col] / total_ctrl
-
-                control_nonzero = df[control_col][df[control_col] > 0]
-
-                if control_nonzero.empty:
-                    raise ValueError(f"Control column '{control_col}' for experiment '{exp_name}' contains only zeros.")
-
-                median_control = np.median(control_nonzero)
-                mad = 1.4286 * np.median(np.abs(control_nonzero - median_control))
-
-                if mad == 0:
-                    df[f"{exp_name}_z_score"] = np.nan
+                control_values = df[control_col]
+                if control_values.sum() == 0:
+                    raise ValueError(f"The control column '{control_col}' has a sum of zero. Calculation cannot be done.")
                 else:
-                    df[f"{exp_name}_z_score"] = (p_i - p_o) / mad
+                    # If there are non-zero control values, compute the expected count (E)
+                    df[f"{exp_name}_E"] = control_values
+
+                    # If there are zero values in the control column, replace them with the median of non-zero control values
+                    df[f"{exp_name}_E"] = df[f"{exp_name}_E"].replace(0, control_values[control_values > 0].median())
+
+
+                n = df[control_col].sum(axis=0)
+
+                if df[f"{exp_name}_C"].sum(axis=0) == 0 or n == 0:
+                    raise ValueError(f"Total sum for experiment '{exp_name}' or its control is zero, cannot compute z-score.")
+
+                # binomial standard deviation: σ = sqrt(E * (1 - p_i))
+                df[f"{exp_name}_sigma"] = np.sqrt(df[f"{exp_name}_E"] * (1 - (df[f"{exp_name}_E"] / n)))
+
+                # raw z-score: z = (C - E) / σ
+                df[f"{exp_name}_z_score"] = (df[f"{exp_name}_C"] - df[f"{exp_name}_E"]) / df[f"{exp_name}_sigma"]
+
+                # normalized z-score: zn = z / sqrt(n)
+                df[f"{exp_name}_norm_z_score"] = df[f"{exp_name}_z_score"] / np.sqrt(n)
 
         self.data = df
         return self.data
+
+
 
     def z_score_log_data(self):
         """
@@ -263,11 +272,11 @@ class DELi_Cube:
         pd.DataFrame
             A DataFrame with additional columns for the log-transformed sums, averages, and z-scores for each experimental group.
         """
+        if not self.control_cols:
+            raise ValueError("Control columns must be provided during initialization to run z_score_log_data method.")
+
         df = self.data.copy()
 
-        if self.control_cols is None:
-            raise ValueError("Control columns must be provided during initialization to run z_score_log_data method.")
-        
         for exp_name, columns in self.indexes.items():
             control_cols = self.control_cols.get(exp_name)
 
@@ -277,17 +286,27 @@ class DELi_Cube:
             df[f"{exp_name}_sum"] = df[columns].sum(axis=1)
             df[f"{exp_name}_avg"] = df[f"{exp_name}_sum"] / len(columns)
 
+            # log transformation on experimental group average
             df[f"{exp_name}_log"] = np.log1p(df[f"{exp_name}_avg"])
 
             missing_controls = [col for col in control_cols if col not in df.columns]
             if missing_controls:
                 raise ValueError(f"Missing control columns in data: {missing_controls}")
 
-            control_logs = np.log1p(df[control_cols])
-            df[f"{exp_name}_control_log_mean"] = control_logs.mean(axis=1)
-            df[f"{exp_name}_control_log_std"] = control_logs.std(axis=1)
+            for control_col in control_cols:
+                control_values = df[control_col]
 
-            # Compute z-score while avoiding division by zero
+                if control_values.sum() == 0:
+                    raise ValueError(f"The control column '{control_col}' has a sum of zero. Calculation cannot be done.")
+
+                df[f"{exp_name}_control_log"] = np.log1p(control_values)
+                df[f"{exp_name}_control_log"] = df[f"{exp_name}_control_log"].replace(0, np.log1p(control_values[control_values > 0].median()))
+
+            # mean and standard deviation of the log-transformed control values
+            df[f"{exp_name}_control_log_mean"] = df[f"{exp_name}_control_log"].mean()
+            df[f"{exp_name}_control_log_std"] = df[f"{exp_name}_control_log"].std()
+
+            # log-transformed z-score while handling zero standard deviation
             df[f"{exp_name}_z_score_log"] = df.apply(
                 lambda row: (
                     (row[f"{exp_name}_log"] - row[f"{exp_name}_control_log_mean"]) / row[f"{exp_name}_control_log_std"]
@@ -296,8 +315,14 @@ class DELi_Cube:
                 axis=1
             )
 
+            # Handle any missing or problematic z-scores (i.e., divide by zero or invalid calculation)
+            if df[f"{exp_name}_z_score_log"].isnull().any():
+                raise ValueError(f"Some log-transformed z-scores for experiment '{exp_name}' are invalid (NaN values).")
+
         self.data = df
         return self.data
+
+
     
     # def PolyO(self):
     #     """_summary_
@@ -521,10 +546,10 @@ class DELi_Cube:
                 if comparison_type == 'none':
                     ax.bar(x, final_results['metric_exp1'], width, label=exp_name1, color='skyblue')
                     ax.set_xticks(x)
-                    ax.set_xticklabels(x_labels, rotation=90)
+                    ax.set_xticklabels(x_labels, rotation=90, fontsize=12)
                     ax.set_xlabel(f"{synthon} Disynthon")
                     ax.set_ylabel("Enrichment")
-                    ax.set_title(f"Top {top_count} {synthon} Disynthons: {exp_name1}")
+                    ax.set_title(f"Top {top_count} {synthon} Disynthons: {exp_name1}", fontsize=14, fontweight='bold')
                     ax.legend()
 
                 else:
@@ -535,10 +560,10 @@ class DELi_Cube:
                     ax.bar(x2, final_results['metric_exp2'], width, label=exp_name2 if comparison_type == 'exp2' else control_name, color='orange')
 
                     ax.set_xticks(x)
-                    ax.set_xticklabels(x_labels, rotation=90)
+                    ax.set_xticklabels(x_labels, rotation=90, fontsize=12)
                     ax.set_xlabel(f"{synthon} Disynthon")
                     ax.set_ylabel("Enrichment")
-                    ax.set_title(f"Top {top_count} {synthon} Disynthons: {exp_name1}{' vs ' + (exp_name2 if comparison_type == 'exp2' else control_name) if comparison_type != 'none' else ''}")
+                    ax.set_title(f"Top {top_count} {synthon} Disynthons: {exp_name1}{' vs ' + (exp_name2 if comparison_type == 'exp2' else control_name) if comparison_type != 'none' else ''}", fontsize=14, fontweight='bold')
                     ax.legend()
 
                 plt.tight_layout()
@@ -563,7 +588,7 @@ class DELi_Cube:
         smiles_index = df.columns.get_loc('SMILES')
         cols_to_keep = df.columns[:smiles_index + 1].tolist() + [col for col in df.columns[smiles_index + 1:] if any(pattern in col for pattern in ['_sum', '_NSC', '_MLE', '_z_score'])]
         for col in cols_to_keep:
-            if any(pattern in col for pattern in ['_sum', '_NSC', '_MLE', '_z_score']):
+            if any(pattern in col for pattern in ['_sum', '_NSC', '_MLE', '_z_score', '_norm_z_score']):
                 df[col] = df[col].round(2)
         spotfire_df = df[cols_to_keep]
 
@@ -992,6 +1017,8 @@ class DELi_Cube:
             
             if output_dir is None:
                 output_dir = '.'
+            draw = ImageDraw.Draw(img)
+            draw.text((18, 18), f"Top {n} Compounds for {exp_name} by {metric}", fill="black")
             img.save(f'{output_dir}/{exp_name}_top_{n}_compounds.png')
 
 

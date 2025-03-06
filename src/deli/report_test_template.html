@@ -196,7 +196,7 @@
     <section>
         <h2>Trisynthon Overlap</h2>
         {% for plot in trisynthon_plots %}
-        <img src="{{ plot }}" alt="Trisynthon Plot">
+        <img src="data:image/png;base64,{{ plot }}" alt="Trisynthon Plot">
         {% endfor %}
     </section>
     {% endif %}
@@ -226,11 +226,11 @@
             <div class="disynthon-inline">
                 {% if plots|length == 1 %}
                     <!-- logic for one plot -->
-                    <img src="{{ plots[0] }}" alt="Disynthon Plot for {{ experiment }}" class="single-plot">
+                    <img src="data:image/png;base64,{{ plots[0] }}" alt="Disynthon Plot for {{ experiment }}" class="single-plot">
                 {% else %}
                     {% for plot in plots %}
                     <div class="plot">
-                        <img src="{{ plot }}" alt="Disynthon Plot for {{ experiment }}">
+                        <img src="data:image/png;base64,{{ plot }}" alt="Disynthon Plot for {{ experiment }}">
                     </div>
                     {% endfor %}
                 {% endif %}
@@ -241,43 +241,23 @@
     </section>
     {% endif %}
 
+    <!-- Disynthon Overlap Section -->
+    {% if disynthon_plots %}
+    <section>
+        <h2>Disynthon Overlap</h2>
+        {% for plot in disynthon_plots %}
+        <img src="data:image/png;base64,{{ plot }}" alt="Disynthon Plot">
+        {% endfor %}
+    </section>
+    {% endif %}
+
     <!-- Top Disynthon Overlap Section -->
     {% if top_disynthons_plots %}
     <section>
         <h2>Top Disynthon Enrichment</h2>
-
-        {% set grouped_top_plots = {} %}
-
         {% for plot in top_disynthons_plots %}
-            {% set parts = plot.split('_') %}
-            {% set experiment_name = parts[3] if parts|length > 2 else 'Unknown' %}
-
-            {% if experiment_name not in grouped_top_plots %}
-                {% set _ = grouped_top_plots.update({experiment_name: []}) %}
-            {% endif %}
-
-            {% set _ = grouped_top_plots[experiment_name].append(plot) %}
+        <img src="data:image/png;base64,{{ plot }}" alt="Top Disynthon Enrichment Plot">
         {% endfor %}
-
-        <!-- Display grouped top plots -->
-        {% for experiment, plots in grouped_top_plots.items() %}
-        <div class="experiment-group">
-            <h3>{{ experiment }}</h3>
-            <div class="disynthon-inline">
-                {% if plots|length == 1 %}
-                    <!-- logic for one plot -->
-                    <img src="{{ plots[0] }}" alt="Top Disynthon Enrichment for {{ experiment }}" class="single-plot">
-                {% else %}
-                    {% for plot in plots %}
-                    <div class="plot">
-                        <img src="{{ plot }}" alt="Top Disynthon Enrichment for {{ experiment }}">
-                    </div>
-                    {% endfor %}
-                {% endif %}
-            </div>
-        </div>
-        {% endfor %}
-
     </section>
     {% endif %}
 
@@ -286,8 +266,7 @@
     <section>
         <h2>Top Hit Compound Plots</h2>
         {% for plot in top_hits_plots %}
-        <h3>{{ plot.split('/')[-1].split('_')[0] }}</h3>
-        <img src="{{ plot }}" alt="Top Hit Compound Plot">
+        <img src="data:image/png;base64,{{ plot }}" alt="Top Hit Compound Plot">
         {% endfor %}
     </section>
     {% else %}
@@ -302,17 +281,17 @@
     <section>
         <h2>ML Fingerprints to Regression</h2>
         {% for plot in ml_fingerprints_to_RF_plots %}
-        <img src="{{ plot }}" alt="ML Fingerprints to Regression Plot">
+        <img src="data:image/png;base64,{{ plot }}" alt="ML Fingerprints to Regression Plot">
         {% endfor %}
-        </section>
-        {% endif %}
+    </section>
+    {% endif %}
 
     <!-- Classifier Plots Section -->
     {% if ml_fingerprints_to_clf_plots %}
     <section>
         <h2>Classifier Plots</h2>
         {% for plot in ml_fingerprints_to_clf_plots %}
-        <img src="{{ plot }}" alt="Classifier Plot">
+        <img src="data:image/png;base64,{{ plot }}" alt="Classifier Plot">
         {% endfor %}
     </section>
     {% endif %}
@@ -322,10 +301,10 @@
     <section>
         <h2>GNN Classifier Plots</h2>
         {% for plot in gnn_classifier_plots %}
-        <img src="{{ plot }}" alt="GNN Classifier Plot">
+        <img src="data:image/png;base64,{{ plot }}" alt="GNN Classifier Plot">
         {% endfor %}
-        </section>
-        {% endif %}
+    </section>
+    {% endif %}
 
     <footer>
         <p>DEL Analysis Report &copy; 2024</p>
