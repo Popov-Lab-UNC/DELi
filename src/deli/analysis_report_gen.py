@@ -1,11 +1,18 @@
 import os
 import sys
+import base64
 from jinja2 import Environment, FileSystemLoader
 from datetime import datetime
 
+def encode_image_to_base64(image_path):
+    """Convert image to base64-encoded string."""
+    with open(image_path, "rb") as image_file:
+        return base64.b64encode(image_file.read()).decode("utf-8")
+
 def get_plot_files(directory):
+    """Retrieve base64-encoded plots from a given directory."""
     if os.path.exists(directory) and os.path.isdir(directory):
-        return [os.path.join(directory, f) for f in os.listdir(directory) if f.endswith('.png')]
+        return [encode_image_to_base64(os.path.join(directory, f)) for f in os.listdir(directory) if f.endswith('.png')]
     return []
 
 def get_experiment_info(indexes, control_cols):
@@ -21,32 +28,23 @@ def get_experiment_info(indexes, control_cols):
 def generate_report(base_dir, indexes, control_cols, nsc_max_dict=None, sd_min_dict=None, sampling_depth_dict=None):
     today_date = datetime.today().strftime('%Y%m%d')
     analysis_dir = os.path.join(base_dir, f"{today_date}_analysis")
-    disynthon_dir = os.path.join(analysis_dir, "disynthon")
-    trisynthon_dir = os.path.join(analysis_dir, "trisynthon")
-    top_disynthons_dir = os.path.join(analysis_dir, "top_disynthons")
-    top_hits_dir = os.path.join(analysis_dir, "top_hits")
-    ml_fingerprints_to_RF_dir = os.path.join(analysis_dir, "ml_fingerprints_to_RF")
-    ml_fingerprints_to_clf_dir = os.path.join(analysis_dir, "ml_fingerprints_to_clf")
-    gnn_classifier = os.path.join(analysis_dir, "gnn")
 
-    disynthon_plots = [os.path.relpath(plot, base_dir) for plot in get_plot_files(disynthon_dir)]
-    trisynthon_plots = [os.path.relpath(plot, base_dir) for plot in get_plot_files(trisynthon_dir)]
-    top_disynthon_plots = [os.path.relpath(plot, base_dir) for plot in get_plot_files(top_disynthons_dir)]
-    top_hits_plots = [os.path.relpath(plot, base_dir) for plot in get_plot_files(top_hits_dir)]
-    ml_fingerprints_to_RF_plots = [os.path.relpath(plot, base_dir) for plot in get_plot_files(ml_fingerprints_to_RF_dir)]
-    ml_fingerprints_to_clf_plots = [os.path.relpath(plot, base_dir) for plot in get_plot_files(ml_fingerprints_to_clf_dir)]
-    gnn_classifier_plots = [os.path.relpath(plot, base_dir) for plot in get_plot_files(gnn_classifier)]
+    # Define directories for different plot categories
+    plot_dirs = {
+        "disynthon_plots": os.path.join(analysis_dir, "disynthon"),
+        "trisynthon_plots": os.path.join(analysis_dir, "trisynthon"),
+        "top_disynthons_plots": os.path.join(analysis_dir, "top_disynthons"),
+        "top_hits_plots": os.path.join(analysis_dir, "top_hits"),
+        "ml_fingerprints_to_RF_plots": os.path.join(analysis_dir, "ml_fingerprints_to_RF"),
+        "ml_fingerprints_to_clf_plots": os.path.join(analysis_dir, "ml_fingerprints_to_clf"),
+        "gnn_classifier_plots": os.path.join(analysis_dir, "gnn"),
+    }
 
-    print(f"Disynthon plots: {disynthon_plots}")
-    print(f"Trisynthon plots: {trisynthon_plots}")
-    print(f"Top disynthons plots: {top_disynthon_plots}")
-    print(f"Trisynthon plots: {trisynthon_plots}")
-    print(f"Top hits plots: {top_hits_plots}")
-    print(f"ML Fingerprints to RF plots: {ml_fingerprints_to_RF_plots}")
-    print(f"ML Fingerprints to Classifier plots: {ml_fingerprints_to_clf_plots}")
+    # Convert plots to base64
+    plot_data = {key: get_plot_files(path) for key, path in plot_dirs.items()}
 
     experiment_info = get_experiment_info(indexes, control_cols)
-    
+
     nsc_max_dict = nsc_max_dict or {}
     sd_min_dict = sd_min_dict or {}
     sampling_depth_dict = sampling_depth_dict or {}
@@ -61,6 +59,7 @@ def generate_report(base_dir, indexes, control_cols, nsc_max_dict=None, sd_min_d
         for exp_name, value in sampling_depth_dict.items()
     ]
 
+    # Load the Jinja2 template
     template_dir = os.path.dirname(__file__)
     env = Environment(loader=FileSystemLoader(template_dir))
     template = env.get_template("report_test_template.html")
@@ -69,23 +68,15 @@ def generate_report(base_dir, indexes, control_cols, nsc_max_dict=None, sd_min_d
         experiment_info=experiment_info,
         sampling_depth_values=sampling_depth_values,
         sampling_depth_only=sampling_depth_values_only,
-        disynthon_plots=disynthon_plots,
-        trisynthon_plots=trisynthon_plots,
-        top_disynthons_plots=top_disynthon_plots,
-        top_hits_plots=top_hits_plots,
-        ml_fingerprints_to_RF_plots=ml_fingerprints_to_RF_plots,
-        ml_fingerprints_to_clf_plots=ml_fingerprints_to_clf_plots,
-        gnn_classifier_plots=gnn_classifier_plots
+        **plot_data  # Inject base64 plot data
     )
 
-    print("Rendered HTML preview:")
-    print(rendered_html[:500])
-
+    # Save the report as an HTML file
     output_file = os.path.join(base_dir, f"{today_date}_report_test_report.html")
     with open(output_file, "w") as f:
         f.write(rendered_html)
 
-    print("Report generated successfully!")
+    print(f"Report generated successfully: {output_file}")
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
