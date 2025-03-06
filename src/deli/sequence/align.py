@@ -71,6 +71,50 @@ class Alignment:
 
         return f"{_row1}\n{_row2}\n{_row3}"
 
+    def map_seq1_span_to_seq2_span(self, start_idx: int, stop_idx: int) -> tuple[int, int]:
+        """
+        Returns the span from seq2 that is aligned to the passed seq1 span
+
+        Notes
+        -----
+        uses numerical indexes of the sequences
+
+        Parameters
+        ----------
+        start_idx: int
+            the start of the span in seq1
+        stop_idx: int
+            the end of the span in seq1
+
+        Returns
+        -------
+        tuple[int, int]
+            the span from seq2 aligned to the passed seq1 span
+        """
+        return self._alignment_lookup_seq1[start_idx], self._alignment_lookup_seq1[stop_idx]
+
+    def map_seq2_span_to_seq1_span(self, start_idx: int, stop_idx: int) -> tuple[int, int]:
+        """
+        Returns the span from seq1 that is aligned to the passed seq2 span
+
+        Notes
+        -----
+        uses numerical indexes of the sequences
+
+        Parameters
+        ----------
+        start_idx: int
+            the start of the span in seq2
+        stop_idx: int
+            the end of the span in seq2
+
+        Returns
+        -------
+        tuple[int, int]
+            the span from seq1 aligned to the passed seq2 span
+        """
+        return self._alignment_lookup_seq2[start_idx], self._alignment_lookup_seq2[stop_idx]
+
     def __iter__(self):
         """Iterate over the alignment indexes"""
         for idx_1, idx_2 in self.alignment:
