@@ -344,6 +344,20 @@ class BarcodeSchema:
             if _closing_section:
                 self.closing_section = _closing_section[0]
 
+        # check that library section is not inbetween building block sections
+        _found_library = False
+        _found_bb_section = False
+        for section in self.barcode_sections:
+            if isinstance(section, LibraryBarcodeSection):
+                _found_library = True
+            elif isinstance(section, BuildingBlockBarcodeSection):
+                if _found_library and _found_bb_section:
+                    raise BarcodeSchemaError(
+                        "barcode schemas must not have the library section "
+                        "between the building block sections"
+                    )
+                _found_bb_section = True
+
     @classmethod
     def from_dict(cls, data: dict) -> Self:
         """
