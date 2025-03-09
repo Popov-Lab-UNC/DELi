@@ -210,6 +210,12 @@ class StaticBarcodeSection(BarcodeSection):
         return _pattern
 
 
+class HeadpieceBarcodeSection(StaticBarcodeSection):
+    """Class for headpiece barcode sections"""
+
+    pass
+
+
 class LibraryBarcodeSection(StaticBarcodeSection):
     """Class for library barcode sections"""
 
@@ -368,6 +374,14 @@ class BarcodeSchema:
             if re.match(r"^library$", section_name):
                 _sections.append(
                     LibraryBarcodeSection(
+                        section_name=section_name,
+                        section_tag=section_info["tag"],
+                        section_overhang=section_info.get("overhang"),
+                    )
+                )
+            elif re.match(r"^headpiece$", section_name):
+                _sections.append(
+                    HeadpieceBarcodeSection(
                         section_name=section_name,
                         section_tag=section_info["tag"],
                         section_overhang=section_info.get("overhang"),
