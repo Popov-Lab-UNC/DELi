@@ -169,6 +169,10 @@ class BuildingBlockBarcodeSection(VariableBarcodeSection):
         super().__init__(section_name, section_tag, section_overhang)
         self.hamming_decoder = hamming_decoder
 
+    def is_hamming_encoded(self) -> bool:
+        """Return `True` if barcode section is hamming encoded"""
+        return self.hamming_decoder is not None
+
 
 class UMIBarcodeSection(VariableBarcodeSection):
     """Class for UMI barcode sections"""
