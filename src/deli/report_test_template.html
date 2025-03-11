@@ -201,45 +201,6 @@
     </section>
     {% endif %}
 
-    <!-- Disynthon Overlap Section -->
-    {% if disynthon_plots %}
-    <section>
-        <h2>Disynthon Overlap</h2>
-
-        {% set grouped_plots = {} %}
-
-        {% for plot in disynthon_plots %}
-            {% set parts = plot.split('_') %}
-            {% set experiment_name = parts[2] if parts|length > 2 else 'Unknown' %}
-
-            {% if experiment_name not in grouped_plots %}
-                {% set _ = grouped_plots.update({experiment_name: []}) %}
-            {% endif %}
-
-            {% set _ = grouped_plots[experiment_name].append(plot) %}
-        {% endfor %}
-
-        <!-- Display grouped plots -->
-        {% for experiment, plots in grouped_plots.items() %}
-        <div class="experiment-group">
-            <h3>{{ experiment }}</h3>
-            <div class="disynthon-inline">
-                {% if plots|length == 1 %}
-                    <!-- logic for one plot -->
-                    <img src="data:image/png;base64,{{ plots[0] }}" alt="Disynthon Plot for {{ experiment }}" class="single-plot">
-                {% else %}
-                    {% for plot in plots %}
-                    <div class="plot">
-                        <img src="data:image/png;base64,{{ plot }}" alt="Disynthon Plot for {{ experiment }}">
-                    </div>
-                    {% endfor %}
-                {% endif %}
-            </div>
-        </div>
-        {% endfor %}
-
-    </section>
-    {% endif %}
 
     <!-- Disynthon Overlap Section -->
     {% if disynthon_plots %}

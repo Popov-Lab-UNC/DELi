@@ -1,5 +1,0 @@
-{
-    'cycle2': 'corrected_D3index8',
-    'cycle1': 'corrected_D3index7'
-}
-
