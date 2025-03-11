@@ -1,6 +1,10 @@
 # DELi
 ![DELi](./DELi_logo.png)
-DELi (DNA-Encoded-Library informatics) is the software suite used by the CICBDD to do their in house DEL analysis.
+
+> [!WARNING]
+> **Disclaimer:** DELi is currently under active development. Features and documentation WILL change. Use with caution.
+
+DELi (DNA-Encoded-Library informatics) is the software suite used by the CICBDD to do their in-house DEL analysis.
 It incorporates the whole pipeline post base-calling/sequencing including
 - Barcode/DEL ID calling and cube file generation
 - Mapping DEL IDs to enumerated chemical structures 
@@ -28,10 +32,12 @@ To install DELi,
 first clone the repo and then set up a virtual environment
 (conda or venv, both will work) by installing the `requirements.txt` file:
 ```shell
-git clone git@github.com:Popov-Lab-UNC/CICBDD-DEL-Pipeline.git
-cd CICBDD-DEL-Pipeline
-conda create -n deli -f ./requirements.txt -y
+git clone https://github.com/Popov-Lab-UNC/DELi.git
+cd DELi
+conda create -n deli
 conda activate deli
+conda install pip
+pip install -r requirements.txt
 ```
 NOTE: DELi is built to run on linux or windows,
 it has not been tested on MacOS, but in theory should be work there as well
