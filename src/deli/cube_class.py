@@ -557,13 +557,13 @@ class DELi_Cube:
                     x2 = [pos + width / 2 for pos in x]
 
                     ax.bar(x1, final_results['metric_exp1'], width, label=exp_name1, color='skyblue')
-                    ax.bar(x2, final_results['metric_exp2'], width, label=exp_name2 if comparison_type == 'exp2' else control_name, color='orange')
+                    ax.bar(x2, final_results['metric_exp2'], width, label=exp_name2 if comparison_type == 'exp2' else control_name + '_control', color='orange')
 
                     ax.set_xticks(x)
                     ax.set_xticklabels(x_labels, rotation=90, fontsize=12)
                     ax.set_xlabel(f"{synthon} Disynthon")
                     ax.set_ylabel("Enrichment")
-                    ax.set_title(f"Top {top_count} {synthon} Disynthons: {exp_name1}{' vs ' + (exp_name2 if comparison_type == 'exp2' else control_name) if comparison_type != 'none' else ''}", fontsize=14, fontweight='bold')
+                    ax.set_title(f"Top {top_count} {synthon} Disynthons: {exp_name1}{' vs ' + (exp_name2 if comparison_type == 'exp2' else control_name + '_control') if comparison_type != 'none' else ''}", fontsize=14, fontweight='bold')
                     ax.legend()
 
                 plt.tight_layout()
@@ -1017,9 +1017,10 @@ class DELi_Cube:
             
             if output_dir is None:
                 output_dir = '.'
-            draw = ImageDraw.Draw(img)
-            draw.text((18, 18), f"Top {n} Compounds for {exp_name} by {metric}", fill="black")
-            img.save(f'{output_dir}/{exp_name}_top_{n}_compounds.png')
+            file_name = f'{exp_name}_top_{n}_compounds.png'
+            img_with_label = ImageDraw.Draw(img)
+            img_with_label.text((10, 10), file_name[:-4], fill="black")
+            img.save(f'{output_dir}/{file_name}')
 
 
 
