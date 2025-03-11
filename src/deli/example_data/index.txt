@@ -1,4 +1,0 @@
-{
-    'cycle2': ['corrected_PTMODD3index1', 'corrected_PTMODD3index2', 'corrected_PTMODD3index3'],
-    'cycle1': ['corrected_PTMODD3index4', 'corrected_PTMODD3index5', 'corrected_PTMODD3index6']
-}
