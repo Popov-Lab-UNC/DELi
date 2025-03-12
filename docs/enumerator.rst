@@ -125,6 +125,7 @@ The enumerator can generate all possible compounds.
 Or, it can also generate a specific compound based on building block IDs.
 
 .. code-block:: python
+
     # Enumerate all possible compounds
     for compound in enumerator.enumerate():
         print(compound.smi)  # Access SMILES of enumerated compound
@@ -151,6 +152,7 @@ The "CompoundID" is a unique identifier for each compound, which can be specifie
 a callable function or left as None for default behavior.
 
 .. code-block:: python
+    
     # Write enumeration results to pandas dataframe
     df = enumerator.enumerate_to_pandas()
 
