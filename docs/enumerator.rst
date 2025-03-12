@@ -39,9 +39,9 @@ Initialization
 --------------
 
 To initialize the enumerator, you need to provide:
-* A reaction workflow
-* A list of building block sets
-* An optional scaffold SMILES string
+1) A reaction workflow
+2) A list of building block sets
+3) An optional scaffold SMILES string
 
 .. code-block:: python
 
@@ -111,7 +111,7 @@ The JSON file should follow this structure:
             "DEL004_BBB",
             "DEL004_BBC"
         ],
-        "scaffold": "SMILES_string"  // Optional
+        "scaffold": "SMILES_string"
     }
 
 See the reference on defining_libraries for more details.
