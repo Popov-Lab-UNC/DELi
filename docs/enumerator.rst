@@ -61,9 +61,9 @@ To initialize the enumerator, you need to provide:
 
     # Define building block sets
     bb_sets = [
-        BuildingBlockSet("DEL004_BBA", [BuildingBlock(0, "ATGCTGTA", "CC(=O)Nc1ccc(O)cc1"), BuildingBlock(1, "ATGCAGTA", "CC(=O)Nc1ccccc1")]),
-        BuildingBlockSet("DEL004_BBB", [BuildingBlock(2, "CTGCTGTA", "CCNc1ccc(O)cc1"), BuildingBlock(3, "TCAGCAGTA", "CCNc1ccccc1")]),
-        BuildingBlockSet("DEL004_BBC", [BuildingBlock(4, "TCGCTGTA", "CCNc1cccc(O)cc1"), BuildingBlock(5, "TTAGCAGTA", "Nc1cccc(O)cc1")])
+        BuildingBlockSet("DEL004_BBA", [BuildingBlock("BB_0", "ATGCTGTA", "CC(=O)Nc1ccc(O)cc1"), BuildingBlock("BB_1", "ATGCAGTA", "CC(=O)Nc1ccccc1")]),
+        BuildingBlockSet("DEL004_BBB", [BuildingBlock("BB_2", "CTGCTGTA", "CCNc1ccc(O)cc1"), BuildingBlock("BB_3", "TCAGCAGTA", "CCNc1ccccc1")]),
+        BuildingBlockSet("DEL004_BBC", [BuildingBlock("BB_4", "TCGCTGTA", "CCNc1cccc(O)cc1"), BuildingBlock("BB_5", "TTAGCAGTA", "Nc1cccc(O)cc1")])
     ]
 
     # Optional scaffold
@@ -152,7 +152,7 @@ The "CompoundID" is a unique identifier for each compound, which can be specifie
 a callable function or left as None for default behavior.
 
 .. code-block:: python
-    
+
     # Write enumeration results to pandas dataframe
     df = enumerator.enumerate_to_pandas()
 
