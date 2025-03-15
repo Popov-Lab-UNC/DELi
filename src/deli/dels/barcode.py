@@ -351,7 +351,10 @@ class BarcodeSchema:
         # check that library section is not inbetween building block sections
         _found_library = False
         _found_bb_section = False
+        self._library_in_front = True
         for section in self.barcode_sections:
+            if _found_bb_section and not _found_library:
+                _library_in_front = False
             if isinstance(section, LibraryBarcodeSection):
                 _found_library = True
             elif isinstance(section, BuildingBlockBarcodeSection):
@@ -361,6 +364,10 @@ class BarcodeSchema:
                         "between the building block sections"
                     )
                 _found_bb_section = True
+
+    def __len__(self) -> int:
+        """Get the length of all sections of the barcode schema"""
+        return sum([len(section) for section in self.barcode_sections])
 
     @classmethod
     def from_dict(cls, data: dict) -> Self:
@@ -487,3 +494,47 @@ class BarcodeSchema:
     def get_num_building_block_sections(self) -> int:
         """Get number of building block sections"""
         return len(self.barcode_sections)
+
+    def is_library_tag_in_front(self) -> bool:
+        """
+        Return `True` if the library tag is at the front of the barcode
+
+        Notes
+        -----
+        Because library tags must be before or after all barcode sections
+        if this is `False`  it means the library tag is at the 'back' of the barcode
+
+        Returns
+        -------
+        bool
+        """
+        return self._library_in_front
+
+    def get_min_length(self) -> int:
+        """
+        Gets the minimum length of a sequence needed to match the barcode
+
+        As a rule of thumb, if the read is smaller than min_length,
+        it is unlikely to be able to accurately extract all the
+        required sections to match.
+
+        Notes
+        -----
+        If the barcode has a UMI section, then it is included in the
+        min length
+
+        Returns
+        -------
+        int
+        """
+        required_sections_idx = [
+            i
+            for i, section in enumerate(self.barcode_sections)
+            if isinstance(
+                section, (LibraryBarcodeSection, BuildingBlockBarcodeSection, UMIBarcodeSection)
+            )
+        ]
+        start = min(required_sections_idx)
+        end = max(required_sections_idx)
+
+        return sum([len(section) for section in self.barcode_sections[start : end + 1]])
