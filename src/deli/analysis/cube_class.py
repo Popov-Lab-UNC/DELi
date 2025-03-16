@@ -20,32 +20,35 @@ from PIL import ImageDraw, ImageFont
 # from poly_o import calculate_polyO, classify_polyO_score
 
 class DELi_Cube:
-    def __init__(self, data, id_col, indexes, control_cols=None, lib_size=None, raw_indexes=None):
+    def __init__(self, data: pd.DataFrame, id_col: str, indexes: dict, control_cols: dict = None, lib_size: int = None, raw_indexes: dict = None):
         """
         Initialize the DELi_Cube object with the provided data, indexes, and control columns.
 
         Parameters:
             data (pd.DataFrame): The DataFrame containing the data.
-            raw_indexes (dict): A dictionary mapping experimental IDs to raw index ranges, used for SD calculation.
+            id_col (str): The column name for the ID column.
             indexes (dict): A dictionary mapping experimental IDs to index ranges.
-                ex. tri_synth_dict = {
-                'protein_replicates': ['corrected_index3', 'corrected_index4', 'corrected_index6'],
-                'protein_withinhibitor_replicates': ['corrected_index7', 'corrected_index8', 'corrected_index9']
+                Example:
+                tri_synth_dict = {
+                    'protein_replicates': ['corrected_index3', 'corrected_index4', 'corrected_index6'],
+                    'protein_withinhibitor_replicates': ['corrected_index7', 'corrected_index8', 'corrected_index9']
                 }
-            control_cols (dict): A dictionary mapping experimental IDs to control columns.
-                ex. control_cols = {
-                'protein_replicates': 'control_col1',
-                'protein_withinhibitor_replicates': 'control_col2'
+            control_cols (dict, optional): A dictionary mapping experimental IDs to control columns.
+                Example:
+                control_cols = {
+                    'protein_replicates': 'control_col1',
+                    'protein_withinhibitor_replicates': 'control_col2'
                 }
+            lib_size (int, optional): The size of the library.
+            raw_indexes (dict, optional): A dictionary mapping experimental IDs to raw index ranges, used for SD calculation.
         """
-
         self.data = data
         self.id_col = id_col
-        self.indexes = indexes 
-        self.control_cols = control_cols 
+        self.indexes = indexes
+        self.control_cols = control_cols
         self.lib_size = lib_size
         self.raw_indexes = raw_indexes
-     
+
         if not all(col in self.data.columns for col in ['ID_A', 'ID_B', 'ID_C']):
             first_row_id = self.data[self.id_col].iloc[0]
             parts_count = len(first_row_id.split('-'))
@@ -63,17 +66,18 @@ class DELi_Cube:
 
 
 
-    def SD_min(self):
-        """This is an empirical sampling depth minimum meant to be an additional QC check for a given DEL run.
+    def SD_min(self) -> tuple:
+        """
+        This is an empirical sampling depth minimum meant to be an additional QC check for a given DEL run.
         Functionally it uses the standard that an enrichment minimum of 10 will be reproducible across replicates,
         thus if we evaluate our NSC_max we can determine if the minimum sampling depth is met.
         DOI: https://doi.org/10.1177/2472555218757718
 
         Returns:
-            tuple: (NSC_max, SD_min, sampling_depth_dict) where:
-            - NSC_max is the highest NSC value in the dataset.
-            - SD_min is the minimum sampling depth required to discover enriched compounds using the 
-            empirical threshold of 10.
+            tuple: (NSC_max_dict, SD_min_dict, sampling_depth_dict) where:
+            - NSC_max_dict (dict): Dictionary with the highest NSC value for each experiment.
+            - SD_min_dict (dict): Dictionary with the minimum sampling depth required for each experiment.
+            - sampling_depth_dict (dict): Dictionary with the total sampling depth for each experiment.
         """
         if self.lib_size is None:
             raise ValueError("Library size must be provided during initialization to run SD_min method.")
@@ -85,14 +89,9 @@ class DELi_Cube:
         sampling_depth_dict = {}
 
         for exp_name, columns in self.raw_indexes.items():
-
             row_sum = self.data[columns].sum(axis=1)
-            print(f"Row sum for {exp_name}: {row_sum.head()}")
-            
             total_sampling_depth = row_sum.sum() / self.lib_size
-            print(f"Total sampling depth for {exp_name}: {total_sampling_depth}")
 
-            # Perform calculations without altering self.indexes
             exp_row_sum = self.data[columns].sum(axis=1)
             exp_NSC = exp_row_sum / total_sampling_depth
             
@@ -104,13 +103,14 @@ class DELi_Cube:
 
         return NSC_max_dict, SD_min_dict, sampling_depth_dict
 
-
-    def NSC_values(self):
-        """Enrichment factor using normalized counts for given library member normalized to mean sequence reads
-           for all library members (DOI: http://dx.doi.org/10.1002/anie.201410736)
+    def NSC_values(self) -> pd.DataFrame:
+        """
+        Enrichment factor using normalized counts for a given library member normalized to mean sequence reads
+        for all library members.
+        DOI: http://dx.doi.org/10.1002/anie.201410736
 
         Returns:
-            pd.DataFrame: DataFrame with NSC values for each library member
+            pd.DataFrame: DataFrame with NSC values for each library member.
         """
         if self.lib_size is None:
             raise ValueError("Library size must be provided during initialization to run NSC_values method.")
@@ -129,17 +129,16 @@ class DELi_Cube:
 
         return self.data
     
-    def NSC_enrichment_intervals(self, nsc_df):
-        """Normalized sequence count interval assuming a poisson distribution. Calculated using
-           the equation: NSC +/- = (sqrt(observed count +1) +/- 1)**2)/(mean sequence count) for all library members
+    def NSC_enrichment_intervals(self, nsc_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Calculate normalized sequence count intervals assuming a Poisson distribution.
 
         Parameters:
             nsc_df (pd.DataFrame): DataFrame returned from NSC_values method.
 
         Returns:
-            pd.DataFrame: DataFrame with NSC enrichment intervals for each library member
+            pd.DataFrame: DataFrame with NSC enrichment intervals for each library member.
         """
-
         if self.lib_size is None:
             raise ValueError("Library size must be provided during initialization to run NSC_enrichment_intervals method.")
         
@@ -148,20 +147,20 @@ class DELi_Cube:
         
         df = nsc_df.copy()
         for exp_name in self.indexes.keys():
-            df[f"{exp_name}_NSC+"] = ((df[f"{exp_name}_sum"] + 1) ** 0.5 + 1) ** 2 / (df[f"{exp_name}_sum"].sum(axis=0)/ self.lib_size)
-            df[f"{exp_name}_NSC-"] = ((df[f"{exp_name}_sum"] + 1) ** 0.5 - 1) ** 2 / (df[f"{exp_name}_sum"].sum(axis=0)/ self.lib_size)
+            mean_seq_count = df[f"{exp_name}_sum"].sum(axis=0) / self.lib_size
+            df[f"{exp_name}_NSC+"] = ((df[f"{exp_name}_sum"] + 1) ** 0.5 + 1) ** 2 / mean_seq_count
+            df[f"{exp_name}_NSC-"] = ((df[f"{exp_name}_sum"] + 1) ** 0.5 - 1) ** 2 / mean_seq_count
         self.data = df
         return self.data
 
-    def maximum_likelihood_enrichment_ratio(self):
-        """Formulation of enrichment ratio that avoids division by zero for members without sequence reads
-        in control. DOI: https://doi.org/10.1021/acsomega.3c02152
+    def maximum_likelihood_enrichment_ratio(self) -> pd.DataFrame:
+        """
+        Calculate the maximum likelihood enrichment ratio to avoid division by zero for members without sequence reads in control.
 
-        Calculated using: (n_controlsequences/n_selection_sequences) * (c_selection_reads + 3/8)/(c_control_reads + 3/8)
-        where c is the number of sequence reads for a given library member and n is total number of sequence reads for all library members.
+        DOI: https://doi.org/10.1021/acsomega.3c02152
 
         Returns:
-            pd.DataFrame: DataFrame with maximum likelihood enrichment ratio for each library member
+            pd.DataFrame: DataFrame with maximum likelihood enrichment ratio for each library member.
         """
         if self.control_cols is None:
             raise ValueError("Control columns must be provided during initialization to run maximum_likelihood_enrichment_ratio method.")
@@ -180,10 +179,6 @@ class DELi_Cube:
                 control_total = df[control_col].sum()
                 selection_total = df[columns].sum(axis=1).sum()
 
-                # # to avoid division by zero, but with the MLE shouldn't be a problem due to smoothing factor
-                # control_total = max(control_total, 1e-10)
-                # selection_total = max(selection_total, 1e-10)
-
                 df[f"{exp_name}_MLE"] = (
                     (control_total / selection_total) *
                     (((df[columns].sum(axis=1)) + 3/8) / (df[control_col] + 3/8))
@@ -196,7 +191,8 @@ class DELi_Cube:
  
    
     def z_score(self):
-        """Calculate the normalized z-score (zn) for each experimental group compared to the control column.
+        """
+        Calculate the normalized z-score (zn) for each experimental group compared to the control column.
 
         The z-score is calculated using the observed count (C) and expected count (E), with 
         standard deviation from a binomial distribution. The final zn is further normalized by sqrt(n).
@@ -237,7 +233,6 @@ class DELi_Cube:
                     # If there are zero values in the control column, replace them with the median of non-zero control values
                     df[f"{exp_name}_E"] = df[f"{exp_name}_E"].replace(0, control_values[control_values > 0].median())
 
-
                 n = df[control_col].sum(axis=0)
 
                 if df[f"{exp_name}_C"].sum(axis=0) == 0 or n == 0:
@@ -255,11 +250,9 @@ class DELi_Cube:
         self.data = df
         return self.data
 
-
-
     def z_score_log_data(self):
         """
-        Preprocesses the data by calculating the log-transformed z-scores for each experimental group.
+        Preprocess the data by calculating the log-transformed z-scores for each experimental group.
         This method performs the following steps:
         1. Creates a copy of the original data.
         2. For each experimental group, calculates the sum and average of the specified columns.
@@ -267,10 +260,8 @@ class DELi_Cube:
         4. Computes the mean and standard deviation of the log-transformed control group.
         5. Calculates the log-transformed z-scores for the experimental group based on the control group's statistics.
 
-        Returns
-        -------
-        pd.DataFrame
-            A DataFrame with additional columns for the log-transformed sums, averages, and z-scores for each experimental group.
+        Returns:
+            pd.DataFrame: DataFrame with additional columns for the log-transformed sums, averages, and z-scores for each experimental group.
         """
         if not self.control_cols:
             raise ValueError("Control columns must be provided during initialization to run z_score_log_data method.")
@@ -340,7 +331,7 @@ class DELi_Cube:
     #     df['polyO_score'] = classify_polyO_score()
     #     return df
 
-    def normalize(self):
+    def normalize(self) -> pd.DataFrame:
         """
         Normalize specified columns by subtracting the control column in the DataFrame,
         ensuring no values go below zero.
@@ -348,7 +339,6 @@ class DELi_Cube:
         Returns:
             pd.DataFrame: The DataFrame with normalized columns.
         """
-
         if self.control_cols is None:
             raise ValueError("Control columns must be provided during initialization to run normalize method.")
 
@@ -368,12 +358,20 @@ class DELi_Cube:
                 else:
                     raise ValueError(f"Column '{column}' not found in the DataFrame")
        
-            # normalized_df.drop(columns=list(self.control_cols.values()), inplace=True)
         self.data = normalized_df
         return self.data
-        
 
-    def disynthonize(self, df=None, synthon_ids=None):
+    def disynthonize(self, df: pd.DataFrame = None, synthon_ids: list = None) -> tuple:
+        """
+        Generate disynthon columns and count data for each experimental group.
+
+        Parameters:
+            df (pd.DataFrame, optional): The DataFrame containing the data. Defaults to self.data.
+            synthon_ids (list, optional): List of synthon column names. Defaults to ['ID_A', 'ID_B', 'ID_C'].
+
+        Returns:
+            tuple: A tuple containing the updated DataFrame and a dictionary mapping experiment names to disynthon count columns.
+        """
         if df is None:
             df = self.data
 
@@ -434,7 +432,7 @@ class DELi_Cube:
         return df, exp_dict
 
 
-    def get_top_disynthons(self, disynthon_data, exp_name1, comparison_type='control', exp_name2=None, control_name=None, comparison_metric='avg', top_count=20, output_dir='.'):
+    def get_top_disynthons(self, disynthon_data: pd.DataFrame, exp_name1: str, comparison_type: str = 'control', exp_name2: str = None, control_name: str = None, comparison_metric: str = 'avg', top_count: int = 20, output_dir: str = '.') -> None:
         """
         Plots a bar chart comparing enrichment between two experimental sets or a single experiment vs control based on a specified metric.
         Creates a separate plot for each synthon type (e.g., AB, BC, AC).
@@ -575,8 +573,7 @@ class DELi_Cube:
             else:
                 print(f"No valid results for {synthon} disynthon.")
 
-
-    def simple_spotfire_version(self):
+    def simple_spotfire_version(self) -> pd.DataFrame:
         """
         Create a Spotfire-friendly version of the DataFrame using normalized data if available
         with corrected indexes, renaming based on experiment IDs and adding an average column for each experiment.
@@ -655,14 +652,15 @@ class DELi_Cube:
 
 
 
-    def disynthon_overlap(self, output_dir=None, disynthon_data=None, disynth_exp_dict=None, threshold=0.0):
+    def disynthon_overlap(self, output_dir: str = None, disynthon_data: pd.DataFrame = None, disynth_exp_dict: dict = None, threshold: float = 0.0) -> None:
         """
         Create overlap diagrams for disynth experiments using normalized data and corrected indexes.
 
         Parameters:
-            disynthon_data (pd.DataFrame): The DataFrame containing disynthon data.
-            disynth_exp_dict (dict): A dictionary mapping experiment names to the corresponding corrected index columns.
-            threshold (float): The threshold for filtering counts. Default is 0.0.
+            output_dir (str, optional): The directory to save the overlap diagrams. Defaults to the current directory.
+            disynthon_data (pd.DataFrame, optional): The DataFrame containing disynthon data. Defaults to None.
+            disynth_exp_dict (dict, optional): A dictionary mapping experiment names to the corresponding corrected index columns. Defaults to None.
+            threshold (float, optional): The threshold for filtering counts. Default is 0.0.
 
         Example of disynth_exp_dict:
             disynth_exp_dict = {
@@ -721,10 +719,11 @@ class DELi_Cube:
             raise ValueError("No experiments had at least two valid indices. Cannot generate overlap diagrams.")
 
 
-    def ml_fingerprints_to_RF(self, output_dir=None):
-        """Trains a Random Forest regressor and a Dummy regressor on trisynthon SMILES fingerprints 
+    def ml_fingerprints_to_RF(self, output_dir: str = None) -> None:
+        """
+        Trains a Random Forest regressor and a Dummy regressor on trisynthon SMILES fingerprints 
         to predict the average normalized enrichment using a subset of 100 molecules.
-        
+
         The method performs the following steps:
         1. Converts SMILES strings to Morgan fingerprints.
         2. Selects the top 50 molecules with the highest average enrichment and 50 random molecules.
@@ -732,8 +731,11 @@ class DELi_Cube:
         4. Evaluates the models using R² scores.
         5. Plots the true vs. predicted average enrichment for the last fold.
 
+        Parameters:
+            output_dir (str, optional): Directory to save the scatter plot. Defaults to None.
+
         Returns:
-            None. Saves a scatter plot of the true vs. predicted average enrichment for the last fold.
+            None
         """
 
         def smiles_to_fingerprint(smiles, radius=3, n_bits=2048):
@@ -800,7 +802,25 @@ class DELi_Cube:
             plt.close()
         
 
-    def ml_fingerprints_to_classifier(self, threshold=2, output_dir=None):
+    def ml_fingerprints_to_classifier(self, threshold: int = 2, output_dir: str = None) -> None:
+        """
+        Trains a Random Forest classifier and a Dummy classifier on trisynthon SMILES fingerprints 
+        to predict the enrichment status using a subset of 100 molecules.
+
+        The method performs the following steps:
+        1. Converts SMILES strings to Morgan fingerprints.
+        2. Selects the top 50 molecules with the highest average enrichment and 50 random molecules.
+        3. Trains the models using 5-fold cross-validation.
+        4. Evaluates the models using accuracy scores and confusion matrices.
+        5. Plots the confusion matrices for the last fold.
+
+        Parameters:
+            threshold (int, optional): Threshold value for enrichment status. Defaults to 2.
+            output_dir (str, optional): Directory to save the classifier image. Defaults to None.
+
+        Returns:
+            None
+        """
         def smiles_to_fingerprint(smiles, radius=3, n_bits=2048):
             mol = Chem.MolFromSmiles(smiles)
             if mol:
@@ -865,22 +885,18 @@ class DELi_Cube:
             plt.savefig(f'{output_dir}/{exp_name}_classifier.png')
             plt.close()
 
-    def gnn_classifier(self, threshold=2, output_dir=".", arch="GAT", num_layers=3, encoding="embedding"):
-        """Train a Graph Neural Network (GNN) classifier to predict the enrichment status of compounds.
-
-        Parameters
-        ----------
-        threshold : int, optional
-            Threshold value for enrichment status, by default 2
-        output_dir : str, optional
-            Directory to save the classifier image, by default "."
-        arch : str, optional
-            GNN architecture (GAT or GCN), by default "GAT"
-        num_layers : int, optional
-            Number of GNN layers, by default 3
-        encoding : str, optional
-            Node encoding method (embedding or onehot), by default "embedding"
+    def gnn_classifier(self, threshold: int = 2, output_dir: str = ".", arch: str = "GAT", num_layers: int = 3, encoding: str = "embedding") -> None:
         """
+        Train a Graph Neural Network (GNN) classifier to predict the enrichment status of compounds.
+
+        Parameters:
+            threshold (int, optional): Threshold value for enrichment status, by default 2.
+            output_dir (str, optional): Directory to save the classifier image, by default ".".
+            arch (str, optional): GNN architecture (GAT or GCN), by default "GAT".
+            num_layers (int, optional): Number of GNN layers, by default 3.
+            encoding (str, optional): Node encoding method (embedding or onehot), by default "embedding".
+        """
+        
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         for exp_name, indices in self.indexes.items():
@@ -991,17 +1007,14 @@ class DELi_Cube:
 
 
 
-    def top_n_compounds(self, n=20, metric='sum', output_dir=None):
-        """Display the top N compounds based on a specified metric and save the image to the specified directory.
+    def top_n_compounds(self, n: int = 20, metric: str = 'sum', output_dir: str = None) -> None:
+        """
+        Display the top N compounds based on a specified metric and save the image to the specified directory.
 
-        Parameters
-        ----------
-        n : int, optional
-            Number of top compounds to display, by default 20
-        metric : str, optional
-            Metric to rank the compounds, by default 'average_enrichment'
-        output_dir : str, optional
-            Directory to save the image, by default None (current directory)
+        Parameters:
+            n (int, optional): Number of top compounds to display. Defaults to 20.
+            metric (str, optional): Metric to rank the compounds. Defaults to 'sum'.
+            output_dir (str, optional): Directory to save the image. Defaults to None (current directory).
         """
         for exp_name, indices in self.indexes.items():
             # Ensure the compound is present at least once in each replicate
