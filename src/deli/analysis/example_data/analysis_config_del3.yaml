@@ -1,5 +1,5 @@
 general:
-  data: "sample_data_1/DEL003_cube_noid.csv"
+  data: "example_data/DEL003_cube_noid.csv"
   lib_size: 58000
   output_dir: "DEL3"
 
@@ -32,12 +32,12 @@ flags:
   disynthon_data: true
   trisynthon_overlap: True
   disynthon_overlap: True
-  disynthon_threshold: 20
+  disynthon_threshold: 100
   simple_spotfire_version: true
   ml_fingerprints_to_RF_reg: true
   ml_fingerprints_to_RF_clf: true
-  clf_thresh: 10
-  gnn_classifier: true
+  clf_thresh: 15
+  gnn_classifier: false
   gnn_threshold: 10
   gnn_arch: "GAT"
   top_hits: 20
@@ -46,9 +46,9 @@ flags:
 
   top_disynthons:
     enabled: True
-    comparison: "None"       # Type of comparison: "control" or "exp2" or "None"
+    comparison: "exp2"       # Type of comparison: "control" or "exp2" or "none"
     exp_name: "Cycle2"
-    exp2_name: "None"
-    control_name: "None"
+    exp2_name: "Cycle1"
+    control_name: "none"
     top_count: 10               # Number of top disynthons to pull
     comparison_metric: "avg"
