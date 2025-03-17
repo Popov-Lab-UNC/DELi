@@ -97,6 +97,17 @@ class Reaction:
         if not products:
             raise ReactionError("Failed to generate product from reactants")
 
+        if len(products) > 1:
+            reactant_smiles = [Chem.MolToSmiles(arg) for arg in args]
+            warnings.warn(
+                f"multiple reaction pathways found for reaction "
+                f"{rdChemReactions.ReactionToSmarts(self.rxn)} with "
+                f"reactants {reactant_smiles}, "
+                f"selecting first product by default",
+                ReactionWarning,
+                stacklevel=1,
+            )
+
         # Take the first outcome's product
         product = products[0][0]
 
