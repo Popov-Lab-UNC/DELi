@@ -38,13 +38,15 @@ def _setup_outdir(out_dir):
 
 @click.group()
 def cli():
-    """Main command group entry"""
+    """
+    DELi: A collection of DNA-encoded library informatics tools
+    """
     pass
 
 
 @cli.group()
 def config():
-    """Group for config related commands"""
+    """Configure DELi settings"""
     pass
 
 
@@ -121,7 +123,6 @@ def init_deli_data_dir(path, include_hamming, use_extra_parity_hamming):
 )
 @click.option(
     "--deli-config",
-    "-o",
     type=click.Path(),
     required=False,
     default="",
@@ -139,28 +140,13 @@ def decode(
     deli_config,
 ):
     """
-    run decoding on a given fastq file of DEL sequences
+    Run decoding on a given fastq file of DEL sequences
 
+    \b
     Parameters
     ----------
-    fastq_file: Path
-        the path to a fastq file
-    experiment_file: Path
-        the path to a DEL experiment outline
-    out_dir: Path
-        the path to a directory to write the output files
-    prefix: str, default=""
-        a prefix to append to the output files
-    debug: bool, default=False
-        enable debug logging mode
-    save_report_data: bool, default=False
-        save data required for reporting
-    skip_report: bool, default=False
-        do not render a decoding report
-    save_failed_calls: bool, default=False
-        save failed calls to a separate failed call file
-    deli_config: str, default=""
-        Path to DELi config file to use
+    fastq_file: the path to a fastq file
+    experiment_file: the path to a DEL experiment outline file
     """
     logger = setup_logger("deli-decode", debug=debug)
     out_dir = _setup_outdir(out_dir)
@@ -457,23 +443,23 @@ def decode(
     )
 
 @cli.command()
-@click.argument("library_file", type=click.Path(exists=True), required=True, help="Path to the library file")
+@click.argument("library_file", type=click.Path(exists=True), required=True)
 @click.option(
     "--out_path", "-o", type=click.Path(), required=False, default="", help="Output CSV file path"
 )
+@click.option("--no_tqdm", is_flag=True, help="Disable progress bar")
 def enumerate(
     library_file,
-    out_path
+    out_path,
+    no_tqdm
 ):
     """
-    Reads in a JSON file that configures the library and enumerate the results
+    Enumerates compounds from a given library
 
+    \b
     Parameters
     ----------
-    library_file: Path
-        path to library JSON definition file
-    out_path: Path 
-        path to write output CSV file
+    library_file: to library JSON definition file
     """
     logger = setup_logger("deli-enumerate")
     output_file = out_path if out_path != "" else os.path.join(os.getcwd(), "enumerated_library.csv")
@@ -482,7 +468,7 @@ def enumerate(
 
     enumerator = DELEnumerator.load(library_file)
     logger.debug(f"Loaded library file {library_file}")
-    enumerator.enumerate_to_csv_file(output_file, use_tqdm=True)
+    enumerator.enumerate_to_csv_file(output_file, use_tqdm=not no_tqdm)
     logger.info(
         f"DELi enumeration for library {library_file} "
         f"completed in {datetime.datetime.now() - _start}"
@@ -490,7 +476,7 @@ def enumerate(
 
 @cli.group()
 def report():
-    """Report command group"""
+    """Generate DEL decoding reports"""
     pass
 
 @report.command()
