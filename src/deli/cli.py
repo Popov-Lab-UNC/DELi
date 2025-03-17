@@ -19,6 +19,7 @@ from deli.decode import (
 )
 from deli.logging.logger import setup_logger
 from deli.sequence import read_fastq
+from deli.dels.enumerator import DELEnumerator
 
 
 def _timestamp() -> str:
@@ -455,12 +456,42 @@ def decode(
         f"completed in {datetime.datetime.now() - _start}"
     )
 
+@cli.command()
+@click.argument("library_file", type=click.Path(exists=True), required=True, help="Path to the library file")
+@click.option(
+    "--out_path", "-o", type=click.Path(), required=False, default="", help="Output CSV file path"
+)
+def enumerate(
+    library_file,
+    out_path
+):
+    """
+    Reads in a JSON file that configures the library and enumerate the results
+
+    Parameters
+    ----------
+    library_file: Path
+        path to library JSON definition file
+    out_path: Path 
+        path to write output CSV file
+    """
+    logger = setup_logger("deli-enumerate")
+    output_file = out_path if out_path != "" else os.path.join(os.getcwd(), "enumerated_library.csv")
+
+    _start = datetime.datetime.now()
+
+    enumerator = DELEnumerator.load(library_file)
+    logger.debug(f"Loaded library file {library_file}")
+    enumerator.enumerate_to_csv_file(output_file, use_tqdm=True)
+    logger.info(
+        f"DELi enumeration for library {library_file} "
+        f"completed in {datetime.datetime.now() - _start}"
+    )
 
 @cli.group()
 def report():
     """Report command group"""
     pass
-
 
 @report.command()
 @click.argument("report_stats", nargs=-1, type=click.Path(exists=True, dir_okay=False))
