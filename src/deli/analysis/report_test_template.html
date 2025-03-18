@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>DEL Analysis Report</title>
+    <style>
+        body {
+            font-family: "Roboto", Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+            color: #333;
+            background-color: #f8f9fa;
+        }
+        header {
+            background-color: #007bff;
+            color: white;
+            padding: 20px 10px;
+            text-align: center;
+        }
+        section {
+            padding: 20px;
+            margin: 20px auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            max-width: 900px;
+        }
+        h1, h2 {
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+        img {
+            max-width: 100%;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-top: 10px;
+        }
+        .summary p {
+            margin: 10px 0;
+        }
+        footer {
+            text-align: center;
+            padding: 10px;
+            background-color: #007bff;
+            color: white;
+            margin-top: 20px;
+        }
+        ul {
+            padding-left: 20px;
+        }
+        .grid-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            justify-content: center;
+        }
+        .grid-item {
+            flex: 1 1 calc(33.333% - 20px);
+            max-width: calc(33.333% - 20px);
+            text-align: center;
+        }
+        .grid-item img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+        }
+        .placeholder {
+            color: #888;
+            font-style: italic;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        table, th, td {
+            border: 1px solid #ddd;
+        }
+        th, td {
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+
+        /* Flexbox for side-by-side sections */
+        .side-by-side {
+            display: flex;
+            justify-content: space-between;
+            gap: 20px;
+            max-width: 900px; /* Ensures the total width of side-by-side sections doesn't exceed this */
+            margin: 0 auto; /* Centers the content */
+        }
+        .side-by-side section {
+            flex: 1;
+            min-width: 0;
+            box-sizing: border-box; /* Includes padding and borders in the width calculation */
+        }
+
+        /* Flexbox for disynthon plots */
+        .disynthon-inline {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            justify-content: flex-start; /* Align to the left */
+            align-items: center; /* Center vertically */
+        }
+
+        .plot {
+            flex: 1 1 auto; /* Allows flexible resizing */
+            max-width: calc(33.333% - 15px); /* Ensures 3 items per row */
+            text-align: center;
+        }
+
+        .plot img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+        }
+
+        /* Style for a single plot to behave like a normal picture (centered) */
+        .single-plot {
+            display: block;
+            margin: 0 auto;
+            max-width: 100%;
+            height: auto;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>DEL Analysis Report</h1>
+    </header>
+
+    <!-- Experiment Information Section -->
+    <section>
+        <h2>Experiment Overview</h2>
+        {% if experiment_info %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Experiment Name</th>
+                    <th>Experiment Index</th>
+                    <th>Control Columns</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for experiment in experiment_info %}
+                <tr>
+                    <td>{{ experiment.name }}</td>
+                    <td>{{ experiment.index }}</td>
+                    <td>{{ experiment.control_columns }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="placeholder">No experiment information available.</p>
+        {% endif %}
+    </section>
+
+    <!-- Side-by-side Sampling Depth Sections -->
+    <div class="side-by-side">
+        <!-- Sampling Depth Section -->
+        <section>
+            <h2>Sampling Depth</h2>
+            {% if sampling_depth_only %}
+            <ul>
+                {% for item in sampling_depth_only %}
+                <li>{{ item }}</li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p class="placeholder">No sampling depth dictionary available.</p>
+            {% endif %}
+        </section>
+
+        <!-- Sampling Depth Minimum Section -->
+        <section>
+            <h2>Sampling Depth Minimum</h2>
+            {% if sampling_depth_values %}
+            <ul>
+                {% for value in sampling_depth_values %}
+                <li>{{ value }}</li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p class="placeholder">No sampling depth values available.</p>
+            {% endif %}
+        </section>
+    </div>
+
+    <!-- Trisynthon Overlap Section -->
+    {% if trisynthon_plots %}
+    <section>
+        <h2>Trisynthon Overlap</h2>
+        {% for plot in trisynthon_plots %}
+        <img src="data:image/png;base64,{{ plot }}" alt="Trisynthon Plot">
+        {% endfor %}
+    </section>
+    {% endif %}
+
+
+    <!-- Disynthon Overlap Section -->
+    {% if disynthon_plots %}
+    <section>
+        <h2>Disynthon Overlap</h2>
+        {% for plot in disynthon_plots %}
+        <img src="data:image/png;base64,{{ plot }}" alt="Disynthon Plot">
+        {% endfor %}
+    </section>
+    {% endif %}
+
+    <!-- Top Disynthon Overlap Section -->
+    {% if top_disynthons_plots %}
+    <section>
+        <h2>Top Disynthon Enrichment</h2>
+        {% for plot in top_disynthons_plots %}
+        <img src="data:image/png;base64,{{ plot }}" alt="Top Disynthon Enrichment Plot">
+        {% endfor %}
+    </section>
+    {% endif %}
+
+    <!-- Top Hit Compound Plots Section -->
+    {% if top_hits_plots %}
+    <section>
+        <h2>Top Hit Compound Plots</h2>
+        {% for plot in top_hits_plots %}
+        <img src="data:image/png;base64,{{ plot }}" alt="Top Hit Compound Plot">
+        {% endfor %}
+    </section>
+    {% else %}
+    <section>
+        <h2>Top Hit Compound Plots</h2>
+        <p class="placeholder">No top hit compound plots available.</p>
+    </section>
+    {% endif %}
+
+    <!-- ML Fingerprints to Regression Section -->
+    {% if ml_fingerprints_to_RF_plots %}
+    <section>
+        <h2>ML Fingerprints to Regression</h2>
+        {% for plot in ml_fingerprints_to_RF_plots %}
+        <img src="data:image/png;base64,{{ plot }}" alt="ML Fingerprints to Regression Plot">
+        {% endfor %}
+    </section>
+    {% endif %}
+
+    <!-- Classifier Plots Section -->
+    {% if ml_fingerprints_to_clf_plots %}
+    <section>
+        <h2>Classifier Plots</h2>
+        {% for plot in ml_fingerprints_to_clf_plots %}
+        <img src="data:image/png;base64,{{ plot }}" alt="Classifier Plot">
+        {% endfor %}
+    </section>
+    {% endif %}
+
+    <!-- MPNN Classifier Plots Section -->
+    {% if gnn_classifier_plots %}
+    <section>
+        <h2>GNN Classifier Plots</h2>
+        {% for plot in gnn_classifier_plots %}
+        <img src="data:image/png;base64,{{ plot }}" alt="GNN Classifier Plot">
+        {% endfor %}
+    </section>
+    {% endif %}
+
+    <footer>
+        <p>DEL Analysis Report &copy; 2024</p>
+    </footer>
+</body>
+</html>
