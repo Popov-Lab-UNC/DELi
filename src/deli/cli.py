@@ -447,10 +447,12 @@ def decode(
 @click.option(
     "--out_path", "-o", type=click.Path(), required=False, default="", help="Output CSV file path"
 )
+@click.option("--debug", is_flag=True, help="Enable debug mode")
 @click.option("--no_tqdm", is_flag=True, help="Disable progress bar")
 def enumerate(
     library_file,
     out_path,
+    debug,
     no_tqdm
 ):
     """
@@ -459,9 +461,9 @@ def enumerate(
     \b
     Parameters
     ----------
-    library_file: to library JSON definition file
+    library_file: path to library JSON definition file
     """
-    logger = setup_logger("deli-enumerate")
+    logger = setup_logger("deli-enumerate", debug=debug)
     output_file = out_path if out_path != "" else os.path.join(os.getcwd(), "enumerated_library.csv")
 
     _start = datetime.datetime.now()
