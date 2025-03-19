@@ -11,9 +11,6 @@ It generates compounds by combining building blocks according to specified react
 How it Works
 ===========
 
-Basic Principles
----------------
-
 The enumerator performs the following:
 
 1. Takes a reaction workflow definition
@@ -32,11 +29,70 @@ The enumerator consists of:
 * **ReactionWorkflow**: Defines the sequence of reaction steps
 * **Scaffold**: Optional scaffold for the enumeration process
 
-Usage Example
-============
+Command-Line Interface
+=====================
 
-Initialization
---------------
+Basic Usage
+-----------
+
+The enumerator provides a CLI for direct compound generation without Python coding:
+
+.. code-block:: bash
+
+    deli enumerate <path/to/library.json> [OPTIONS]
+
+Required Arguments
+------------------
+
+* ``<path/to/library.json>`` - JSON file containing reaction workflow, building block definitions, and optional scaffold
+
+Options
+-------
+
+* ``-o``, ``--out_path <file.csv>`` - Write results to CSV file (default: "enumerated_library.csv")
+* ``--debug`` - Enable debug mode for detailed output
+* ``--no-tqdm`` - Disable progress bar display
+* ``--help`` - Show help message and exit
+
+JSON Formatting
+----------------
+
+The JSON file should contain this structure:
+
+.. code-block:: json
+
+    {
+        "bb_sets": ["DEL004_BBA", "DEL004_BBB"],
+        "reactions": [
+            {
+                "step": 1,
+                "rxn_smarts": "...",
+                "reactants": ["DEL004_BBA", "scaffold"]
+            },
+            {
+                "step": 2,
+                "rxn_smarts": "...", 
+                "reactants": ["product_1", "DEL004_BBB"]
+            }
+        ],
+        "scaffold": "Nc1ccccc1"
+    }
+
+This is the same JSON format as a typical library JSON. For full details see :ref:`defining_libraries`.
+The items in "bb_sets" must be loadable from the specified building block files.
+Similarly, the items in "reactions" must contain all necessary information for reaction definition.
+
+Example Commands
+----------------
+
+Generate compounds and save to CSV:
+
+.. code-block:: bash
+
+    deli enumerate library_def.json --output my_compounds.csv
+
+Python Usage
+============
 
 To initialize the enumerator, you need to provide:
 1) A reaction workflow
@@ -75,7 +131,7 @@ To initialize the enumerator, you need to provide:
 Initialization from JSON
 -----------------------
 
-The DELEnumerator can be initialized from a JSON file that defines the reaction workflow, building blocks, and optional scaffold:
+Like with the command-line interface, the DELEnumerator can be initialized from a JSON file that defines the reaction workflow, building blocks, and optional scaffold:
 
 .. code-block:: python
 
@@ -84,42 +140,8 @@ The DELEnumerator can be initialized from a JSON file that defines the reaction 
     
     enumerator = DELEnumerator.load("library.json")
 
-The JSON file should follow this structure:
-
-.. code-block:: json
-
-    {
-        "reactions": [
-            {
-                "step": 1,
-                "rxn_smarts": "...",
-                "reactants": ["DEL004_BBA", "scaffold"]
-            },
-            {
-                "step": 2,
-                "rxn_smarts": "...",
-                "reactants": ["product_1", "DEL004_BBB"],
-            },
-            {
-                "step": 3,
-                "rxn_smarts": "...",
-                "reaction": ["product_2", "DEL004_BBC"]
-            },
-        ],
-        "bb_sets": [
-            "DEL004_BBA",
-            "DEL004_BBB",
-            "DEL004_BBC"
-        ],
-        "scaffold": "SMILES_string"
-    }
-
-See the reference on defining_libraries for more details.
-The items in "bb_sets" must be loadable from the specified building block files.
-Similarly, the items in "reactions" must contain all necessary information for reaction definition.
-
 Enumeration
----------------
+-------------
 
 The enumerator can generate all possible compounds.
 Or, it can also generate a specific compound based on building block IDs.
