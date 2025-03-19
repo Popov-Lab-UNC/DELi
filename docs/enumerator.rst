@@ -14,26 +14,13 @@ How it Works
 The enumerator performs the following:
 
 1. Takes a reaction workflow definition
-2. Accepts sets of building blocks (BuildingBlockSet instances)
-3. Optionally takes a scaffold SMILES string
+2. Takes sets of building blocks
+3. Takes a scaffold SMILES string (optional)
 4. Combines building blocks according to the reaction steps
 5. Generates SMILES strings and RDKit mol objects for the resulting compounds
 
-Core Components
--------------
-
-The enumerator consists of:
-
-* **DELEnumerator**: Main class handling the enumeration process
-* **BuildingBlockSet**: Manages sets of building blocks
-* **ReactionWorkflow**: Defines the sequence of reaction steps
-* **Scaffold**: Optional scaffold for the enumeration process
-
 Command-Line Interface
 =====================
-
-Basic Usage
------------
 
 The enumerator provides a CLI for direct compound generation without Python coding:
 
@@ -78,7 +65,7 @@ The JSON file should contain this structure:
         "scaffold": "Nc1ccccc1"
     }
 
-This is the same JSON format as a typical library JSON. For full details see :ref:`defining_libraries`.
+This is the same JSON format as a typical library JSON. For full details see :doc:`defining_libraries`.
 The items in "bb_sets" must be loadable from the specified building block files.
 Similarly, the items in "reactions" must contain all necessary information for reaction definition.
 
@@ -89,12 +76,13 @@ Generate compounds and save to CSV:
 
 .. code-block:: bash
 
-    deli enumerate library_def.json --output my_compounds.csv
+    deli enumerate library.json -o my_compounds.csv
 
 Python Usage
 ============
 
-To initialize the enumerator, you need to provide:
+To use Python instead of the command-line interface, you need to provide:
+
 1) A reaction workflow
 2) A list of building block sets
 3) An optional scaffold SMILES string
@@ -131,7 +119,7 @@ To initialize the enumerator, you need to provide:
 Initialization from JSON
 -----------------------
 
-Like with the command-line interface, the DELEnumerator can be initialized from a JSON file that defines the reaction workflow, building blocks, and optional scaffold:
+Like with the command-line interface, the DELEnumerator can also be initialized from the same JSON file:
 
 .. code-block:: python
 
