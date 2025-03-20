@@ -1,7 +1,7 @@
 """Handles hamming correction of DEL barcode tags"""
 
 import math
-from typing import List, Optional, Self, Tuple
+from typing import List, Optional, Self
 
 from deli.configure import DELI_CONFIG, DeliDataLoadable, accept_deli_data_name
 
@@ -145,7 +145,7 @@ class QuaternaryHammingDecoder(BaseQuaternaryHamming, DeliDataLoadable):
 
         return cls(parity_map=_real_order_nums, has_extra_parity=_has_extra_parity)
 
-    def decode_sequence(self, sequence: str) -> Tuple[str, bool]:
+    def decode_sequence(self, sequence: str) -> Optional[str]:
         """
         Given a string sequence of nucleotides, correct the sequence and return it
 
@@ -162,14 +162,16 @@ class QuaternaryHammingDecoder(BaseQuaternaryHamming, DeliDataLoadable):
 
         Returns
         -------
-        Tuple[str, bool]
+        Optional[str]
+            decoded/correct sequence
+            will be None if hamming decoding fails
         """
         _tag = [self.nuc_2_int_mapping[char] for char in sequence]
         try:
             _decoded_tag = self._hamming_decode(_tag)
-            return "".join([self.int_2_nuc_mapping[_] for _ in _decoded_tag]), True
+            return "".join([self.int_2_nuc_mapping[_] for _ in _decoded_tag])
         except DecodeError:
-            return "", False
+            return None
 
     def _hamming_decode(self, bases: List[int]) -> List[int]:
         """

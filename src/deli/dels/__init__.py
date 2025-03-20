@@ -1,6 +1,6 @@
 """DNA barcode classes and functions"""
 
-from .barcode import BarcodeSchema
+from .barcode import BarcodeSchema, BuildingBlockBarcodeSection
 from .building_block import BaseBuildingBlock, BuildingBlock, BuildingBlockSet, MaskedBuildingBlock
 from .enumerator import DELEnumerator
 from .index import Index, IndexSet, get_min_index_distance
@@ -11,6 +11,7 @@ from .umi import Umi
 
 __all__ = [
     "BarcodeSchema",
+    "BuildingBlockBarcodeSection",
     "Index",
     "IndexSet",
     "get_min_index_distance",
