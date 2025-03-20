@@ -1,40 +1,35 @@
 """code for library calling"""
 
 import abc
-from typing import Optional, Union
+from typing import Optional, TypeAlias, Union
 
 from cutadapt.adapters import BackAdapter, FrontAdapter, MultipleAdapters, SingleMatch
 from dnaio import SequenceRecord
 
 from deli.dels import DELibrary, DELibraryPool
 
+from .calls import FailedCall, ValidCall
 from .demultiplex import Demultiplexer
 
 
-class LibraryCall(abc.ABC):
-    """base class for all library calls"""
-
-    _success: bool
-
-    def was_library_call_successful(self) -> bool:
-        """
-        True if library call was successful, else False
-
-        Returns
-        -------
-        bool
-        """
-        return self._success
-
-
-class GoodLibraryCall(abc.ABC):
-    """interface for all library call objects for successful calls"""
+class ValidLibraryCall(ValidCall):
+    """base class for all valid library call objects"""
 
     library: DELibrary
     sequence: SequenceRecord
 
 
-class SingleLibraryCall(LibraryCall, GoodLibraryCall):
+class FailedLibraryCall(FailedCall):
+    """base class for all failed library calls"""
+
+    pass
+
+
+# type hing for library calls
+LibraryCall: TypeAlias = Union[ValidLibraryCall, FailedLibraryCall]
+
+
+class SingleLibraryCall(ValidLibraryCall):
     """
     Holds information about a single library call
 
@@ -57,7 +52,7 @@ class SingleLibraryCall(LibraryCall, GoodLibraryCall):
         self._success = True
 
 
-class PairedLibraryCall(LibraryCall, GoodLibraryCall):
+class PairedLibraryCall(ValidLibraryCall):
     """
     Holds information about a paired library call
 
@@ -84,14 +79,7 @@ class PairedLibraryCall(LibraryCall, GoodLibraryCall):
         self._success = True
 
 
-class FailedLibraryCall(LibraryCall):
-    """Library call for when a library cannot be matched during demultiplexing"""
-
-    def __init__(self):
-        self._success = False
-
-
-class PairedLibraryCallAmbiguous(LibraryCall):
+class PairedLibraryCallAmbiguous(FailedLibraryCall):
     """
     Library call for when a paired read has an ambiguous library call
 
@@ -123,10 +111,9 @@ class PairedLibraryCallAmbiguous(LibraryCall):
         self.library_2 = library_2
         self.sequence_1 = sequence_1
         self.sequence_2 = sequence_2
-        self._success = False
 
 
-class LibraryCallTooShort(LibraryCall):
+class LibraryCallTooShort(FailedLibraryCall):
     """
     Library call for when a trimmed read is not long enough to contain all info
 
@@ -148,7 +135,6 @@ class LibraryCallTooShort(LibraryCall):
         """
         self.library = library
         self.sequence = sequence
-        self._success = False
 
 
 class LibraryCaller(Demultiplexer, abc.ABC):
