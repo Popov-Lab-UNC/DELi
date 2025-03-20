@@ -293,8 +293,8 @@ class BarcodeSchema:
         # check for one library section
         self.library_section: LibraryBarcodeSection
         _library_sections = [
-            section
-            for section in self.barcode_sections
+            (i, section)
+            for i, section in enumerate(self.barcode_sections)
             if isinstance(section, LibraryBarcodeSection)
         ]
         if len(_library_sections) == 0:
@@ -304,13 +304,14 @@ class BarcodeSchema:
                 "barcode schemas must contain only one library barcode section"
             )
         else:
-            self.library_section = _library_sections[0]
+            self.library_section = _library_sections[0][1]
+            self._library_section_idx = _library_sections[0][0]
 
         # check for building block sections
         self.building_block_sections: list[BuildingBlockBarcodeSection]
         _building_block_sections = [
-            section
-            for section in self.barcode_sections
+            (i, section)
+            for i, section in enumerate(self.barcode_sections)
             if isinstance(section, BuildingBlockBarcodeSection)
         ]
         if len(_building_block_sections) == 0:
@@ -318,12 +319,16 @@ class BarcodeSchema:
                 "barcode schemas must contain at least one building block barcode section"
             )
         else:
-            self.building_block_sections = _building_block_sections
+            self.building_block_sections = [_[1] for _ in _building_block_sections]
+            self._building_block_section_idxs = [_[0] for _ in _building_block_sections]
 
         # check for umi section (optional)
         self.umi_section: Optional[UMIBarcodeSection] = None
+        self._umi_section_idx: int = -1
         _umi_section = [
-            section for section in self.barcode_sections if isinstance(section, UMIBarcodeSection)
+            (i, section)
+            for i, section in enumerate(self.barcode_sections)
+            if isinstance(section, UMIBarcodeSection)
         ]
         if len(_building_block_sections) > 0:
             raise BarcodeSchemaError(
@@ -331,7 +336,8 @@ class BarcodeSchema:
             )
         else:
             if _umi_section:
-                self.umi_section = _umi_section[0]
+                self.umi_section = _umi_section[0][1]
+                self._umi_section_idx = _umi_section[0][0]
 
         # check for closing section (optional)
         self.closing_section: Optional[ClosingBarcodeSection] = None
@@ -364,6 +370,15 @@ class BarcodeSchema:
                         "between the building block sections"
                     )
                 _found_bb_section = True
+
+        # get the minimum length needed to extract info from a barcode match
+        self.min_length: int
+        required_section_indexes = [self._library_section_idx] + self._building_block_section_idxs
+        if self.umi_section:
+            required_section_indexes.append(self._umi_section_idx)
+        start = min(required_section_indexes)
+        end = max(required_section_indexes)
+        self.min_length = sum([len(section) for section in self.barcode_sections[start : end + 1]])
 
     def __len__(self) -> int:
         """Get the length of all sections of the barcode schema"""
@@ -510,31 +525,51 @@ class BarcodeSchema:
         """
         return self._library_in_front
 
-    def get_min_length(self) -> int:
+    def is_library_tag_in_back(self) -> bool:
         """
-        Gets the minimum length of a sequence needed to match the barcode
-
-        As a rule of thumb, if the read is smaller than min_length,
-        it is unlikely to be able to accurately extract all the
-        required sections to match.
+        Return `True` if the library tag is at the back of the barcode
 
         Notes
         -----
-        If the barcode has a UMI section, then it is included in the
-        min length
+        Because library tags must be before or after all barcode sections
+        if this is `False`  it means the library tag is at the 'front' of the barcode
+
+        Returns
+        -------
+        bool
+        """
+        return not self._library_in_front
+
+    def get_length_before_library(self) -> int:
+        """
+        Get the number of base pairs before the start of the library tag section
+
+        Notes
+        -----
+        'Before' always referees to the 'left' of the section
+        which is towards the 5' end of the barcode
 
         Returns
         -------
         int
         """
-        required_sections_idx = [
-            i
-            for i, section in enumerate(self.barcode_sections)
-            if isinstance(
-                section, (LibraryBarcodeSection, BuildingBlockBarcodeSection, UMIBarcodeSection)
-            )
-        ]
-        start = min(required_sections_idx)
-        end = max(required_sections_idx)
+        return sum(
+            [len(section) for section in self.barcode_sections[: self._library_section_idx]]
+        )
 
-        return sum([len(section) for section in self.barcode_sections[start : end + 1]])
+    def get_length_after_library(self) -> int:
+        """
+        Get the number of base pairs after the end of the library tag section
+
+        Notes
+        -----
+        'After' always referees to the 'right' of the section
+        which is towards the 3' end of the barcode
+
+        Returns
+        -------
+        int
+        """
+        return sum(
+            [len(section) for section in self.barcode_sections[self._library_section_idx + 1 :]]
+        )
