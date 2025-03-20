@@ -298,7 +298,7 @@ class HybridSemiGlobalAligner(Aligner):
         the adapter in region in a larger read (whicih is why cutadpat uses it)
 
         For the above reason, this should really only be used when demultiplexing
-        in DELi, for example the LibraryDemultiplexer uses it. All other alignments
+        in DELi, for example the LibraryCaller uses it. All other alignments
         should be done with the SemiGlobalAligner.
 
         Parameters
