@@ -1,11 +1,12 @@
 """base classes for setting objects"""
 
-import abc
 from os import PathLike
 from typing import Self
 
+import yaml
 
-class BaseSettings(abc.ABC):
+
+class BaseSettings:
     """
     Base class for all setting objects
 
@@ -22,13 +23,32 @@ class BaseSettings(abc.ABC):
         for key, value in kwargs.items():
             setattr(self, key, value)
 
-    @abc.abstractmethod
     def to_file(self, path: str | PathLike):
-        """Save settings to a yaml file"""
-        raise NotImplementedError()
+        """
+        Save settings to a yaml file
+
+        Parameters
+        ----------
+        path : str | PathLike
+            path to save settings to
+        """
+        yaml.dump(self.__dict__, open(path, "w"))
 
     @classmethod
-    @abc.abstractmethod
     def from_file(cls, path: str | PathLike) -> Self:
-        """Load settings from a yaml file"""
-        raise NotImplementedError()
+        """
+        Load settings from a yaml file
+
+        Parameters
+        ----------
+        path : str | PathLike
+            Path to yaml file
+
+        Returns
+        -------
+        Self
+        """
+        try:
+            return cls(**yaml.safe_load(open(path, "r")))
+        except Exception as e:
+            raise RuntimeError(f"Failed to load settings from {path}") from e
