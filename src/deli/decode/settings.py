@@ -17,6 +17,7 @@ class DecodingSettings(BaseSettings):
     def __init__(
         self,
         library_error_tolerance: float = 0.2,
+        min_library_overlap: int | None = 7,
         alignment_algorithm: Literal["semi", "hybrid"] = "semi",
         bb_calling_approach: Literal["alignment"] = "alignment",
         use_hamming: bool = True,
@@ -38,6 +39,16 @@ class DecodingSettings(BaseSettings):
             and down to the nearest whole number
             for example, a library with 14 nucleotides would tolerate
             1, 2, and 4 errors for an error tolerance of 0.1, 0.2 and 0.3 respectively
+        min_library_overlap: int or None, default = 7
+            the minimum number of nucleotides required to match
+            the library tag
+            This is because the demultiplexing will accept truncated matches
+            at the front/back of the tag. For example a tag of AGCTGGTTC
+            could match a read of GTTC if the min overlap was <=4
+            If `None`, will default to the exact length of the tag, meaning
+            the whole tag is expected.
+            The recommended value is greater than 8, as the odds of a match this strong
+            to be accidental are low
         alignment_algorithm: Literal["semi", "hybrid"], default = "semi"
             the algorithm to use for alignment
             only used if bb_calling_approach is "alignment"
@@ -57,6 +68,7 @@ class DecodingSettings(BaseSettings):
         """
         super().__init__(
             library_error_tolerance=library_error_tolerance,
+            min_library_overlap=min_library_overlap,
             alignment_algorithm=alignment_algorithm,
             bb_calling_approach=bb_calling_approach,
             use_hamming=use_hamming,

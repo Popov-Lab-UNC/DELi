@@ -34,6 +34,29 @@ class BaseSettings:
         """
         yaml.dump(self.__dict__, open(path, "w"))
 
+    def get(self, key: str, default: object | None = None) -> object | None:
+        """
+        Get the setting with the matching name
+
+        If setting of that names does not exist, will return `default`
+
+        Parameters
+        ----------
+        key : str
+            setting name to look up
+        default : object | None
+            the value to return if setting does not exist
+
+        Returns
+        -------
+        object | None
+            the setting value or the default value if setting does not exist
+        """
+        try:
+            return self.__dict__[key]
+        except KeyError:
+            return default
+
     @classmethod
     def from_file(cls, path: str | PathLike) -> Self:
         """

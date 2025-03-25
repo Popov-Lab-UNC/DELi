@@ -7,7 +7,7 @@ class Call(abc.ABC):
     """base class for all calls"""
 
     @abc.abstractmethod
-    def valid_call(self) -> bool:
+    def is_valid(self) -> bool:
         """Return True if call is valid else false"""
         raise NotImplementedError
 
@@ -15,7 +15,7 @@ class Call(abc.ABC):
 class ValidCall(Call):
     """base class for all valid calls"""
 
-    def valid_call(self) -> bool:
+    def is_valid(self) -> bool:
         """Valid calls are always True"""
         return True
 
@@ -23,6 +23,6 @@ class ValidCall(Call):
 class FailedCall(Call):
     """base class for all failed calls"""
 
-    def valid_call(self) -> bool:
+    def is_valid(self) -> bool:
         """Failed calls are always False"""
         return False

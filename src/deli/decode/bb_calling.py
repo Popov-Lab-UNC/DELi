@@ -25,7 +25,7 @@ class FailedBuildingBlockCall(FailedCall):
 BuildingBlockCall: TypeAlias = Union[ValidBuildingBlockCall, FailedBuildingBlockCall]
 
 
-class BuildingBlockCaller:
+class BuildingBlockSetTagCaller:
     """Calls building blocks given a tag query and building block set"""
 
     def __init__(

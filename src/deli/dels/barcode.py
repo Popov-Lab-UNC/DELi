@@ -139,11 +139,13 @@ class VariableBarcodeSection(BarcodeSection):
         )
 
 
+# TODO need to add cycle number here
 class BuildingBlockBarcodeSection(VariableBarcodeSection):
     """Base class for all barcode sections encoding building block regions"""
 
     def __init__(
         self,
+        cycle_number: int,
         section_name: str,
         section_tag: str,
         section_overhang: Optional[str] = None,
@@ -154,6 +156,9 @@ class BuildingBlockBarcodeSection(VariableBarcodeSection):
 
         Parameters
         ----------
+        cycle_number: int
+            the cycle number for this building block
+            the first reactant is always cycle 0 and so on
         section_name: str
             barcode section name
         section_tag: str
@@ -167,6 +172,7 @@ class BuildingBlockBarcodeSection(VariableBarcodeSection):
             the corresponding hamming decoder needed to decode the tags
         """
         super().__init__(section_name, section_tag, section_overhang)
+        self.cycle_number = cycle_number
         self.hamming_decoder = hamming_decoder
 
     def is_hamming_encoded(self) -> bool:
@@ -308,7 +314,8 @@ class BarcodeSchema:
             self._library_section_idx = _library_sections[0][0]
 
         # check for building block sections
-        self.building_block_sections: list[BuildingBlockBarcodeSection]
+        self.building_block_sections: list[BuildingBlockBarcodeSection] = list()
+        self._building_block_section_idxs: list[int] = list()
         _building_block_sections = [
             (i, section)
             for i, section in enumerate(self.barcode_sections)
@@ -319,8 +326,16 @@ class BarcodeSchema:
                 "barcode schemas must contain at least one building block barcode section"
             )
         else:
-            self.building_block_sections = [_[1] for _ in _building_block_sections]
-            self._building_block_section_idxs = [_[0] for _ in _building_block_sections]
+            for i, (_bb_section_idx, bb_section) in enumerate(_building_block_sections):
+                if (i + 1) != bb_section.cycle_number:
+                    raise BarcodeSchemaError(
+                        f"expected building block section to be for cycle {i+1},"
+                        f"but found cycle number {bb_section.cycle_number} for "
+                        f"building block section {bb_section.section_name}"
+                    )
+                else:
+                    self.building_block_sections.append(bb_section)
+                    self._building_block_section_idxs.append(_bb_section_idx)
 
         # check for umi section (optional)
         self.umi_section: Optional[UMIBarcodeSection] = None
@@ -433,8 +448,10 @@ class BarcodeSchema:
                     if section_info.get("hamming_decoder") is not None
                     else None
                 )
+                _cycle_number = int(section_name[2:])
                 _sections.append(
                     BuildingBlockBarcodeSection(
+                        cycle_number=_cycle_number,
                         section_name=section_name,
                         section_tag=section_info["tag"],
                         section_overhang=section_info.get("overhang"),
@@ -506,6 +523,37 @@ class BarcodeSchema:
             )
         return regex_str
 
+    def get_full_barcode(self) -> str:
+        """
+        Return the full barcode as a string
+
+        Will include variable regions as 'N'
+
+        Returns
+        -------
+        str
+        """
+        full_barcode: str = ""
+        for section in self.barcode_sections:
+            full_barcode += section.get_dna_sequence()
+        return full_barcode
+
+    def get_section_spans(self) -> dict[str, slice]:
+        """
+        Get the spans of each barcode section as a dict
+
+        Returns
+        -------
+        dict[str, slice]
+            keys are section ids and values are spans (as a `slice`)
+        """
+        spans: dict[str, slice] = dict()
+        curr_pos: int = 0
+        for section in self.barcode_sections:
+            spans[section.section_name] = slice(curr_pos, curr_pos + len(section))
+            curr_pos += len(section)
+        return spans
+
     def get_num_building_block_sections(self) -> int:
         """Get number of building block sections"""
         return len(self.barcode_sections)
@@ -573,3 +621,7 @@ class BarcodeSchema:
         return sum(
             [len(section) for section in self.barcode_sections[self._library_section_idx + 1 :]]
         )
+
+    def has_umi(self) -> bool:
+        """True is library has UMI barcode section, else False"""
+        return self.umi_section is not None

@@ -8,7 +8,7 @@ from typing import Iterator, List, Optional, Self, Union
 
 from deli.configure import DeliDataLoadable, accept_deli_data_name
 
-from .barcode import BarcodeSchema
+from .barcode import BarcodeSchema, BuildingBlockBarcodeSection
 from .building_block import BuildingBlock, BuildingBlockSet
 from .enumerator import DELEnumerator
 from .reaction import ReactionWorkflow
@@ -30,8 +30,6 @@ class DELibrary(DeliDataLoadable):
         Number of building block cycles in the library
     library_size : int
         Size of the enumerated library
-    library_dna_tag : str
-        the DNA sequence associated with this library
     enumerator : DELEnumerator
         the enumerator attached to the library
     """
@@ -194,6 +192,19 @@ class DELibrary(DeliDataLoadable):
         for bb_set in self.bb_sets:
             if bb_set:
                 yield bb_set
+
+    def iter_bb_barcode_sections_and_sets(
+        self,
+    ) -> Iterator[tuple[BuildingBlockBarcodeSection, BuildingBlockSet]]:
+        """
+        Iterate through building block sets and their respective barcode sections sections
+
+        Yields
+        ------
+        tuple[BuildingBlockBarcodeSection, BuildingBlockSet]
+        """
+        for bb_section, bb_set in zip(self.barcode_schema.building_block_sections, self.bb_sets):
+            yield bb_section, bb_set
 
     def enumerate_library_to_file(
         self, out_path: Union[str, Path], use_tqdm: bool = False
