@@ -16,10 +16,12 @@ class DecodingSettings(BaseSettings):
 
     def __init__(
         self,
-        library_error_tolerance: float = 0.2,
-        min_library_overlap: int | None = 7,
+        library_error_tolerance: float = 0.1,
+        min_library_overlap: int | None = 10,
         alignment_algorithm: Literal["semi", "hybrid"] = "semi",
-        bb_calling_approach: Literal["alignment"] = "alignment",
+        bb_calling_approach: Literal["alignment", "bio"] = "alignment",
+        revcomp: bool = False,
+        read_type: Literal["single", "paired"] = "single",
         use_hamming: bool = True,
         track_statistics: bool = True,
     ):
@@ -52,6 +54,12 @@ class DecodingSettings(BaseSettings):
         alignment_algorithm: Literal["semi", "hybrid"], default = "semi"
             the algorithm to use for alignment
             only used if bb_calling_approach is "alignment"
+        read_type: Literal["single", "paired"], default = "single"
+            the type of read
+            paired are for paired reads
+            all other read types are single
+        revcomp: bool, default = False
+            If true, search the reverse compliment as well
         bb_calling_approach: Literal["alignment"], default = "alignment"
             the algorithm to use for bb_calling
             right now only "alignment" mode is supported
@@ -70,6 +78,8 @@ class DecodingSettings(BaseSettings):
             library_error_tolerance=library_error_tolerance,
             min_library_overlap=min_library_overlap,
             alignment_algorithm=alignment_algorithm,
+            read_type=read_type,
+            revcomp=revcomp,
             bb_calling_approach=bb_calling_approach,
             use_hamming=use_hamming,
             track_statistics=track_statistics,

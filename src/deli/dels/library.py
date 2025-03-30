@@ -1,6 +1,7 @@
 """defines DEL library functions and classes"""
 
 import json
+import os
 from functools import reduce
 from operator import mul
 from pathlib import Path
@@ -163,7 +164,37 @@ class DELibrary(DeliDataLoadable):
         data = json.load(open(path))
 
         # load bb sets (needed for reaction setup)
-        bb_sets: list[BuildingBlockSet] = [BuildingBlockSet.load(bb) for bb in data["bb_sets"]]
+        _observed_sets: list[tuple[int, BuildingBlockSet]] = list()
+        for i, bb_data in enumerate(data["bb_sets"]):
+            cycle = bb_data.get("cycle", None)
+            if cycle is None:
+                raise LibraryBuildError(
+                    f"build block sets require a cycle number;" f"set at index {i} lacks a cycle"
+                )
+            bb_set_name = bb_data.get("bb_set_name", None)
+            file_path = bb_data.get("bb_set_path", None)
+            if file_path is None and bb_set_name is None:
+                raise LibraryBuildError(
+                    f"either 'bb_set_name' or 'bb_set_path' must be provided "
+                    f"for a building block set;"
+                    f"set in index {i} lacks a both"
+                )
+            if file_path is None:
+                file_path = bb_set_name
+            if bb_set_name is None:
+                bb_set_name = os.path.basename(file_path).split(".")[0]
+            _observed_sets.append((cycle, BuildingBlockSet.load(file_path, set_id=bb_set_name)))
+
+        # check for right order of sets
+        _bb_cycles = [_[0] for _ in _observed_sets]
+        if _bb_cycles != list(range(1, len(_observed_sets) + 1)):
+            raise LibraryBuildError(
+                f"building block sets must be in consecutive ascending "
+                f"order starting from 1 (1, 2, 3...); "
+                f"observed order: '{_bb_cycles}'"
+            )
+
+        bb_sets: list[BuildingBlockSet] = [_[1] for _ in _observed_sets]
         bb_set_ids = set([bb_set.bb_set_id for bb_set in bb_sets] + ["scaffold"])
 
         if "reactions" in data.keys():

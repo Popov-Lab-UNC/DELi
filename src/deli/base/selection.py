@@ -56,12 +56,12 @@ class BaseSelection(abc.ABC):
         )
 
     @abc.abstractmethod
-    def to_file(self, out_path: str | PathLike | None) -> PathLike:
+    def to_file(self, out_path: str | PathLike | None):
         """Covert the object to a human readable file"""
         raise NotImplementedError()
 
     @classmethod
     @abc.abstractmethod
-    def load_file(cls, path: str | PathLike | None) -> Self:
+    def from_file(cls, path: str | PathLike | None) -> Self:
         """Load the object from a human readable file"""
         raise NotImplementedError()

@@ -43,7 +43,7 @@ class BarcodeSection(abc.ABC):
     def _validate(self):
         """Validate the tha barcode section tag(s) are correct"""
         if isinstance(self.section_overhang, str):
-            if len(set(self.section_overhang) - {"A", "C", "G", "T"}) == 0:
+            if len(set(self.section_overhang) - {"A", "C", "G", "T"}) != 0:
                 raise BarcodeSchemaError(
                     f"barcode section {self.section_name} overhang contains invalid nucleotides"
                 )
@@ -193,7 +193,7 @@ class StaticBarcodeSection(BarcodeSection):
         """Validate that all nucleotides are known and valid"""
         super()._validate()
         if isinstance(self.section_overhang, str):
-            if len(set(self.section_overhang) - {"A", "C", "G", "T"}) == 0:
+            if len(set(self.section_overhang) - {"A", "C", "G", "T"}) != 0:
                 raise BarcodeSchemaError(
                     f"barcode section {self.section_name} contains invalid "
                     f"nucleotides: {self.section_tag}"
@@ -345,7 +345,7 @@ class BarcodeSchema:
             for i, section in enumerate(self.barcode_sections)
             if isinstance(section, UMIBarcodeSection)
         ]
-        if len(_building_block_sections) > 0:
+        if len(_umi_section) > 1:
             raise BarcodeSchemaError(
                 "barcode schemas must contain at most one umi barcode section"
             )
@@ -361,7 +361,7 @@ class BarcodeSchema:
             for section in self.barcode_sections
             if isinstance(section, ClosingBarcodeSection)
         ]
-        if len(_building_block_sections) > 0:
+        if len(_closing_section) > 1:
             raise BarcodeSchemaError(
                 "barcode schemas must contain at most one closing barcode section"
             )
@@ -385,6 +385,7 @@ class BarcodeSchema:
                         "between the building block sections"
                     )
                 _found_bb_section = True
+                _found_library = False
 
         # get the minimum length needed to extract info from a barcode match
         self.min_length: int
@@ -538,9 +539,15 @@ class BarcodeSchema:
             full_barcode += section.get_dna_sequence()
         return full_barcode
 
-    def get_section_spans(self) -> dict[str, slice]:
+    def get_section_spans(self, exclude_overhangs: bool = False) -> dict[str, slice]:
         """
         Get the spans of each barcode section as a dict
+
+        Parameters
+        ----------
+        exclude_overhangs: bool, default=False
+            exclude the overhang region of a tag when
+            calculating the spans
 
         Returns
         -------
@@ -550,13 +557,17 @@ class BarcodeSchema:
         spans: dict[str, slice] = dict()
         curr_pos: int = 0
         for section in self.barcode_sections:
-            spans[section.section_name] = slice(curr_pos, curr_pos + len(section))
+            _section_len = len(section) - (
+                (len(section.section_overhang) if section.section_overhang else 0)
+                * exclude_overhangs
+            )
+            spans[section.section_name] = slice(curr_pos, curr_pos + _section_len)
             curr_pos += len(section)
         return spans
 
     def get_num_building_block_sections(self) -> int:
         """Get number of building block sections"""
-        return len(self.barcode_sections)
+        return len(self.building_block_sections)
 
     def is_library_tag_in_front(self) -> bool:
         """

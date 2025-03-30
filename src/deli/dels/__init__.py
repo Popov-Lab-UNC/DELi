@@ -3,18 +3,13 @@
 from .barcode import BarcodeSchema, BuildingBlockBarcodeSection
 from .building_block import BaseBuildingBlock, BuildingBlock, BuildingBlockSet, MaskedBuildingBlock
 from .enumerator import DELEnumerator
-from .index import Index, IndexSet, get_min_index_distance
 from .library import DELibrary, DELibraryPool
-from .synthon import Disynthon, HasDisynthonMixin, HasMonosynthonMixin, Monosynthon
 from .umi import Umi
 
 
 __all__ = [
     "BarcodeSchema",
     "BuildingBlockBarcodeSection",
-    "Index",
-    "IndexSet",
-    "get_min_index_distance",
     "DELibrary",
     "DELibraryPool",
     "DELEnumerator",
@@ -22,9 +17,5 @@ __all__ = [
     "BuildingBlock",
     "MaskedBuildingBlock",
     "BuildingBlockSet",
-    "Monosynthon",
-    "HasDisynthonMixin",
-    "Disynthon",
-    "HasMonosynthonMixin",
     "Umi",
 ]

@@ -14,12 +14,10 @@ P = ParamSpec("P")
 R = TypeVar("R")
 
 BB_MASK_TOKEN_DEFAULT: str = "###"
-MAX_INDEX_RISK_DIST_THRESHOLD_DEFAULT: int = 3
-MAX_LIBRARY_RISK_DIST_THRESHOLD_DEFAULT: int = 4
 NUC_2_INT_DEFAULT: dict[str, int] = {"A": 0, "T": 1, "C": 2, "G": 3}
 
 
-DELI_DATA_SUB_DIRS = ["hamming", "libraries", "indexes", "building_blocks"]
+DELI_DATA_SUB_DIRS = ["hamming", "libraries", "building_blocks"]
 
 
 def set_deli_data_dir(data_dir: Union[str, Path]) -> None:
@@ -62,12 +60,6 @@ class _DeliConfig:
     bb_mask: str
         the 3 char long token to replace any masked building blocks
         masked building blocks result from synthon-based analysis
-    max_index_risk_dist_threshold: int
-        the maximum risk willing to make in an index call
-        if risk is above this number will fail the call
-    max_library_risk_dist_threshold: int
-        the maximum risk willing to make in a library call
-        if risk is above this number will fail the call
     nuc_2_int: dict[str, int]
         the nucleotide to integer mapping
     """
@@ -75,24 +67,14 @@ class _DeliConfig:
     def __init__(self, **kwargs):
         # process deli data director
         self.deli_data_dir: Path
-        if kwargs.get("DELI_DATA_DIR", None) is None:
+        if kwargs.get("deli_data_dir", None) is None:
             self.deli_data_dir = Path(os.path.join(os.path.expanduser("~"), ".deli", "deli_data"))
         else:
-            self.deli_data_dir = Path(os.fspath(os.path.expanduser(kwargs.get("DELI_DATA_DIR"))))
+            self.deli_data_dir = Path(os.fspath(os.path.expanduser(kwargs.get("deli_data_dir"))))
         _validate_deli_data_dir(self.deli_data_dir)
 
         self.bb_mask: str = (
             str(kwargs["BB_MASK"]) if kwargs.get("BB_MASK") is not None else BB_MASK_TOKEN_DEFAULT
-        )
-        self.max_index_risk_dist_threshold: int = (
-            int(kwargs["MAX_INDEX_RISK_DIST_THRESHOLD"])
-            if (kwargs.get("MAX_INDEX_RISK_DIST_THRESHOLD") is not None)
-            else MAX_INDEX_RISK_DIST_THRESHOLD_DEFAULT
-        )
-        self.max_library_risk_dist_threshold: int = (
-            int(kwargs["MAX_LIBRARY_RISK_DIST_THRESHOLD"])
-            if (kwargs.get("MAX_LIBRARY_RISK_DIST_THRESHOLD") is not None)
-            else MAX_LIBRARY_RISK_DIST_THRESHOLD_DEFAULT
         )
         self.nuc_2_int: dict[str, int] = (
             kwargs["NUC_2_INT"]
@@ -119,17 +101,15 @@ class _DeliConfig:
             else NUC_2_INT_DEFAULT
         )
 
-        __deli_data_dir: Optional[str] = settings.get("DELI_DATA_DIR")
+        __deli_data_dir: Optional[str] = settings.get("deli_data_dir")
         if use_env:
-            deli_data_dir_env = os.environ.get("DELI_DATA_DIR", None)
+            deli_data_dir_env = os.environ.get("deli_data_dir", None)
             if isinstance(deli_data_dir_env, str):
                 __deli_data_dir = deli_data_dir_env
 
         return cls(
             deli_data_dir=__deli_data_dir,
             bb_mask=settings.get("BB_MASK"),
-            max_index_risk_dist_threshold=settings.get("MAX_INDEX_RISK_DIST_THRESHOLD"),
-            max_library_risk_dist_threshold=settings.get("MAX_LIBRARY_RISK_DIST_THRESHOLD"),
             nuc_2_int=nuc_2_int,
         )
 
@@ -241,8 +221,6 @@ def init_deli_config_dir(
     _config = (
         f"[DEFAULT]\n"
         f"BB_MASK = {BB_MASK_TOKEN_DEFAULT}\n"
-        f"MAX_INDEX_RISK_DIST_THRESHOLD = {MAX_INDEX_RISK_DIST_THRESHOLD_DEFAULT}\n"
-        f"MAX_LIBRARY_RISK_DIST_THRESHOLD = {MAX_LIBRARY_RISK_DIST_THRESHOLD_DEFAULT}\n"
         f"NUC_2_INT = "
         + ",".join([f"{key}:{val}" for key, val in NUC_2_INT_DEFAULT.items()])
         + "\n"
@@ -272,7 +250,7 @@ def accept_deli_data_name(
 
     It will result in the function taking in, rather than a full path,
     the name of the object (e.g. "MyMegaLibrary") and the
-    DELi config object that defines where DELI_DATA_DIR is
+    DELi config object that defines where deli_data_dir is
 
     Set the sub-dir (libraries, indexes, building_blocks, barcodes)
     when assigning the decorator based on where the data should be
@@ -305,7 +283,7 @@ def accept_deli_data_name(
         if not os.path.exists(_sub_dir_path):
             raise DeliDataNotFound(
                 f"cannot find DELi data subdirectory at `{_sub_dir_path}`; "
-                f"did you check that DELI_DATA_DIR is set correctly?"
+                f"did you check that deli_data_dir is set correctly?"
             )
 
         _file_name = os.path.basename(path).split(".")[0] + "." + extension
@@ -378,10 +356,10 @@ elif os.path.exists(os.path.join(os.path.expanduser("~"), ".deli", ".deli")):
         Path(os.path.join(os.path.expanduser("~"), ".deli", ".deli")), use_env=True
     )
 else:
-    _deli_data_dir = os.environ.get("DELI_DATA_DIR", None)
+    _deli_data_dir = os.environ.get("deli_data_dir", None)
     deli_data_dir: Optional[str]
     if isinstance(_deli_data_dir, str) and _deli_data_dir != "":
         deli_data_dir = os.fspath(os.path.expanduser(_deli_data_dir))
     else:
         deli_data_dir = None
-    DELI_CONFIG = _DeliConfig(DELI_DATA_DIR=deli_data_dir)
+    DELI_CONFIG = _DeliConfig(deli_data_dir=deli_data_dir)

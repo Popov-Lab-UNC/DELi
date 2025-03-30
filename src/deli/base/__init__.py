@@ -1,8 +1,7 @@
 """base __init__"""
 
-from settings import BaseSettings
-
 from .selection import BaseSelection
+from .settings import BaseSettings
 
 
 __all__ = [

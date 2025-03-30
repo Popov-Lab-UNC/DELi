@@ -2,14 +2,17 @@
 
 import abc
 import warnings
-from typing import Literal
+from typing import Literal, no_type_check
 
+import numpy as np
+from Bio.Align import PairwiseAligner
 from dnaio import SequenceRecord
+from numba import njit
 
 from deli.dels import DELibrary, DELibraryPool
 from deli.dna import Aligner, HybridSemiGlobalAligner, SemiGlobalAligner
 
-from .bb_calling import BuildingBlockCall, BuildingBlockSetTagCaller
+from .bb_calling import BuildingBlockCall, BuildingBlockSetTagCaller, FailedBuildingBlockCall
 from .lib_calling import LibraryCall, LibraryCaller, SingleReadLibraryCaller, ValidLibraryCall
 from .settings import DecodingSettings
 from .umi import UMI
@@ -98,8 +101,8 @@ class DELPoolDecoder:
         if decode_settings.__getattribute__("read_type") == "single":
             self.library_caller = SingleReadLibraryCaller(
                 library_pool,
-                error_rate=decode_settings.__getattribute__("error_rate"),
-                min_overlap=decode_settings.__getattribute__("min_overlap"),
+                error_rate=decode_settings.__getattribute__("library_error_tolerance"),
+                min_overlap=decode_settings.__getattribute__("min_library_overlap"),
                 revcomp=decode_settings.__getattribute__("revcomp"),
             )
         elif decode_settings.__getattribute__("read_type") == "paired":
@@ -110,8 +113,8 @@ class DELPoolDecoder:
             )
             self.library_caller = SingleReadLibraryCaller(
                 library_pool,
-                error_rate=decode_settings.__getattribute__("error_rate"),
-                min_overlap=decode_settings.__getattribute__("min_overlap"),
+                error_rate=decode_settings.__getattribute__("library_error_tolerance"),
+                min_overlap=decode_settings.__getattribute__("min_library_overlap"),
                 revcomp=decode_settings.__getattribute__("revcomp"),
             )
         else:
@@ -120,12 +123,21 @@ class DELPoolDecoder:
             )
 
         # determine library caller class
+        self.library_decoders: dict[str, LibraryDecoder]
         if decode_settings.__getattribute__("bb_calling_approach") == "alignment":
-            self.library_decoders: dict[str, LibraryDecoder] = {
+            self.library_decoders = {
                 library.library_id: DynamicAlignmentLibraryDecoder(
                     library,
                     use_hamming=decode_settings.__getattribute__("use_hamming"),
                     alignment_algorithm=decode_settings.__getattribute__("alignment_algorithm"),
+                )
+                for library in library_pool.libraries
+            }
+        elif decode_settings.__getattribute__("bb_calling_approach") == "bio":
+            self.library_decoders = {
+                library.library_id: BioAlignmentLibraryDecoder(
+                    library,
+                    use_hamming=decode_settings.__getattribute__("use_hamming"),
                 )
                 for library in library_pool.libraries
             }
@@ -233,7 +245,9 @@ class DynamicAlignmentLibraryDecoder(LibraryDecoder):
 
         self._barcode_reference = self.library.barcode_schema.get_full_barcode()
 
-        _barcode_section_spans = self.library.barcode_schema.get_section_spans()
+        _barcode_section_spans = self.library.barcode_schema.get_section_spans(
+            exclude_overhangs=True
+        )
         self._bb_sections_spans_to_search_for: dict[str, slice] = {
             section.section_name: _barcode_section_spans[section.section_name]
             for section in self.library.barcode_schema.building_block_sections
@@ -295,6 +309,198 @@ class DynamicAlignmentLibraryDecoder(LibraryDecoder):
             )
 
         return DecodedBarcode(library=library_call, building_blocks=bb_calls, umi=_umi)
+
+
+class BioAlignmentLibraryDecoder(LibraryDecoder):
+    """
+    Uses a dynamic programing alignment algorithm to call the barcode
+
+    Will align to the library tag (and other known static regions) and use
+    that alignment to locate the required sections to call
+    """
+
+    def __init__(
+        self,
+        library: DELibrary,
+        use_hamming: bool = True,
+    ):
+        """
+        Initialize the DynamicAlignmentLibraryDecoder
+
+        Parameters
+        ----------
+        library: DELibrary
+            the library to decode from
+        use_hamming: bool, default True
+            using hamming correction
+            only used for barcodes with hamming encoded parts
+        """
+        super().__init__(library=library, use_hamming=use_hamming)
+
+        # assign the aligner
+        self.aligner = PairwiseAligner(
+            match_score=1,
+            mismatch_score=-1,
+            open_gap_score=-2,
+            extend_gap_score=-1,
+            mode="global",
+            end_open_gap_score=0,
+            end_extend_gap_score=0,
+        )
+
+        self._bb_callers: dict[str, BuildingBlockSetTagCaller] = {
+            bb_section.section_name: BuildingBlockSetTagCaller(
+                building_block_tag_section=bb_section,
+                building_block_set=bb_set,
+                use_hamming=self.use_hamming,
+            )
+            for bb_section, bb_set in self.library.iter_bb_barcode_sections_and_sets()
+        }
+        self._num_bb_to_call = len(self._bb_callers)
+
+        self._barcode_reference = self.library.barcode_schema.get_full_barcode()
+
+        _barcode_section_spans = self.library.barcode_schema.get_section_spans(
+            exclude_overhangs=True
+        )
+        self._bb_sections_spans_to_search_for: dict[str, slice] = {
+            section.section_name: _barcode_section_spans[section.section_name]
+            for section in self.library.barcode_schema.building_block_sections
+        }
+        self._umi_span: slice | None = _barcode_section_spans.get("umi", None)
+
+        # check alignment of callers and sections:
+        _missing_sections = set(self._bb_callers.keys()) - set(
+            self._bb_sections_spans_to_search_for.keys()
+        )
+        if len(_missing_sections) != 0:
+            raise ValueError(
+                f"building block caller for section(s) '{_missing_sections}'"
+                f"are missing from the library barcode"
+            )
+
+    def call_barcode(self, library_call: ValidLibraryCall) -> DecodedBarcode:
+        """
+        Given a library call, decode the read
+
+        Parameters
+        ----------
+        library_call: ValidLibraryCall
+            the library call to decode
+
+        Returns
+        -------
+        DecodedBarcode
+        """
+        _alignments = self.aligner.align(library_call.sequence.sequence, self._barcode_reference)
+
+        # if biopython finds too many top scoring alignments, break out
+        #  it means that no good alignment exists, so calling is too risky
+        if len(_alignments) > 20:
+            return DecodedBarcode(library=library_call, building_blocks=None, umi=None)
+
+        # loop through all scoring alignments, skipping if at any point a bb lookup
+        # fails, and exiting and returning the first perfect match
+        for _alignment in _alignments:
+            # _inverse_indices = _alignment.inverse_indices
+            inverse_indices = _inverse_indices(_alignment.sequences, _alignment.coordinates)
+            bb_calls: dict[str, BuildingBlockCall] = dict()
+            for section_name, section_span in self._bb_sections_spans_to_search_for.items():
+                _aligned_bb_codon = library_call.sequence.sequence[
+                    inverse_indices[1][section_span.start] : inverse_indices[1][
+                        section_span.stop - 1
+                    ]
+                    + 1
+                ]
+                bb_call = self._bb_callers[section_name].call_building_block(_aligned_bb_codon)
+                if isinstance(bb_call, FailedBuildingBlockCall):
+                    break
+                else:
+                    bb_calls[section_name] = bb_call
+
+            if len(bb_calls) != self._num_bb_to_call:
+                continue
+
+            # extract the UMI section if there is one
+            _umi: UMI | None = None
+            if self._umi_span is not None:
+                _umi = UMI(
+                    library_call.sequence.sequence[
+                        inverse_indices[1][self._umi_span.start] : inverse_indices[1][
+                            self._umi_span.stop - 1
+                        ]
+                        + 1
+                    ]
+                )
+
+            return DecodedBarcode(library=library_call, building_blocks=bb_calls, umi=_umi)
+        return DecodedBarcode(library=library_call, building_blocks=None, umi=None)
+
+
+@no_type_check
+@njit
+def _inverse_indices(sequences, coordinates):
+    """
+    Numba accelerated inverse_indices calculation
+
+    This is lifted from biopython/Bio/Align/__init__.py:inverse_indices:2961
+    The inverse_indices attribute is actually a property for alignment objects
+    in Biopython. This code can be numba compiled to accelerate the frequent calls
+    to it we have to make. This function does just that.
+    A few changes to the exact functions were made, but the algorithm is the
+    same, just compatible with njit now.
+
+    Using njit makes this function about 5 times faster, and since it accounts for
+    ~25% of the runtime during decoding, it offers tangible speed ups
+
+    WARNING:
+    Users should never touch this function, it is only meant
+    to be used by the BioAlignmentLibraryDecoder to make things
+    go a bit faster
+
+    Parameters
+    ----------
+    sequences
+        the sequences from the alignment object
+    coordinates
+        the coordinates from the alignment object
+
+    Returns
+    -------
+    reverse indices
+    """
+    a = [np.full(len(sequence), -1) for sequence in sequences]
+    n, m = coordinates.shape
+    steps = np.diff(coordinates, 1)
+    steps_bool = steps != 0
+    aligned = np.sum(steps_bool, 0) > 1
+    # True for steps in which at least two sequences align, False if a gap
+    steps = steps[:, aligned]
+    rcs = np.zeros(n)
+    for i, row in enumerate(steps):
+        if (row >= 0).all():
+            rcs[i] = False
+        elif (row <= 0).all():
+            rcs[i] = True
+        else:
+            raise ValueError(f"Inconsistent steps in row {i}")
+    i = 0
+    j = 0
+    for k in range(m - 1):
+        starts = coordinates[:, k]
+        ends = coordinates[:, k + 1]
+        for row, start, end, rc in zip(a, starts, ends, rcs):
+            if rc == False and start < end:  # noqa: E712
+                j = i + end - start
+                row[start:end] = np.arange(i, j)
+            elif rc == True and start > end:  # noqa: E712
+                j = i + start - end
+                if end > 0:
+                    row[start - 1 : end - 1 : -1] = np.arange(i, j)
+                elif start > 0:
+                    row[start - 1 :: -1] = np.arange(i, j)
+        i = j
+    return a
 
 
 #####

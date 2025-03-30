@@ -322,7 +322,7 @@ class HybridSemiGlobalAligner(Aligner):
 
 
 @no_type_check
-@njit()
+# @njit()
 def _hybrid_semi_global_align(
     ref_seq: str, adapt_seq: str
 ) -> tuple[list[tuple[int, int]], int, int]:
