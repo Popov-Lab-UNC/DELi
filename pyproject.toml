@@ -88,7 +88,7 @@ replace = 'release = "{new_version}"'
 search = '__version__ = "{current_version}"'
 replace = '__version__ = "{new_version}"'
 
-[tool.mypy.overrides]
+[[tool.mypy.overrides]]
 module = ["untyped_package.*"]
 follow_untyped_imports = true
 
@@ -131,3 +131,7 @@ convention = "numpy"
 lines-after-imports = 2
 
 [mypy]
+ignore_missing_imports = true
+
+[mypy-yaml]
+ignore_missing_imports = true
