@@ -8,6 +8,8 @@ from typing import Self
 
 from deli.dels import DELibraryPool
 
+from .settings import DecodingSettings
+
 
 class BaseSelection(abc.ABC):
     """
@@ -56,12 +58,65 @@ class BaseSelection(abc.ABC):
         )
 
     @abc.abstractmethod
-    def to_file(self, out_path: str | PathLike | None):
+    def to_file(self, out_path: str | PathLike):
         """Covert the object to a human readable file"""
         raise NotImplementedError()
 
     @classmethod
     @abc.abstractmethod
-    def from_file(cls, path: str | PathLike | None) -> Self:
+    def from_file(cls, path: str | PathLike) -> Self:
         """Load the object from a human readable file"""
         raise NotImplementedError()
+
+
+class DecodingExperiment(BaseSelection):
+    """
+    Defines a decoding experiment for a DEL selection
+
+    Configure using the decoding settings
+    """
+
+    def __init__(
+        self, library_pool: DELibraryPool, target_id: str, decode_settings: DecodingSettings
+    ):
+        """
+        Initialize the experiment with the given settings
+
+        Parameters
+        ----------
+        library_pool: DELibraryPool
+            the library pool used in the selection
+        target_id: str
+            the id of the target used in the selection
+        decode_settings: DecodingSettings
+            Settings to use for decoding
+        """
+        super().__init__(library_pool, target_id)
+        self.decode_settings = decode_settings
+
+    def to_file(self, out_path: str | PathLike):
+        """
+        Write experiment to human readable file
+
+        Parameters
+        ----------
+        out_path: str or PathLike
+            path to save experiment to
+        """
+        pass
+
+    @classmethod
+    def from_file(cls, file_path: str | PathLike) -> Self:
+        """
+        Load the experiment from a human readable file
+
+        Parameters
+        ----------
+        file_path: str or PathLike
+            path to load experiment from
+
+        Returns
+        -------
+        DecodingExperiment
+        """
+        pass

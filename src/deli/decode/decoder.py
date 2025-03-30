@@ -9,12 +9,12 @@ from Bio.Align import PairwiseAligner
 from dnaio import SequenceRecord
 from numba import njit
 
+from deli.base import DecodingSettings
 from deli.dels import DELibrary, DELibraryPool
 from deli.dna import Aligner, HybridSemiGlobalAligner, SemiGlobalAligner
 
 from .bb_calling import BuildingBlockCall, BuildingBlockSetTagCaller, FailedBuildingBlockCall
 from .lib_calling import LibraryCall, LibraryCaller, SingleReadLibraryCaller, ValidLibraryCall
-from .settings import DecodingSettings
 from .umi import UMI
 
 
