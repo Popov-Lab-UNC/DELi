@@ -10,11 +10,11 @@ from dnaio import SequenceRecord
 from numba import njit
 
 from deli.base import DecodingSettings
-from deli.dels import DELibrary, DELibraryPool
+from deli.dels import BuildingBlock, DELibrary, DELibraryPool
 from deli.dna import Aligner, HybridSemiGlobalAligner, SemiGlobalAligner
 
-from .bb_calling import BuildingBlockCall, BuildingBlockSetTagCaller, FailedBuildingBlockCall
-from .lib_calling import LibraryCall, LibraryCaller, SingleReadLibraryCaller, ValidLibraryCall
+from .bb_calling import BuildingBlockSetTagCaller, FailedBuildingBlockCall, ValidBuildingBlockCall
+from .lib_calling import LibraryCaller, SingleReadLibraryCaller, ValidLibraryCall
 from .umi import UMI
 
 
@@ -27,8 +27,8 @@ class DecodedBarcode:
 
     def __init__(
         self,
-        library: LibraryCall,
-        building_blocks: dict[str, BuildingBlockCall] | None,
+        library: DELibrary,
+        building_blocks: list[BuildingBlock],
         umi: UMI | None = None,
     ):
         """
@@ -38,33 +38,87 @@ class DecodedBarcode:
         ----------
         library : LibraryCall
             the called library
-        building_blocks : dict[str, BuildingBlockCall] or None
+        building_blocks : list[BuildingBlock]
             the building block calls
             if no calls were attempted (because library failed) pass a `None`
         umi: UMI or `None`
             the UMI for the read
             if not using umi or no umi in the barcode, use a `None`
         """
-        self.library = library
-        self.building_blocks = building_blocks
+        self.library: DELibrary = library
+        self.building_blocks: list[BuildingBlock] = building_blocks
         self.umi = umi
 
-    def is_decoded_successfully(self) -> bool:
+    def get_id(self) -> str:
         """
-        True if all required parts of the barcode were successfully decoded else False
+        Get the ID of the DEL compound
+
+        Notes
+        -----
+        The ID of DEL starts with the library id, then follows
+        with the ids of teh building blocks in the order of the cycles
+        seperated by dashes
+
+        For example: L01-A34-B65-C78
 
         Returns
         -------
-        bool
+        str
+            the DEL ID
         """
-        if self.building_blocks is not None and all(
-            [bb.is_valid() for bb in self.building_blocks.values()]
-        ):
-            return True
-        return False
+        return f"{self.library.library_id}-" + "-".join([bb.bb_id for bb in self.building_blocks])
 
 
-# TODO add a single library decoder class
+class FailedDecode:
+    """
+    Base class for all failed decodes
+
+    Failed decodes are really just place holders
+    to help track why a decode failed.
+    """
+
+    pass
+
+
+class ReadTooShort(FailedDecode):
+    """returned if read to decode was too short (based on settings)"""
+
+    pass
+
+
+class ReadTooLong(FailedDecode):
+    """returned if read to decode was too long (based on settings)"""
+
+    pass
+
+
+class LibraryLookupFailed(FailedDecode):
+    """returned if library lookup was not successful"""
+
+    pass
+
+
+class LibraryMatchTooShort(FailedDecode):
+    """returned if library lookup resulted in a match that was too short to call"""
+
+    pass
+
+
+class BuildingBlockLookupFailed(FailedDecode):
+    """
+    Returned if building block lookup was not successful
+
+    This will be true if any of the building blocks failed
+    Even if you got 99/100, it is still a fail
+    """
+
+    pass
+
+
+class AlignmentFailed(FailedDecode):
+    """Returned if the alignment is not successful during calling"""
+
+    pass
 
 
 class DELPoolDecoder:
@@ -147,8 +201,32 @@ class DELPoolDecoder:
                 f"{decode_settings.__getattribute__('bb_calling_approach')}"
             )
 
-    def decode_read(self, sequence: SequenceRecord) -> DecodedBarcode:
-        """Given a sequence read, decode it's barcode"""
+        # set the min/max lengths
+        self._min_read_length: int
+        if isinstance(decode_settings.__getattribute__("min_read_length"), int):
+            self._min_read_length = decode_settings.__getattribute__("min_read_length")
+        else:
+            self._min_read_length = min(
+                [lib.barcode_schema.min_length for lib in library_pool.libraries]
+            )
+
+        self._max_read_length: int
+        if isinstance(decode_settings.__getattribute__("max_read_length"), int):
+            self._max_read_length = decode_settings.__getattribute__("max_read_length")
+        else:
+            self._max_read_length = 5 * self._min_read_length
+
+    def decode_read(self, sequence: SequenceRecord) -> DecodedBarcode | FailedDecode:
+        """
+        Given a sequence read, decode it's barcode
+
+        """
+        # check lengths
+        if len(sequence) > self._max_read_length:
+            return ReadTooLong()
+        if len(sequence) < self._min_read_length:
+            return ReadTooShort()
+
         library_call = self.library_caller.call_library(sequence)
         if isinstance(library_call, ValidLibraryCall):
             return self.library_decoders[library_call.library.library_id].call_barcode(
@@ -156,7 +234,7 @@ class DELPoolDecoder:
             )
         else:
             # if library calling fails cannot continue decoding
-            return DecodedBarcode(library_call, None, None)
+            return LibraryLookupFailed()
 
 
 class LibraryDecoder(abc.ABC):
@@ -186,7 +264,7 @@ class LibraryDecoder(abc.ABC):
         self.library = library
 
     @abc.abstractmethod
-    def call_barcode(self, library_call: ValidLibraryCall) -> DecodedBarcode:
+    def call_barcode(self, library_call: ValidLibraryCall) -> DecodedBarcode | FailedDecode:
         """Given a library call, decode the barcode"""
         raise NotImplementedError()
 
@@ -264,7 +342,7 @@ class DynamicAlignmentLibraryDecoder(LibraryDecoder):
                 f"are missing from the library barcode"
             )
 
-    def call_barcode(self, library_call: ValidLibraryCall) -> DecodedBarcode:
+    def call_barcode(self, library_call: ValidLibraryCall) -> DecodedBarcode | FailedDecode:
         """
         Given a library call, decode the read
 
@@ -289,11 +367,13 @@ class DynamicAlignmentLibraryDecoder(LibraryDecoder):
             ]
 
         # call the building blocks
-        bb_calls: dict[str, BuildingBlockCall] = dict()
+        bb_calls: dict[str, ValidBuildingBlockCall] = dict()
         for bb_section_name, bb_caller in self._bb_callers.items():
-            bb_calls[bb_section_name] = bb_caller.call_building_block(
-                _barcode_section_alignment[bb_section_name]
-            )
+            bb_call = bb_caller.call_building_block(_barcode_section_alignment[bb_section_name])
+            if isinstance(bb_call, ValidBuildingBlockCall):
+                bb_calls[bb_section_name] = bb_call
+            else:
+                return BuildingBlockLookupFailed()
 
         # extract the UMI section if there is one
         _umi: UMI | None = None
@@ -308,7 +388,11 @@ class DynamicAlignmentLibraryDecoder(LibraryDecoder):
                 ]
             )
 
-        return DecodedBarcode(library=library_call, building_blocks=bb_calls, umi=_umi)
+        return DecodedBarcode(
+            library=library_call.library,
+            building_blocks=[val.building_block for val in bb_calls.values()],
+            umi=_umi,
+        )
 
 
 class BioAlignmentLibraryDecoder(LibraryDecoder):
@@ -379,7 +463,7 @@ class BioAlignmentLibraryDecoder(LibraryDecoder):
                 f"are missing from the library barcode"
             )
 
-    def call_barcode(self, library_call: ValidLibraryCall) -> DecodedBarcode:
+    def call_barcode(self, library_call: ValidLibraryCall) -> DecodedBarcode | FailedDecode:
         """
         Given a library call, decode the read
 
@@ -397,14 +481,14 @@ class BioAlignmentLibraryDecoder(LibraryDecoder):
         # if biopython finds too many top scoring alignments, break out
         #  it means that no good alignment exists, so calling is too risky
         if len(_alignments) > 20:
-            return DecodedBarcode(library=library_call, building_blocks=None, umi=None)
+            return AlignmentFailed()
 
         # loop through all scoring alignments, skipping if at any point a bb lookup
         # fails, and exiting and returning the first perfect match
         for _alignment in _alignments:
             # _inverse_indices = _alignment.inverse_indices
             inverse_indices = _inverse_indices(_alignment.sequences, _alignment.coordinates)
-            bb_calls: dict[str, BuildingBlockCall] = dict()
+            bb_calls: dict[str, ValidBuildingBlockCall] = dict()
             for section_name, section_span in self._bb_sections_spans_to_search_for.items():
                 _aligned_bb_codon = library_call.sequence.sequence[
                     inverse_indices[1][section_span.start] : inverse_indices[1][
@@ -433,8 +517,12 @@ class BioAlignmentLibraryDecoder(LibraryDecoder):
                     ]
                 )
 
-            return DecodedBarcode(library=library_call, building_blocks=bb_calls, umi=_umi)
-        return DecodedBarcode(library=library_call, building_blocks=None, umi=None)
+            return DecodedBarcode(
+                library=library_call.library,
+                building_blocks=[val.building_block for val in bb_calls.values()],
+                umi=_umi,
+            )
+        return BuildingBlockLookupFailed()
 
 
 @no_type_check

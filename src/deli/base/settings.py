@@ -91,8 +91,10 @@ class DecodingSettings(BaseSettings):
         library_error_tolerance: float = 0.1,
         min_library_overlap: int | None = 10,
         alignment_algorithm: Literal["semi", "hybrid"] = "semi",
-        bb_calling_approach: Literal["alignment", "bio"] = "alignment",
+        bb_calling_approach: Literal["alignment", "bio"] = "bio",
         revcomp: bool = False,
+        max_read_length: int | None = None,
+        min_read_length: int | None = None,
         read_type: Literal["single", "paired"] = "single",
         use_hamming: bool = True,
         track_statistics: bool = True,
@@ -132,6 +134,15 @@ class DecodingSettings(BaseSettings):
             all other read types are single
         revcomp: bool, default = False
             If true, search the reverse compliment as well
+        max_read_length: int or None, default = None
+            maximum length of a read to be considered for decoding
+            if above the max, decoding will fail
+            if `None` will default to 5x the min_read_length
+        min_read_length: int or None, default = None
+            minimum length of a read to be considered for decoding
+            if below the min, decoding will fail
+            if `None` will default to smallest min match length of
+            any library in the pool considered for decoding
         bb_calling_approach: Literal["alignment"], default = "alignment"
             the algorithm to use for bb_calling
             right now only "alignment" mode is supported
@@ -152,6 +163,8 @@ class DecodingSettings(BaseSettings):
             alignment_algorithm=alignment_algorithm,
             read_type=read_type,
             revcomp=revcomp,
+            max_read_length=max_read_length,
+            min_read_length=min_read_length,
             bb_calling_approach=bb_calling_approach,
             use_hamming=use_hamming,
             track_statistics=track_statistics,
