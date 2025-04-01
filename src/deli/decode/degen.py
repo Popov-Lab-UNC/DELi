@@ -270,6 +270,11 @@ class DELibraryPoolIdUmiCounter:
         ----------
         barcode: DecodedBarcode
             the barcode to add to the counter
+
+        Raises
+        ------
+        RuntimeError
+            if the decoded barcode is missing a UMI
         """
         if barcode.umi is None:
             raise RuntimeError("cannot UMI degen on read missing UMI")
