@@ -5,9 +5,12 @@ import os
 import sys
 
 
-def setup_logger(
-    name: str = "root", debug: bool = False, console_logging: bool = False
-) -> logging.Logger:
+def get_dummy_logger() -> logging.Logger:
+    """Get a dummy logger; for compatability"""
+    return logging.getLogger("dummy")
+
+
+def get_logger(name: str = "root", debug: bool = False) -> logging.Logger:
     """
     Create a logger with the passed settings
 
@@ -21,10 +24,6 @@ def setup_logger(
         name to use for logging
     debug: bool, Default False
         if True, turn on debug logging
-    console_logging:
-        if True, add a console log handler
-        not recommend for large experiment runs
-        use tqdm settings instead
 
     Returns
     -------
@@ -38,23 +37,16 @@ def setup_logger(
     file_handler.setFormatter(
         logging.Formatter("%(asctime)s | %(name)s | %(levelname)s | %(message)s")
     )
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(logging.Formatter("%(name)s - %(levelname)s - %(message)s"))
-
     # set levels
     if debug:
         logger.setLevel("DEBUG")
         file_handler.setLevel("DEBUG")
-        console_handler.setLevel("DEBUG")
     else:
         logger.setLevel("INFO")
         file_handler.setLevel("INFO")
-        console_handler.setLevel("INFO")
 
     # add handlers to logger
     logger.addHandler(file_handler)
-    if console_logging:
-        logger.addHandler(console_handler)
 
     # add an exception hook to the logger to allow for uncaught exceptions to be logged
     def handle_exception(exc_type, exc_value, exc_traceback):

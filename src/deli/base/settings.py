@@ -98,6 +98,8 @@ class DecodingSettings(BaseSettings):
         read_type: Literal["single", "paired"] = "single",
         use_hamming: bool = True,
         track_statistics: bool = True,
+        umi_clustering: bool = False,
+        umi_min_distance: int = 2,
     ):
         """
         Initialize the decoder settings
@@ -156,6 +158,12 @@ class DecodingSettings(BaseSettings):
             statistics include, for example, number or seq that failed
             library demultiplexing, failed bb looked, which cycles failed etc.
             Full details on all statistics can be found in the "Decoding" docs
+        umi_clustering: bool, default = False
+            when doing degeneration, consider two similar UMIs to be the same
+            similarity is based on levenshtein distance and `umi_min_distance`
+        umi_min_distance: int, default = 2
+            the minimum distance between two UMIs to be considered unique
+            only used `umi_clustering` is `True`
         """
         super().__init__(
             library_error_tolerance=library_error_tolerance,
@@ -168,4 +176,6 @@ class DecodingSettings(BaseSettings):
             bb_calling_approach=bb_calling_approach,
             use_hamming=use_hamming,
             track_statistics=track_statistics,
+            umi_clustering=umi_clustering,
+            umi_min_distance=umi_min_distance,
         )
