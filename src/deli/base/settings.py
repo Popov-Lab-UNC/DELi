@@ -14,7 +14,7 @@ class BaseSettings:
     settings that DELi CLI commands might use.
 
     DELi uses YAML syntax for all setting files and
-    only supports safe loading of yaml files.
+    only supports safe loading of YAML files.
     This means all variables saved in settings
     must be primitive objects in python
     """
@@ -25,7 +25,7 @@ class BaseSettings:
 
     def to_file(self, path: str | PathLike):
         """
-        Save settings to a yaml file
+        Save settings to a YAML file
 
         Parameters
         ----------
@@ -38,13 +38,13 @@ class BaseSettings:
         """
         Get the setting with the matching name
 
-        If setting of that names does not exist, will return `default`
+        If a setting of that names does not exist, will return `default`
 
         Parameters
         ----------
         key : str
             setting name to look up
-        default : object | None
+        default : object or None
             the value to return if setting does not exist
 
         Returns
@@ -81,7 +81,7 @@ class DecodingSettings(BaseSettings):
     """
     Define parameters for decoding experiments
 
-    Only parameters relating the algorithm should be here
+    Only parameters relating to the algorithm should be here
     Setting relating to IO should be handled outside this context
     (like in the click command)
     """
@@ -97,7 +97,6 @@ class DecodingSettings(BaseSettings):
         min_read_length: int | None = None,
         read_type: Literal["single", "paired"] = "single",
         use_hamming: bool = True,
-        track_statistics: bool = True,
         umi_clustering: bool = False,
         umi_min_distance: int = 2,
     ):
@@ -153,11 +152,6 @@ class DecodingSettings(BaseSettings):
             only used if a library specifies tags as hamming encoded
             Note: if hamming encoded libraries are given, and `use_hamming` is
             `False`, the hamming decoding will not occur, even though it is possible
-        track_statistics: bool, default = True
-            track over statistic during decoding
-            statistics include, for example, number or seq that failed
-            library demultiplexing, failed bb looked, which cycles failed etc.
-            Full details on all statistics can be found in the "Decoding" docs
         umi_clustering: bool, default = False
             when doing degeneration, consider two similar UMIs to be the same
             similarity is based on levenshtein distance and `umi_min_distance`
@@ -175,7 +169,6 @@ class DecodingSettings(BaseSettings):
             min_read_length=min_read_length,
             bb_calling_approach=bb_calling_approach,
             use_hamming=use_hamming,
-            track_statistics=track_statistics,
             umi_clustering=umi_clustering,
             umi_min_distance=umi_min_distance,
         )

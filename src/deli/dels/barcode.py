@@ -139,7 +139,6 @@ class VariableBarcodeSection(BarcodeSection):
         )
 
 
-# TODO need to add cycle number here
 class BuildingBlockBarcodeSection(VariableBarcodeSection):
     """Base class for all barcode sections encoding building block regions"""
 
@@ -176,7 +175,7 @@ class BuildingBlockBarcodeSection(VariableBarcodeSection):
         self.hamming_decoder = hamming_decoder
 
     def is_hamming_encoded(self) -> bool:
-        """Return `True` if barcode section is hamming encoded"""
+        """Return `True` if the barcode section is hamming encoded"""
         return self.hamming_decoder is not None
 
 

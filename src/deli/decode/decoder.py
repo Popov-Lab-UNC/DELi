@@ -9,7 +9,7 @@ from Bio.Align import PairwiseAligner
 from dnaio import SequenceRecord
 from numba import njit
 
-from deli.base import DecodingSettings
+from deli.base.statistics import DecodeStatistics
 from deli.dels import BuildingBlock, DELibrary, DELibraryPool
 from deli.dna import Aligner, HybridSemiGlobalAligner, SemiGlobalAligner
 
@@ -23,6 +23,13 @@ class DecodedBarcode:
     Holds information about a decoded barcode
 
     Can handle both successful and failed decodes
+
+    Notes
+    -----
+    IMPORTANT: two Decoded Barcodes are considered identical if their
+    DEL_IDs are the same, even if they have different UMIs.
+    This might not seem intuitive, but is needed to help with
+    degeneration (based on UMI) that happens later
     """
 
     def __init__(
@@ -49,31 +56,71 @@ class DecodedBarcode:
         self.building_blocks: list[BuildingBlock] = building_blocks
         self.umi = umi
 
-    def get_id(self) -> str:
+        self.id = f"{self.library.library_id}-" + "-".join(
+            [bb.bb_id for bb in self.building_blocks]
+        )
+
+    def __hash__(self) -> int:
+        """Create hash for a DecodedBarcode based on ID"""
+        return hash(self.id)
+
+    def __eq__(self, other: object) -> bool:
+        """Two DecodedBarcodes are equal if they have the same ID"""
+        if isinstance(other, DecodedBarcode):
+            return self.id == other.id
+        return False
+
+    def get_smiles(self, default: str | None = None) -> str:
         """
-        Get the ID of the DEL compound
+        Generate the SMILES for the compound
 
         Notes
         -----
-        The ID of DEL starts with the library id, then follows
-        with the ids of teh building blocks in the order of the cycles
-        seperated by dashes
+        This requires that the reaction schema for the library is defined
+        so that the library as an associated `DELEnumerator` object.
+        Also, generating SMILES on the file can be slow.
+        A database lookup could provide better speed.
 
-        For example: L01-A34-B65-C78
+        Parameters
+        ----------
+        default : str | `None`, default = `None`
+            if SMILES generation is not possible, return this
+            value instead.
+            If left as `None`, will raise a RunTimeError on failure instead
 
         Returns
         -------
         str
-            the DEL ID
+
+        Raises
+        ------
+        RuntimeError
+            if the reaction schema (thus the enumerator) is not
+            defined and default is `None`
         """
-        return f"{self.library.library_id}-" + "-".join([bb.bb_id for bb in self.building_blocks])
+        if self.library.enumerator is None:
+            if default is not None:
+                return default
+            raise RuntimeError(
+                f"library '{self.library.library_id}' has no enumerator "
+                f"to enable smiles generation for compound '{self.id}'"
+            )
+        else:
+            return self.library.enumerator.get_enumerated_compound_from_bb_ids(
+                {
+                    bb_cycle.section_name: bb.bb_id
+                    for bb_cycle, bb in zip(
+                        self.library.barcode_schema.building_block_sections, self.building_blocks
+                    )
+                }
+            ).smi
 
 
 class FailedDecode:
     """
     Base class for all failed decodes
 
-    Failed decodes are really just place holders
+    Failed decodes are really just placeholders
     to help track why a decode failed.
     """
 
@@ -109,7 +156,7 @@ class BuildingBlockLookupFailed(FailedDecode):
     Returned if building block lookup was not successful
 
     This will be true if any of the building blocks failed
-    Even if you got 99/100, it is still a fail
+    Even if you got 99/100, it is still a failure
     """
 
     pass
@@ -131,7 +178,18 @@ class DELPoolDecoder:
     """
 
     def __init__(
-        self, library_pool: DELibraryPool, decode_settings: DecodingSettings | None = None
+        self,
+        library_pool: DELibraryPool,
+        library_error_tolerance: float = 0.1,
+        min_library_overlap: int | None = None,
+        revcomp: bool = False,
+        read_type: Literal["single", "paired"] = "single",
+        alignment_algorithm: Literal["semi", "hybrid"] = "semi",
+        bb_calling_approach: Literal["alignment", "bio"] = "bio",
+        max_read_length: int | None = None,
+        min_read_length: int | None = None,
+        use_hamming: bool = True,
+        decode_statistics: DecodeStatistics | None = None,
     ):
         """
         Initialize the DELPoolDecoder
@@ -140,26 +198,67 @@ class DELPoolDecoder:
         ----------
         library_pool: DELibraryPool
             the library pool used for the selection to decode
-        decode_settings: DecodingSettings or None
-            the settings used to decode the barcodes
-            if none are passed, will use default settings
-            see Decoding docs for more details
+        library_error_tolerance: float, default = 0.2
+            the percent error to be tolerated in the library section
+            this will be converted to number of errors based on tag size
+            and down to the nearest whole number.
+            for example, a library with 14 nucleotides would tolerate
+            1, 2, and 4 errors for an error tolerance of 0.1, 0.2 and 0.3 respectively
+        min_library_overlap: int or None, default = 7
+            the minimum number of nucleotides required to match
+            the library tag
+            This is because the demultiplexing will accept truncated matches
+            at the front/back of the tag. For example, a tag of AGCTGGTTC
+            could match a read of GTTC if the min overlap was <=4
+            If `None`, will default to the exact length of the tag, meaning
+            the whole tag is expected.
+            The recommended value is greater than 8, as the odds of a match this strong
+            to be accidental are low
+        alignment_algorithm: Literal["semi", "hybrid"], default = "semi"
+            the algorithm to use for alignment
+            only used if bb_calling_approach is "alignment"
+        read_type: Literal["single", "paired"], default = "single"
+            the type of read
+            paired are for paired reads
+            all other read types are single
+        revcomp: bool, default = False
+            If true, search the reverse compliment as well
+        max_read_length: int or None, default = None
+            maximum length of a read to be considered for decoding
+            if above the max, decoding will fail
+            if `None` will default to 5x the min_read_length
+        min_read_length: int or None, default = None
+            minimum length of a read to be considered for decoding
+            if below the min, decoding will fail
+            if `None` will default to smallest min match length of
+            any library in the pool considered for decoding
+        bb_calling_approach: Literal["alignment"], default = "alignment"
+            the algorithm to use for bb_calling
+            right now only "alignment" mode is supported
+        use_hamming: bool, default = True
+            enable (`True`) or disable (`False`) hamming decoding
+            only used if a library specifies tags as hamming encoded
+            Note: if hamming encoded libraries are given, and `use_hamming` is
+            `False`, the hamming decoding will not occur, even though it is possible
+        decode_statistics: DecodeStatistics or None, default = None
+            the statistic tracker for the decoding run
+            if None, will initialize a new, empty statistic object
         """
-        self.decode_settings: DecodingSettings
-        if decode_settings is None:
-            self.decode_settings = DecodingSettings()
+        self.decode_statistics: DecodeStatistics
+        if decode_statistics is None:
+            self.decode_statistics = DecodeStatistics()
         else:
-            self.decode_settings = decode_settings
+            self.decode_statistics = decode_statistics
 
         self.library_caller: LibraryCaller
-        if decode_settings.__getattribute__("read_type") == "single":
+        if read_type == "single":
             self.library_caller = SingleReadLibraryCaller(
                 library_pool,
-                error_rate=decode_settings.__getattribute__("library_error_tolerance"),
-                min_overlap=decode_settings.__getattribute__("min_library_overlap"),
-                revcomp=decode_settings.__getattribute__("revcomp"),
+                error_rate=library_error_tolerance,
+                min_overlap=min_library_overlap,
+                revcomp=revcomp,
             )
-        elif decode_settings.__getattribute__("read_type") == "paired":
+        elif read_type == "paired":
             warnings.warn(
                 "DELi only support single reads currently; if a paired mode would be nice"
                 "please raise an issue to request it",
@@ -167,64 +266,64 @@ class DELPoolDecoder:
             )
             self.library_caller = SingleReadLibraryCaller(
                 library_pool,
-                error_rate=decode_settings.__getattribute__("library_error_tolerance"),
-                min_overlap=decode_settings.__getattribute__("min_library_overlap"),
-                revcomp=decode_settings.__getattribute__("revcomp"),
+                error_rate=library_error_tolerance,
+                min_overlap=min_library_overlap,
+                revcomp=revcomp,
             )
         else:
-            raise ValueError(
-                f"Unknown read_type '{decode_settings.__getattribute__('read_type')}'"
-            )
+            raise ValueError(f"Unknown read_type '{read_type}'")
 
         # determine library caller class
         self.library_decoders: dict[str, LibraryDecoder]
-        if decode_settings.__getattribute__("bb_calling_approach") == "alignment":
+        if bb_calling_approach == "alignment":
             self.library_decoders = {
                 library.library_id: DynamicAlignmentLibraryDecoder(
                     library,
-                    use_hamming=decode_settings.__getattribute__("use_hamming"),
-                    alignment_algorithm=decode_settings.__getattribute__("alignment_algorithm"),
+                    decode_statistics=decode_statistics,
+                    use_hamming=use_hamming,
+                    alignment_algorithm=alignment_algorithm,
                 )
                 for library in library_pool.libraries
             }
-        elif decode_settings.__getattribute__("bb_calling_approach") == "bio":
+        elif bb_calling_approach == "bio":
             self.library_decoders = {
                 library.library_id: BioAlignmentLibraryDecoder(
                     library,
-                    use_hamming=decode_settings.__getattribute__("use_hamming"),
+                    decode_statistics=self.decode_statistics,
+                    use_hamming=use_hamming,
                 )
                 for library in library_pool.libraries
             }
         else:
-            raise ValueError(
-                f"unrecognized bb_calling_approach "
-                f"{decode_settings.__getattribute__('bb_calling_approach')}"
-            )
+            raise ValueError(f"unrecognized bb_calling_approach " f"{bb_calling_approach}")
 
         # set the min/max lengths
         self._min_read_length: int
-        if isinstance(decode_settings.__getattribute__("min_read_length"), int):
-            self._min_read_length = decode_settings.__getattribute__("min_read_length")
+        if isinstance(min_read_length, int):
+            self._min_read_length = min_read_length
         else:
             self._min_read_length = min(
                 [lib.barcode_schema.min_length for lib in library_pool.libraries]
             )
 
         self._max_read_length: int
-        if isinstance(decode_settings.__getattribute__("max_read_length"), int):
-            self._max_read_length = decode_settings.__getattribute__("max_read_length")
+        if isinstance(max_read_length, int):
+            self._max_read_length = max_read_length
         else:
             self._max_read_length = 5 * self._min_read_length
 
     def decode_read(self, sequence: SequenceRecord) -> DecodedBarcode | FailedDecode:
         """
-        Given a sequence read, decode it's barcode
+        Given a sequence read, decode its barcode
 
         """
+        self.decode_statistics.num_seqs_read += 1
         # check lengths
         if len(sequence) > self._max_read_length:
+            self.decode_statistics.num_failed_too_long += 1
             return ReadTooLong()
         if len(sequence) < self._min_read_length:
+            self.decode_statistics.num_failed_too_short += 1
             return ReadTooShort()
 
         library_call = self.library_caller.call_library(sequence)
@@ -234,6 +333,7 @@ class DELPoolDecoder:
             )
         else:
             # if library calling fails cannot continue decoding
+            self.decode_statistics.num_failed_library_call += 1
             return LibraryLookupFailed()
 
 
@@ -243,12 +343,17 @@ class LibraryDecoder(abc.ABC):
 
     A library decoder assumes the library the read is from is already known.
     These decoders are only concerned with calling or locating all other sections.
-    Currently that is the building block sections and UMI.
-    If you would like support for calling other section too, raise an issue
+    Currently, that is the building block sections and UMI.
+    If you would like support for calling another section too, raise an issue
     to add that feature
     """
 
-    def __init__(self, library: DELibrary, use_hamming: bool = True):
+    def __init__(
+        self,
+        library: DELibrary,
+        decode_statistics: DecodeStatistics | None = None,
+        use_hamming: bool = True,
+    ):
         """
         Initialize the LibraryDecoder
 
@@ -256,12 +361,21 @@ class LibraryDecoder(abc.ABC):
         ----------
         library: DELibrary
             the library to decode from
+        decode_statistics: DecodeStatistics or `None`, default = `None`
+            the statistic tracker for the decoding run
+            if `None` will initialize a new, empty statistic object
         use_hamming: bool, default True
             using hamming correction
             only used for barcodes with hamming encoded parts
         """
         self.use_hamming = use_hamming
         self.library = library
+
+        self.decode_statistics: DecodeStatistics
+        if decode_statistics is None:
+            self.decode_statistics = DecodeStatistics()
+        else:
+            self.decode_statistics = decode_statistics
 
     @abc.abstractmethod
     def call_barcode(self, library_call: ValidLibraryCall) -> DecodedBarcode | FailedDecode:
@@ -280,7 +394,8 @@ class DynamicAlignmentLibraryDecoder(LibraryDecoder):
     def __init__(
         self,
         library: DELibrary,
-        alignment_algorithm: Literal["semi", "hybrid"],
+        decode_statistics: DecodeStatistics | None = None,
+        alignment_algorithm: Literal["semi", "hybrid"] = "semi",
         use_hamming: bool = True,
     ):
         """
@@ -290,6 +405,9 @@ class DynamicAlignmentLibraryDecoder(LibraryDecoder):
         ----------
         library: DELibrary
             the library to decode from
+        decode_statistics: DecodeStatistics or `None`, default = `None`
+            the statistic tracker for the decoding run
+            if `None` will initialize a new, empty statistic object
         alignment_algorithm: Literal["semi", "hybrid"], default "semi"
             the type alignment algorithm to use
             semi is a semi global and hybrid is a hybrid semi global alignment
@@ -298,7 +416,9 @@ class DynamicAlignmentLibraryDecoder(LibraryDecoder):
             using hamming correction
             only used for barcodes with hamming encoded parts
         """
-        super().__init__(library=library, use_hamming=use_hamming)
+        super().__init__(
+            library=library, decode_statistics=decode_statistics, use_hamming=use_hamming
+        )
 
         # assign the aligner
         self.aligner: Aligner
@@ -332,7 +452,7 @@ class DynamicAlignmentLibraryDecoder(LibraryDecoder):
         }
         self._umi_span: slice | None = _barcode_section_spans.get("umi", None)
 
-        # check alignment of callers and sections:
+        # check the alignment of callers and sections:
         _missing_sections = set(self._bb_callers.keys()) - set(
             self._bb_sections_spans_to_search_for.keys()
         )
@@ -373,6 +493,7 @@ class DynamicAlignmentLibraryDecoder(LibraryDecoder):
             if isinstance(bb_call, ValidBuildingBlockCall):
                 bb_calls[bb_section_name] = bb_call
             else:
+                self.decode_statistics.num_failed_building_block_call += 1
                 return BuildingBlockLookupFailed()
 
         # extract the UMI section if there is one
@@ -406,6 +527,7 @@ class BioAlignmentLibraryDecoder(LibraryDecoder):
     def __init__(
         self,
         library: DELibrary,
+        decode_statistics: DecodeStatistics | None = None,
         use_hamming: bool = True,
     ):
         """
@@ -415,11 +537,16 @@ class BioAlignmentLibraryDecoder(LibraryDecoder):
         ----------
         library: DELibrary
             the library to decode from
+        decode_statistics: DecodeStatistics or `None`, default = `None`
+            the statistic tracker for the decoding run
+            if `None` will initialize a new, empty statistic object
         use_hamming: bool, default True
             using hamming correction
             only used for barcodes with hamming encoded parts
         """
-        super().__init__(library=library, use_hamming=use_hamming)
+        super().__init__(
+            library=library, decode_statistics=decode_statistics, use_hamming=use_hamming
+        )
 
         # assign the aligner
         self.aligner = PairwiseAligner(
@@ -453,7 +580,7 @@ class BioAlignmentLibraryDecoder(LibraryDecoder):
         }
         self._umi_span: slice | None = _barcode_section_spans.get("umi", None)
 
-        # check alignment of callers and sections:
+        # check the alignment of callers and sections:
         _missing_sections = set(self._bb_callers.keys()) - set(
             self._bb_sections_spans_to_search_for.keys()
         )
@@ -481,6 +608,7 @@ class BioAlignmentLibraryDecoder(LibraryDecoder):
         # if biopython finds too many top scoring alignments, break out
         #  it means that no good alignment exists, so calling is too risky
         if len(_alignments) > 20:
+            self.decode_statistics.num_failed_alignment += 1
             return AlignmentFailed()
 
         # loop through all scoring alignments, skipping if at any point a bb lookup
@@ -516,12 +644,12 @@ class BioAlignmentLibraryDecoder(LibraryDecoder):
                         + 1
                     ]
                 )
-
             return DecodedBarcode(
                 library=library_call.library,
                 building_blocks=[val.building_block for val in bb_calls.values()],
                 umi=_umi,
             )
+        self.decode_statistics.num_failed_building_block_call += 1
         return BuildingBlockLookupFailed()
 
 

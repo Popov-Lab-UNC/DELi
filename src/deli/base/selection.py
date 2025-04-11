@@ -113,7 +113,7 @@ class DecodingExperiment(BaseSelection):
 
     def to_file(self, out_path: str | PathLike):
         """
-        Write experiment to human readable file
+        Write experiment to a human-readable file
 
         Parameters
         ----------
@@ -131,7 +131,7 @@ class DecodingExperiment(BaseSelection):
     @classmethod
     def from_file(cls, file_path: str | PathLike) -> Self:
         """
-        Load the experiment from a human readable file
+        Load the experiment from a human-readable file
 
         Parameters
         ----------

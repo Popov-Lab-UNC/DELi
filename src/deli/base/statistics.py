@@ -1,9 +1,55 @@
 """decoding statistics tracking"""
 
+import json
+import os
 from collections import defaultdict
+from typing import Self
 
 
-class DecodeStatistics:
+class Statistics:
+    """Base class for all statistic classes"""
+
+    def __str__(self) -> str:
+        """Convert the statistic object to a string (new line seperated)"""
+        return "\n".join([f"{key}={val}\n" for key, val in self.__dict__.items()])
+
+    def __repr__(self) -> str:
+        """Represent the statistic object as string ('; ' seperated)"""
+        return "; ".join([f"{key}={val}\n" for key, val in self.__dict__.items()])
+
+    def to_file(self, out_path: str | os.PathLike):
+        """
+        Write the statistics to a file
+
+        Will be in JSON format
+
+        Parameters
+        ----------
+        out_path: str or os.PathLike
+            path to write the statistics to
+        """
+        json.dump(self.__dict__, open(out_path, "w"))
+
+    @classmethod
+    def from_file(cls, path: str | os.PathLike) -> Self:
+        """
+        Read in a Statistics Object from a file
+
+        Must be in JSON format
+
+        Parameters
+        ----------
+        path: str or os.PathLike
+            path to read the statistics from
+
+        Returns
+        -------
+        Self
+        """
+        return cls(**json.load(open(path, "r")))
+
+
+class DecodeStatistics(Statistics):
     """
     Track the statistics of the decoding run
 
@@ -42,9 +88,9 @@ class DecodeStatistics:
         self.num_seqs_degen_per_lib: defaultdict[str, int] = defaultdict(int)
 
         # track the unique failures
-        self.num_failed_too_short: int
-        self.num_failed_too_long: int
-        self.num_failed_library_call: int
-        self.num_failed_library_match_too_short: int
-        self.num_failed_building_block_call: int
-        self.num_failed_alignment: int
+        self.num_failed_too_short: int = 0
+        self.num_failed_too_long: int = 0
+        self.num_failed_library_call: int = 0
+        self.num_failed_library_match_too_short: int = 0
+        self.num_failed_building_block_call: int = 0
+        self.num_failed_alignment: int = 0

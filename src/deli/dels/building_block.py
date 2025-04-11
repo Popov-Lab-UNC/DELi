@@ -5,7 +5,7 @@ import os
 import warnings
 from typing import List, Literal, Optional, Self, overload
 
-from deli.configure import DELI_CONFIG, DeliDataLoadable, accept_deli_data_name
+from deli.base.configure import DELI_CONFIG, DeliDataLoadable, accept_deli_data_name
 from deli.utils.mol_utils import to_mol
 
 

@@ -10,7 +10,7 @@ import dnaio
 from dnaio import SequenceRecord
 
 
-class Reader(abc.ABC):
+class SequenceReader(abc.ABC):
     """base class for all seq reader objects"""
 
     @abc.abstractmethod
@@ -23,7 +23,7 @@ class Reader(abc.ABC):
         return self.__iter__()
 
 
-class SequenceReader(Reader):
+class SingleSequenceReader(SequenceReader):
     """Read sequence data from a file on the fly"""
 
     def __init__(self, sequence_file: Union[str, Path]):
@@ -37,6 +37,10 @@ class SequenceReader(Reader):
         """
         self.sequence_file = Path(sequence_file)
 
+        # validate file quickly
+        with dnaio.open(self.sequence_file):
+            pass
+
     def __iter__(self) -> Iterator[SequenceRecord]:
         """Yield all sequences in the file"""
         with dnaio.open(self.sequence_file) as f:
@@ -44,10 +48,10 @@ class SequenceReader(Reader):
                 yield record
 
 
-class SequenceDirectoryReader:
+class SequenceDirectoryReader(SequenceReader):
     """Read all sequences from all files in a directory"""
 
-    def __init__(self, sequence_dir: Union[str, Path]):
+    def __init__(self, sequence_dir: Union[str, os.PathLike]):
         """
         Initialize a SequenceDirectoryReader object.
 
@@ -78,3 +82,25 @@ class SequenceDirectoryReader:
             with dnaio.open(sequence_file) as f:
                 for record in f:
                     yield record
+
+
+class SequenceGlobReader(SequenceReader):
+    """Read all sequences from a glob of files"""
+
+    def __init__(self, sequence_files: list[str | os.PathLike]):
+        """
+        Initialize a SequenceDirectoryReader object.
+
+        Parameters
+        ----------
+        sequence_files: list[str or PathLike]
+            paths to the sequence files to read
+        """
+        self.sequence_files: list[Path] = [Path(sequence_file) for sequence_file in sequence_files]
+        self._sequence_readers = [SingleSequenceReader(_file) for _file in self.sequence_files]
+
+    def __iter__(self) -> Iterator[SequenceRecord]:
+        """Yield all sequences from all files in the glob"""
+        for _, reader in zip(self.sequence_files, self._sequence_readers):
+            for record in reader:
+                yield record
