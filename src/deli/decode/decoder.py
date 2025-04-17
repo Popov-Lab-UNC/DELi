@@ -1,21 +1,109 @@
 """code for calling DNA barcodes"""
 
 import abc
+import json
+import os
 import warnings
-from typing import Literal, no_type_check
+from collections import defaultdict
+from typing import Literal, Self, no_type_check
 
 import numpy as np
 from Bio.Align import PairwiseAligner
 from dnaio import SequenceRecord
 from numba import njit
 
-from deli.base.statistics import DecodeStatistics
 from deli.dels import BuildingBlock, DELibrary, DELibraryPool
 from deli.dna import Aligner, HybridSemiGlobalAligner, SemiGlobalAligner
 
 from .bb_calling import BuildingBlockSetTagCaller, FailedBuildingBlockCall, ValidBuildingBlockCall
 from .lib_calling import LibraryCaller, SingleReadLibraryCaller, ValidLibraryCall
 from .umi import UMI
+
+
+class DecodeStatistics:
+    """
+    Track the statistics of the decoding run
+
+    Will count how many sequences are read in,
+    how many are decoded, and how many remain after degen.
+    Will split decode/degen by library.
+    It Will also track the number of times decoding failed,
+    and for what reasons
+
+    Attributes
+    ----------
+    num_seqs_read: int
+        the number of sequences read during decoding
+    num_seqs_decoded_per_lib: defaultdict[str, int]
+        the number of sequences decoded per library
+    num_seqs_degen_per_lib: defaultdict[str, int]
+        the number of sequences degened per library
+    num_failed_too_short: int
+        the number of decoded failed because sequence read was too short
+    num_failed_too_long: int
+        the number of decoded failed because sequence read was too long
+    num_failed_library_call: int
+        the number of decoded failed because the library was not called
+    num_failed_library_match_too_short: int
+        the number of decoded failed because the library match was too short
+    num_failed_building_block_call: int
+        the number of decoded failed because a building block was not called
+    num_failed_alignment: int
+        the number of decoded failed because alignment failed
+    """
+
+    def __init__(self):
+        """Initialize a DecodeStatistics object"""
+        self.num_seqs_read: int = 0
+        self.num_seqs_decoded_per_lib: defaultdict[str, int] = defaultdict(int)
+        self.num_seqs_degen_per_lib: defaultdict[str, int] = defaultdict(int)
+
+        # track the unique failures
+        self.num_failed_too_short: int = 0
+        self.num_failed_too_long: int = 0
+        self.num_failed_library_call: int = 0
+        self.num_failed_library_match_too_short: int = 0
+        self.num_failed_building_block_call: int = 0
+        self.num_failed_alignment: int = 0
+
+    def __str__(self) -> str:
+        """Convert the statistic object to a string (new line seperated)"""
+        return "\n".join([f"{key}={val}\n" for key, val in self.__dict__.items()])
+
+    def __repr__(self) -> str:
+        """Represent the statistic object as string ('; ' seperated)"""
+        return "; ".join([f"{key}={val}\n" for key, val in self.__dict__.items()])
+
+    def to_file(self, out_path: str | os.PathLike):
+        """
+        Write the statistics to a file
+
+        Will be in JSON format
+
+        Parameters
+        ----------
+        out_path: str or os.PathLike
+            path to write the statistics to
+        """
+        json.dump(self.__dict__, open(out_path, "w"))
+
+    @classmethod
+    def from_file(cls, path: str | os.PathLike) -> Self:
+        """
+        Read in a Statistics Object from a file
+
+        Must be in JSON format
+
+        Parameters
+        ----------
+        path: str or os.PathLike
+            path to read the statistics from
+
+        Returns
+        -------
+        Self
+        """
+        return cls(**json.load(open(path, "r")))
 
 
 class DecodedBarcode:
@@ -590,6 +678,12 @@ class BioAlignmentLibraryDecoder(LibraryDecoder):
                 f"are missing from the library barcode"
             )
 
+        # pre compile _inverse_indices with dummy data
+        # this could make the initialization of the decoder take longer
+        # if this function has not been compiled yet
+        _tmp_alignment = self.aligner.align("AGCT", "AGCT")[0]
+        _inverse_indices(_tmp_alignment.sequences, _tmp_alignment.coordinates)
+
     def call_barcode(self, library_call: ValidLibraryCall) -> DecodedBarcode | FailedDecode:
         """
         Given a library call, decode the read
@@ -661,8 +755,12 @@ def _inverse_indices(sequences, coordinates):
 
     This is lifted from biopython/Bio/Align/__init__.py:inverse_indices:2961
     The inverse_indices attribute is actually a property for alignment objects
-    in Biopython. This code can be numba compiled to accelerate the frequent calls
-    to it we have to make. This function does just that.
+    in Biopython, meaning it is just run every time you try and access the
+    inverse_indices attribute.
+    It is the most expensive part of the alignment, although
+    The code can be numba compiled to speed up the frequent calls
+    to the function we have to make.
+    This function does just that.
     A few changes to the exact functions were made, but the algorithm is the
     same, just compatible with njit now.
 
