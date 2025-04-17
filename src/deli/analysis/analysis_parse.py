@@ -94,12 +94,12 @@ def main():
             cube.z_score()
         if 'z_score_log_data' in flags and flags.get('z_score_log_data', False):
             cube.z_score_log_data()
-        if 'normalized_data' in flags and flags.get('normalized_data', False):
-            cube.normalize()
         if 'disynthon_data' in flags and flags.get('disynthon_data', False):
             disynthon_data, disynth_exp_dict = cube.disynthonize()
             cube.data = disynthon_data
             print(disynth_exp_dict)
+        if 'polyO' in flags and flags.get('polyO', False):
+            cube.PolyO()
         if 'top_disynthons' in flags and flags.get('top_disynthons', False):
             comparison_type = flags.get('top_disynthons', {}).get('comparison', 'control')
             exp_name = flags.get('top_disynthons', {}).get('exp_name', 'None')
@@ -124,6 +124,8 @@ def main():
         if 'disynthon_overlap' in flags and flags.get('disynthon_overlap', False):
             disynthon_dir = create_output_dir(os.path.join(output_dir, "disynthon"))
             cube.disynthon_overlap(output_dir=disynthon_dir, disynthon_data=disynthon_data, disynth_exp_dict=disynth_exp_dict, threshold=int(flags.get('disynthon_threshold', 20)))
+        if 'normalized_data' in flags and flags.get('normalized_data', False):
+            cube.normalize()
         if 'simple_spotfire_version' in flags and flags.get('simple_spotfire_version', False):
             spotfire = cube.simple_spotfire_version()
             today_date = datetime.now().strftime("%Y%m%d")

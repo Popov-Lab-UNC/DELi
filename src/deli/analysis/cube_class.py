@@ -17,7 +17,8 @@ import torch.optim as optim
 import torch.nn as nn
 from gnn import Final_Network, smi_to_pyg
 from PIL import ImageDraw, ImageFont
-# from poly_o import calculate_polyO, classify_polyO_score
+from IPython.display import display
+from poly_o import PolyO
 
 class DELi_Cube:
     def __init__(self, data: pd.DataFrame, id_col: str, indexes: dict, control_cols: dict = None, lib_size: int = None, raw_indexes: dict = None):
@@ -124,7 +125,7 @@ class DELi_Cube:
             exp_row_sum = self.data[columns].sum(axis=1)
             exp_NSC = exp_row_sum / total_sampling_depth
 
-            self.data[f"{exp_name}_sum"] = exp_row_sum
+            # self.data[f"{exp_name}_sum"] = exp_row_sum <- this is raw sum
             self.data[f"{exp_name}_NSC"] = exp_NSC
 
         return self.data
@@ -315,21 +316,21 @@ class DELi_Cube:
 
 
     
-    # def PolyO(self):
-    #     """_summary_
-    #     """
-    #     df = self.data.copy()
+    def PolyO(self, feature_mode="disynthon") -> pd.DataFrame:
+        """
+        Calculate PolyO scores and update the DataFrame with the results.
 
-    #     if self.control_cols is None:
-    #         raise ValueError("Control columns must be provided during initialization to run polyO method.")
-        
-    #     for exp_name, columns in self.indexes.items():
-    #         control_cols = self.control_cols.get(exp_name)
-
-
-    #     df['polyO'] = calculate_polyO()
-    #     df['polyO_score'] = classify_polyO_score()
-    #     return df
+        Returns:
+            pd.DataFrame: The updated DataFrame with PolyO scores.
+        """
+        polyo = PolyO(self.data, self.indexes, self.raw_indexes, self.lib_size, feature_mode=feature_mode)
+        polyo.calculate_polyOraw()
+        polyo.find_Ccpd()
+        polyo.calculate_Cread()
+        polyo.poly_o_base()
+        polyo.calculate_polyO_score()
+        self.data = polyo.data.replace([np.inf, -np.inf], np.nan).fillna(0)
+        return self.data
 
     def normalize(self) -> pd.DataFrame:
         """
@@ -344,22 +345,35 @@ class DELi_Cube:
 
         normalized_df = self.data.copy()
 
-        # Iterating over each experimental group in the dictionary
         for exp_name, columns in self.indexes.items():
             control_col = self.control_cols.get(exp_name)
             if control_col is None:
                 raise ValueError(f"Control column for {exp_name} not provided.")
-            print(f"Normalizing {exp_name} with columns: {columns}")
+
+            if isinstance(control_col, list):
+                if not control_col: 
+                    raise ValueError(f"Control column for {exp_name} is an empty list.")
+                control_col = control_col[0]
+
+            if control_col not in normalized_df.columns:
+                raise ValueError(f"Control column '{control_col}' not found in the DataFrame")
             
-            # Loop through each column in the experimental group
-            for column in columns:
-                if column in normalized_df.columns:
-                    normalized_df[column] = (normalized_df[column] - normalized_df[control_col]).clip(lower=0)
-                else:
-                    raise ValueError(f"Column '{column}' not found in the DataFrame")
-       
+            print(f"Normalizing {exp_name} with columns: {columns}")
+
+            normalized_df[columns] = normalized_df[columns].sub(normalized_df[control_col], axis=0)
+            normalized_df[columns] = normalized_df[columns].clip(lower=0)
+            #drop control column
+            normalized_df.drop(columns=control_col, inplace=True, axis=1)
+            #if col present with control_col name but raw instead of corrected, drop it
+            if control_col.replace('corrected', 'raw') in normalized_df.columns:
+                normalized_df.drop(columns=control_col.replace('corrected', 'raw'), inplace=True, axis=1)
+                
+
+            normalized_df[f"{exp_name}_avg"] = normalized_df[columns].mean(axis=1)
+
         self.data = normalized_df
         return self.data
+
 
     def disynthonize(self, df: pd.DataFrame = None, synthon_ids: list = None) -> tuple:
         """
@@ -577,22 +591,34 @@ class DELi_Cube:
         """
         Create a Spotfire-friendly version of the DataFrame using normalized data if available
         with corrected indexes, renaming based on experiment IDs and adding an average column for each experiment.
+        Ensures that '_sum' columns are present for each experiment and calculates them if missing.
 
         Returns:
             pd.DataFrame: The Spotfire-friendly DataFrame.
         """
         df = self.data.copy()
         smiles_index = df.columns.get_loc('SMILES')
-        cols_to_keep = df.columns[:smiles_index + 1].tolist() + [col for col in df.columns[smiles_index + 1:] if any(pattern in col for pattern in ['_sum', '_NSC', '_MLE', '_z_score'])]
+        cols_to_keep = df.columns[:smiles_index + 1].tolist() + [col for col in df.columns[smiles_index + 1:] if any(pattern in col for pattern in ['_sum', '_NSC', '_MLE', '_z_score', '_norm_z_score', "_PolyO_score"])]
+
+        for exp_name, index_range in self.indexes.items():
+            sum_col_name = f'{exp_name}_sum'
+            if sum_col_name not in df.columns:
+                df[sum_col_name] = df[index_range].sum(axis=1)
+                cols_to_keep.append(sum_col_name)
+
+        # Round relevant columns
         for col in cols_to_keep:
-            if any(pattern in col for pattern in ['_sum', '_NSC', '_MLE', '_z_score', '_norm_z_score']):
+            if any(pattern in col for pattern in ['_sum', '_NSC', '_MLE', '_z_score', '_norm_z_score', "_PolyO_score"]):
                 df[col] = df[col].round(2)
+
         spotfire_df = df[cols_to_keep]
 
         for exp_name, index_range in self.indexes.items():
             for column in index_range:
                 spotfire_df.rename(columns={column: f'{exp_name}_{column}'}, inplace=True)
-            spotfire_df[f'{exp_name}_avg'] = df[index_range].mean(axis=1).round(2)
+            avg_col_name = f'{exp_name}_avg'
+            if avg_col_name not in spotfire_df.columns:
+                spotfire_df[avg_col_name] = df[index_range].mean(axis=1).round(2)
 
         return spotfire_df
 
@@ -1026,15 +1052,29 @@ class DELi_Cube:
             dopts = rdMolDraw2D.MolDrawOptions()
             dopts.legendFontSize = 20
 
-            img = Draw.MolsToGridImage(mols, molsPerRow=4, subImgSize=(200, 200), legends=legends, drawOptions=dopts)
-            
+            try:
+                img = Draw.MolsToGridImage(mols, molsPerRow=4, subImgSize=(200, 200), legends=legends, drawOptions=dopts)
+                # Add filename as text on top
+                draw = ImageDraw.Draw(img)
+                file_name = f'{exp_name}_top_{n}_compounds.png'
+                draw.text((10, 10), file_name[:-4], fill="black")
+            except AttributeError:
+                pass
+
             if output_dir is None:
                 output_dir = '.'
             file_name = f'{exp_name}_top_{n}_compounds.png'
-            img_with_label = ImageDraw.Draw(img)
-            img_with_label.text((10, 10), file_name[:-4], fill="black")
-            img.save(f'{output_dir}/{file_name}')
+            
+            try:
+                img.save(f'{output_dir}/{file_name}')
+            except AttributeError:
+                pass
 
+            try:
+                print(f"Top {n} compounds for {exp_name} based on {metric}")
+                display(img)
+            except ImportError:
+                pass
 
 
     def positive_control_finder(self, positive_control_ID = None):
