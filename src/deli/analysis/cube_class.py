@@ -125,7 +125,7 @@ class DELi_Cube:
             exp_row_sum = self.data[columns].sum(axis=1)
             exp_NSC = exp_row_sum / total_sampling_depth
 
-            self.data[f"{exp_name}_sum"] = exp_row_sum
+            # self.data[f"{exp_name}_sum"] = exp_row_sum <- this is raw sum
             self.data[f"{exp_name}_NSC"] = exp_NSC
 
         return self.data
@@ -362,6 +362,12 @@ class DELi_Cube:
 
             normalized_df[columns] = normalized_df[columns].sub(normalized_df[control_col], axis=0)
             normalized_df[columns] = normalized_df[columns].clip(lower=0)
+            #drop control column
+            normalized_df.drop(columns=control_col, inplace=True, axis=1)
+            #if col present with control_col name but raw instead of corrected, drop it
+            if control_col.replace('corrected', 'raw') in normalized_df.columns:
+                normalized_df.drop(columns=control_col.replace('corrected', 'raw'), inplace=True, axis=1)
+                
 
             normalized_df[f"{exp_name}_avg"] = normalized_df[columns].mean(axis=1)
 
@@ -585,6 +591,7 @@ class DELi_Cube:
         """
         Create a Spotfire-friendly version of the DataFrame using normalized data if available
         with corrected indexes, renaming based on experiment IDs and adding an average column for each experiment.
+        Ensures that '_sum' columns are present for each experiment and calculates them if missing.
 
         Returns:
             pd.DataFrame: The Spotfire-friendly DataFrame.
@@ -592,15 +599,26 @@ class DELi_Cube:
         df = self.data.copy()
         smiles_index = df.columns.get_loc('SMILES')
         cols_to_keep = df.columns[:smiles_index + 1].tolist() + [col for col in df.columns[smiles_index + 1:] if any(pattern in col for pattern in ['_sum', '_NSC', '_MLE', '_z_score', '_norm_z_score', "_PolyO_score"])]
+
+        for exp_name, index_range in self.indexes.items():
+            sum_col_name = f'{exp_name}_sum'
+            if sum_col_name not in df.columns:
+                df[sum_col_name] = df[index_range].sum(axis=1)
+                cols_to_keep.append(sum_col_name)
+
+        # Round relevant columns
         for col in cols_to_keep:
             if any(pattern in col for pattern in ['_sum', '_NSC', '_MLE', '_z_score', '_norm_z_score', "_PolyO_score"]):
                 df[col] = df[col].round(2)
+
         spotfire_df = df[cols_to_keep]
 
         for exp_name, index_range in self.indexes.items():
             for column in index_range:
                 spotfire_df.rename(columns={column: f'{exp_name}_{column}'}, inplace=True)
-            spotfire_df[f'{exp_name}_avg'] = df[index_range].mean(axis=1).round(2)
+            avg_col_name = f'{exp_name}_avg'
+            if avg_col_name not in spotfire_df.columns:
+                spotfire_df[avg_col_name] = df[index_range].mean(axis=1).round(2)
 
         return spotfire_df
 

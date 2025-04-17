@@ -11,28 +11,29 @@ general:
 id_col: "DEL_ID"
 
 indexes:
-  Cycle1: ["corrected_PTMODD3index4", "corrected_PTMODD3index5", "corrected_PTMODD3index6"]
-  Cycle2: ["corrected_PTMODD3index1", "corrected_PTMODD3index2", "corrected_PTMODD3index3"]
+  Target1: ["corrected_PTMODD3index4", "corrected_PTMODD3index5", "corrected_PTMODD3index6"]
+  Target2: ["corrected_PTMODD3index1", "corrected_PTMODD3index2", "corrected_PTMODD3index3"]
 
 control_cols:
-  Cycle1: ["corrected_D3index7"]
-  Cycle2: ["corrected_D3index8"]
+  Target1: ["corrected_D3index7"]
+  Target2: ["corrected_D3index8"]
 
 raw_indexes:
-  Cycle1: ["raw_PTMODD3index4", "raw_PTMODD3index5", "raw_PTMODD3index6"]
-  Cycle2: ["raw_PTMODD3index1", "raw_PTMODD3index2", "raw_PTMODD3index3"]
+  Target1: ["raw_PTMODD3index4", "raw_PTMODD3index5", "raw_PTMODD3index6"]
+  Target2: ["raw_PTMODD3index1", "raw_PTMODD3index2", "raw_PTMODD3index3"]
 
 flags:
   SD_min: True
   NSC_values: True
   MLE: True
   Z_score: True
-  z_score_log_data: True
-  normalized_data: False
+  z_score_log_data: False
   disynthon_data: true
+  polyO: true
   trisynthon_overlap: True
   disynthon_overlap: True
   disynthon_threshold: 100
+  normalized_data: True
   simple_spotfire_version: true
   ml_fingerprints_to_RF_reg: true
   ml_fingerprints_to_RF_clf: true
@@ -41,14 +42,14 @@ flags:
   gnn_threshold: 10
   gnn_arch: "GAT"
   top_hits: 20
-  top_hits_metric: "sum"
+  top_hits_metric: "MLE" #enter any metric calculated for enumerated library members
   report: true
 
   top_disynthons:
     enabled: True
     comparison: "exp2"       # Type of comparison: "control" or "exp2" or "none"
-    exp_name: "Cycle2"
-    exp2_name: "Cycle1"
+    exp_name: "Target2"
+    exp2_name: "Target1"
     control_name: "none"
     top_count: 10               # Number of top disynthons to pull
     comparison_metric: "avg"
