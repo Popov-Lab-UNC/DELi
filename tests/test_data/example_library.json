@@ -33,15 +33,23 @@
     "anchored": false,
     "bb_sets": [
         "BB_A",
-        "BB_C",
+        "BB_A",
         "BB_D"
+    ],
+    "bb_sets": [
+        {
+            "cycle": 1,
+            "bb_set_name": "BB_A",
+            "bb_set_path": "DEL003_BBA",
+            "cleanup_rxn": "SMARTS"
+        }
     ],
     "scaffold": "C1CC(Cl)CCC1",
     "reactions": [
         {
             "step": 1,
             "rxn_smarts": "[C:1]Cl.[C:2]O>>[C:1]O[C:2]",
-            "reactants": ["BB_A", "scaffold"]
+            "reactants": ["cycle_1", "scaffold"]
         },
         {
             "step": 2,
