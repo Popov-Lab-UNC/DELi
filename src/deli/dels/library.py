@@ -315,7 +315,7 @@ class DELibraryPool:
                 _tags.append(_library.library_tag)
 
     def __len__(self) -> int:
-        """Return number of libraries in the library pool"""
+        """Return the number of libraries in the library pool"""
         return len(self.libraries)
 
     def __iter__(self) -> Iterator[DELibrary]:
