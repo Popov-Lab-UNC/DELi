@@ -2,15 +2,27 @@ selection_id: "MySelection"
 target_id: "TEST_Target"
 
 libraries:
-    - DEL004
-    - DEL005
+    - "DEL004"
+    - "DEL005"
+
+selections:
+    - selection_id: "Selection1"
+      target_id: "Target1"
+      selection_condition: "200uL Library with 50pM Protein"
+      date_ran: "2025-03-30"
+      sequence_files:
+          - "C:/Users/James/Projects/Programing/deli2/tests/test_data/example.fastq"
+    - selection_id: "Selection2"
+      target_id: "Target2"
+      selection_condition: "100uL Library with 25pM Protein"
+      date_ran: "2025-03-31"
+      sequence_files:
+          - "C:/Users/James/Projects/Programing/deli2/tests/test_data/example.fastq"
+      additional_info: "This is just a repeat of Selection1 for testing purposes"
 
 decode_settings:
     library_error_tolerance: 0.1
-    min_library_overlap: 8,
-    revcomp: YES,
-    bb_calling_approach: "bio",
-    use_hamming: YES,
-    track_statistics: YES,
-
-
+    min_library_overlap: 8
+    revcomp: YES
+    bb_calling_approach: "bio"
+    use_hamming: YES
