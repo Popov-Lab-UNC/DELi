@@ -16,8 +16,7 @@ from deli.configure import (
 )
 from deli.decode import (
     DecodeStatistics,
-    DecodingExperiment,
-    DecodingExperimentRunner,
+    DecodingRunner,
     build_decoding_report,
 )
 
@@ -49,7 +48,7 @@ def config():
 
 
 @config.command(name="init")
-def init_config(path, include_data_dir):
+def init_config():
     """
     Initialize the configuration directory
 
@@ -149,7 +148,7 @@ def decode():
 
 
 @decode.command(name="run")
-@click.argument("experiment", type=click.Path(exists=True), required=True)
+@click.argument("decode", type=click.Path(exists=True), required=True)
 @click.option(
     "--out-dir",
     "-o",
@@ -174,19 +173,16 @@ def decode():
     default=None,
     help="Path to DELi data directory to read libraries from",
 )
-def run_decode(
-    experiment, out_dir, prefix, save_failed, tqdm, debug, disable_logging, deli_data_dir
-):
+def run_decode(decode_, out_dir, prefix, save_failed, tqdm, debug, disable_logging, deli_data_dir):
     """
     Run decoding on a given fastq file of DEL sequences
 
-    EXPERIMENT is the path to a YAML file describing the decoding experiment.
+    DECODE is the path to a YAML file describing the decoding run settings.
     """
     if deli_data_dir is not None:
         set_deli_data_dir(deli_data_dir)
 
-    experiment = DecodingExperiment.from_file(experiment)
-    runner = DecodingExperimentRunner(experiment, debug=debug, disable_logging=disable_logging)
+    runner = DecodingRunner.from_file(decode_, debug=debug, disable_logging=disable_logging)
     save_failed_to = out_dir if save_failed else None
     runner.run(save_failed_to=save_failed_to, use_tqdm=tqdm)
 
@@ -194,42 +190,6 @@ def run_decode(
     runner.write_decode_results(out_dir=out_dir, prefix=prefix)
     runner.write_decode_statistics(out_dir=out_dir, prefix=prefix)
     runner.write_decode_report(out_dir=out_dir, prefix=prefix)
-
-
-@decode.group()
-def experiment():
-    """Decode experiment command group"""
-    pass
-
-
-@experiment.command(name="split")
-@click.argument("experiment", type=click.Path(exists=True), required=True)
-def split_experiment_file(experiment_):
-    """
-    Split a decoding experiment file into its constituent parts
-
-    EXPERIMENT is the path to a YAML file describing the decoding experiment.
-    """
-    experiment_ = DecodingExperiment.from_file(experiment_)
-    splits = experiment_.split_by_selection()
-    for split in splits:
-        split.to_file(
-            os.path.join(
-                os.getcwd(), f"{split.experiment_id}_{split.selections[0].selection_id}.yaml"
-            )
-        )
-
-
-@experiment.command(name="merge")
-@click.argument("experiment", type=click.Path(exists=True), required=True, nargs=-1)
-@click.option(
-    "--use-first",
-    is_flag=True,
-    help="Use the first experiment's decode settings if conflict between experiment files",
-)
-def merge_experiment_file(experiment, use_first):
-    """Merge multiple decoding experiment files into one"""
-    raise NotImplementedError("James is working on this, raise and issue if you want it sooner")
 
 
 @decode.group()
@@ -266,7 +226,7 @@ def report():
 
 
 @report.command("merge")
-@click.argument("experiment", type=click.Path(exists=True, dir_okay=False), required=True)
+@click.argument("decode", type=click.Path(exists=True, dir_okay=False), required=True)
 @click.argument("statistics", nargs=-1, type=click.Path(exists=True, dir_okay=False))
 @click.option(
     "-o",
@@ -276,22 +236,17 @@ def report():
     default="merged_decoding_report.html",
     help="location to dave merged report",
 )
-@click.option("--render_report", is_flag=True, help="render merged report as html file")
-def merge(experiment_, statistics_, out_path):
+def merge(decode_, statistics_, out_path):
     """
-    Given an experiment and set of decode stats, merge into a single report
+    Given decode settings and set of decode stats, merge into a single report
 
-    WARNING: will only work if the experiment has 1 selection
+    Should only be used to merge stats generated from the same decode experiment
+    Helpful for parallelization stuff
 
-    EXPERIMENT is the path to a YAML file describing the decoding experiment.
+    DECODE is the path to a YAML file describing the decoding run.
     STATISTICS is a list of paths to decode statistics files to merge.
     """
-    loaded_experiment = DecodingExperiment.from_file(experiment_)
-
-    if len(loaded_experiment.selections) > 1:
-        raise RuntimeError(
-            "Cannot merge decode reports for an experiment with multiple selections"
-        )
+    loaded_decode_settings = DecodingRunner.from_file(decode_)
 
     loaded_statistics: list[DecodeStatistics] = [
         DecodeStatistics.from_file(p) for p in statistics_
@@ -299,8 +254,7 @@ def merge(experiment_, statistics_, out_path):
     merged_stats = sum(loaded_statistics, DecodeStatistics())
 
     build_decoding_report(
-        experiment=loaded_experiment,
-        selection=loaded_experiment.selections[0],
+        selection=loaded_decode_settings.selection,
         stats=merged_stats,
         out_path=out_path,
     )
@@ -308,7 +262,7 @@ def merge(experiment_, statistics_, out_path):
 
 @report.command(name="generate")
 @report.command("merge")
-@click.argument("experiment", type=click.Path(exists=True, dir_okay=False), required=True)
+@click.argument("decode", type=click.Path(exists=True, dir_okay=False), required=True)
 @click.argument("statistic", type=click.Path(exists=True, dir_okay=False), required=True)
 @click.option(
     "-o",
@@ -318,27 +272,18 @@ def merge(experiment_, statistics_, out_path):
     default="decoding_report.html",
     help="location to dave merged report",
 )
-def generate(experiment_, statistic_, out_path):
+def generate(decode_, statistic_, out_path):
     """
-    Generate a decoding report from a decode experiment and statistic file
+    Generate a decoding report from a decode run config and statistic file
 
-    Warning: will only work if the experiment has 1 selection
-
-    EXPERIMENT is the path to a YAML file describing the decoding experiment.
+    DECODE is the path to a YAML file describing the decoding experiment.
     STATISTIC is the path to a decode statistics file to use for the report.
     """
-    loaded_experiment = DecodingExperiment.from_file(experiment_)
-
-    if len(loaded_experiment.selections) > 1:
-        raise RuntimeError(
-            "Cannot merge decode reports for an experiment with multiple selections"
-        )
-
+    loaded_decode_settings = DecodingRunner.from_file(decode_)
     loaded_statistic = DecodeStatistics.from_file(statistic_)
 
     build_decoding_report(
-        experiment=loaded_experiment,
-        selection=loaded_experiment.selections[0],
+        selection=loaded_decode_settings.selection,
         stats=loaded_statistic,
         out_path=out_path,
     )
