@@ -71,7 +71,7 @@ class _DeliConfig:
             self.deli_data_dir = Path(os.path.join(os.path.expanduser("~"), ".deli", "deli_data"))
         else:
             self.deli_data_dir = Path(os.fspath(os.path.expanduser(kwargs.get("deli_data_dir"))))
-        _validate_deli_data_dir(self.deli_data_dir)
+        validate_deli_data_dir(self.deli_data_dir)
 
         self.bb_mask: str = (
             str(kwargs["BB_MASK"]) if kwargs.get("BB_MASK") is not None else BB_MASK_TOKEN_DEFAULT
@@ -88,7 +88,7 @@ class _DeliConfig:
         config = configparser.RawConfigParser()
         config.read(os.path.normpath(path))
 
-        settings = dict(config.items("DEFAULT"))
+        settings = dict(config.items("SETTINGS"))
         if len(settings) == 0:
             raise FileNotFoundError(f"cannot find config file at '{os.path.normpath(path)}'")
 
@@ -114,7 +114,20 @@ class _DeliConfig:
         )
 
 
-def _validate_deli_data_dir(deli_data_dir_: Union[str, Path]) -> bool:
+def validate_deli_data_dir(deli_data_dir_: Union[str, Path]) -> bool:
+    """
+    Validate that the given DELi data directory exists and has all the required sub-directories
+
+    Parameters
+    ----------
+    deli_data_dir_: Union[str, Path]
+        path to the DELi data directory to validate
+
+    Returns
+    -------
+    bool
+        True if the directory is valid, raises DeliDataDirError otherwise
+    """
     if not os.path.exists(deli_data_dir_):
         raise DeliDataDirError(
             f"DELi data directory '{deli_data_dir_}' does not exist; "
@@ -255,7 +268,7 @@ def init_deli_config_dir(
     os.makedirs(_path, exist_ok=not fail_on_exist)
 
     _config = (
-        f"[DEFAULT]\n"
+        f"[SETTINGS]\n"
         f"BB_MASK = {BB_MASK_TOKEN_DEFAULT}\n"
         f"NUC_2_INT = "
         + ",".join([f"{key}:{val}" for key, val in NUC_2_INT_DEFAULT.items()])
