@@ -322,6 +322,12 @@ class DELibraryPool:
         """Iterate through all libraries in the library pool"""
         return iter(self.libraries)
 
+    def __eq__(self, other):
+        """Check if two library pools are equal by their libraries"""
+        if isinstance(other, DELibraryPool):
+            return set(self.libraries) == set(other.libraries)
+        return False
+
     def get_library(self, library_id: str) -> DELibrary:
         """
         return the library from the pool with the same ID
