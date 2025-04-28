@@ -182,7 +182,7 @@ def init_deli_data_directory(
                     f.write(f"custom_order: {','.join(extra_hamming_order)}\n")
 
 
-def fix_deli_data_directory(path: Union[str, os.PathLike]):
+def fix_deli_data_directory(path: Union[str, os.PathLike], overwrite_hamming: bool = False):
     """
     Fix a Deli Data Directory by creating any missing subfolders
 
@@ -190,6 +190,10 @@ def fix_deli_data_directory(path: Union[str, os.PathLike]):
     ----------
     path: Union[str, os.PathLike]
         path to the deli data dir to fix
+    overwrite_hamming: bool, default = False
+        if True, will overwrite any existing hamming files with the default ones
+        if False, will not overwrite existing hamming files
+        only relevant if the hamming sub-dir already exists
     """
     _path = Path(path)
     if not os.path.exists(_path):
@@ -198,7 +202,7 @@ def fix_deli_data_directory(path: Union[str, os.PathLike]):
             f" create it using 'deli data init {path}'"
         )
 
-    if not os.path.exists(_path / "hamming"):
+    if (not os.path.exists(_path / "hamming")) or overwrite_hamming:
         init_deli_data_directory(
             path=_path,
             fail_on_exist=False,
