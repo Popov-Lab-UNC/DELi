@@ -248,6 +248,17 @@ class DecodingExperiment:
                     f"unrecognized decoding settings: {_unknown_arg}"
                 ) from e
 
+        # check that all selection ids are unique
+        selection_ids = [selection.selection_id for selection in selections]
+        if len(set(selection_ids)) != len(selection_ids):
+            from collections import Counter
+
+            duplicate_ids = [key for key, count in Counter(selection_ids).items() if count > 1]
+            raise DecodingExperimentParsingError(
+                f"Decoding experiment contains selections with duplicate IDs: {duplicate_ids}\n"
+                "ensure all selections have unique IDs"
+            )
+
         return cls(
             experiment_id=experiment_id,
             selections=selections,

@@ -220,7 +220,7 @@ class SequencedSelection(Selection):
         SequenceGlobReader(self.sequence_files)
 
     @classmethod
-    def from_dict(cls, data: dict):
+    def from_dict(cls, data: dict) -> "SequencedSelection":
         """
         Create a Selection object from a dictionary.
 
