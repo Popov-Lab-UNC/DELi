@@ -171,7 +171,7 @@ class DecodingExperiment:
             Settings to use for decoding
         experiment_id: str or None, default = None
             the id of the decoding experiment
-            if `None` will default to a random number based on
+            if `None` defaults to a random number based on
             timestamp the object was created
 
         """
@@ -185,6 +185,43 @@ class DecodingExperiment:
             if experiment_id
             else (str(time.time()).replace(".", "") + f"{random.randint(0, 1000000):06d}")
         )
+
+        # check that all selections have the same library pool as the experiment
+        for selection in self.selections:
+            if selection.library_pool != self.library_pool:
+                raise ValueError(
+                    f"Selection {selection.selection_id} has a different "
+                    f"library pool than the experiment"
+                )
+        # check that all selections have unique ids
+        selection_ids = [selection.selection_id for selection in self.selections]
+        if len(set(selection_ids)) != len(selection_ids):
+            from collections import Counter
+
+            duplicate_ids = [key for key, count in Counter(selection_ids).items() if count > 1]
+            raise DecodingExperimentParsingError(
+                f"Decoding experiment contains selections with duplicate IDs: {duplicate_ids}\n"
+                "ensure all selections have unique IDs"
+            )
+
+    def split_by_selection(self) -> list["DecodingExperiment"]:
+        """
+        Split the experiment into separate experiments per selection
+
+        Returns
+        -------
+        list[DecodingExperiment]
+            list of DecodingExperiment objects, one for each selection
+        """
+        return [
+            DecodingExperiment(
+                library_pool=self.library_pool,
+                selections=[selection],
+                decode_settings=self.decode_settings,
+                experiment_id=self.experiment_id,
+            )
+            for selection in self.selections
+        ]
 
     def to_file(self, out_path: str | PathLike):
         """
@@ -247,17 +284,6 @@ class DecodingExperiment:
                 raise DecodingExperimentParsingError(
                     f"unrecognized decoding settings: {_unknown_arg}"
                 ) from e
-
-        # check that all selection ids are unique
-        selection_ids = [selection.selection_id for selection in selections]
-        if len(set(selection_ids)) != len(selection_ids):
-            from collections import Counter
-
-            duplicate_ids = [key for key, count in Counter(selection_ids).items() if count > 1]
-            raise DecodingExperimentParsingError(
-                f"Decoding experiment contains selections with duplicate IDs: {duplicate_ids}\n"
-                "ensure all selections have unique IDs"
-            )
 
         return cls(
             experiment_id=experiment_id,
