@@ -1,11 +1,10 @@
 """code for running a decoding experiment"""
 
 import logging
+import os
 import warnings
-from collections import defaultdict
 from copy import deepcopy
 from functools import partial
-from os import PathLike, getpid, makedirs, path
 from typing import Callable
 
 from tqdm import tqdm
@@ -50,7 +49,7 @@ class DecodingExperimentRunner:
         debug: bool, default = False
             if true, will enable debug logging
         """
-        _name = f"DELi-DECODER-{getpid()}"
+        _name = f"DELi-DECODER-{os.getpid()}"
         self.logger: logging.Logger = (
             get_dummy_logger() if disable_logging else get_logger(_name, debug=debug)
         )
@@ -104,29 +103,55 @@ class DecodingExperimentRunner:
             tuple[SequencedSelection, DecodeStatistics, DELibraryPoolCounter]
         ] = list()
 
-    def run(self, use_tqdm: bool = False):
+    def run(self, save_failed_to: str | os.PathLike | None = None, use_tqdm: bool = False):
         """
         Run the decoder
 
         Parameters
         ----------
+        save_failed_to: str | PathLike | None, default = None
+            if provided, will save failed reads to this file
+            will include the read_id, the sequence, the quality chain,
+            and reason failed
         use_tqdm: bool, default = False
             turn on a tqdm tracking bar
             only recommended if running a single
             runner
         """
+        # loop through all selections
         for selection in self.experiment.selections:
+            # initalization of selection specific objects
             self.logger.info(f"Running decoding for selection: {selection.selection_id}")
             selection_degen_counter = self._degen()
             selection_decoder = deepcopy(self.decoder)
             selection_statistics = selection_decoder.decode_statistics
-            for seq_record in tqdm(
-                selection.get_sequence_reader(),
-                desc=f"Running Decoding for selection {selection.selection_id}",
-                disable=not use_tqdm,
+
+            # open failed reads file if specified
+            self.logger.info(
+                f"Saving failed reads to {save_failed_to} for selection {selection.selection_id}"
+            )
+            _failed_file = (
+                os.path.join(save_failed_to, f"{selection.selection_id}_decode_failed.csv")
+                if save_failed_to is not None
+                else None
+            )
+            fail_csv_file = open(_failed_file, "w") if _failed_file is not None else None
+
+            # write header to the failed reads CSV
+            if fail_csv_file is not None:
+                fail_csv_file.write("read_id,sequence,quality,reason_failed,lib_call\n")
+
+            # look through all sequences in the selection
+            for i, seq_record in enumerate(
+                tqdm(
+                    selection.get_sequence_reader(),
+                    desc=f"Running Decoding for selection {selection.selection_id}",
+                    disable=not use_tqdm,
+                )
             ):
                 selection_statistics.num_seqs_read += 1
 
+                # decode the read
                 decoded_barcode = selection_decoder.decode_read(seq_record)
 
                 # skip failed reads
@@ -139,87 +164,118 @@ class DecodingExperimentRunner:
                         selection_statistics.num_seqs_degen_per_lib[
                             decoded_barcode.library.library_id
                         ] += 1
+                elif fail_csv_file is not None:
+                    # if we are saving failed reads, save the read
+                    fail_csv_file.write(
+                        f"{seq_record.id},"
+                        f"{seq_record.sequence},"
+                        f"{seq_record.qualities},"
+                        f"{decoded_barcode.__class__.__name__}\n"
+                    )
+
+                if ((i + 1) % 1000) == 0:
+                    self.logger.debug(
+                        f"Decoded {i+1} reads for selection {selection.selection_id}"
+                    )
+
+            if fail_csv_file is not None:
+                fail_csv_file.close()
+                self.logger.debug(
+                    f"Saved failed reads to {save_failed_to} "
+                    f"for selection {selection.selection_id}"
+                )
+
             self.selection_info.append((selection, selection_statistics, selection_degen_counter))
             self.logger.info(f"Completed decoding for selection: {selection.selection_id}")
 
-    def write_output(
-        self,
-        decode_out_dir: str | PathLike = "./decode_results",
-        decode_output_suffix: str = "decode_output",
-        decode_statistics_suffix: str = "decode_statistics",
-        decode_report_suffix: str = "decode_report",
-    ):
+    def write_decode_report(self, out_dir: str | os.PathLike, prefix: str = ""):
         """
-        Write the decoding output files to disk
-
-        If two selections in the experiment have the same ID
-        (which is bad practice and should be avoided), "_2" will
-        be appended to the selection ID to ensure unique file names.
-        If more duplicates appear, they will be numbered sequentially
-        e.g. "_3" is next, then "_4"
+        Write the decoding report for this run
 
         Notes
         -----
-        Decode output will be a CSV with the columns
-        DEL_ID, SMILES, RAW_COUNT, and UMI_CORRECTED_COUNT
+        Will write a unique report for each selection in the experiment.
+        All files will be `html` and be named "{?prefix}_<selection_id>_decode_report.html"
 
-        If SMILES are not available for the DEL, the SMILES column will be empty.
-        If DELs lack a UMI, the UMI_CORRECTED_COUNT will be the same as the RAW_COUNT
 
         Parameters
         ----------
-        decode_out_dir: str | PathLike = "./decode_results",
+        out_dir: str | PathLike
             path to directory to save results to
-        decode_output_suffix: str = "decode_output",
-            suffix to attached to selection IDs
-        decode_statistics_suffix: str = "decode_statistics",
-        decode_report_suffix: str = "decode_report",
+            will create the directory if it does not exist
+        prefix: str, default = ""
+            prefix for output files
         """
-        makedirs(decode_out_dir, exist_ok=True)
-
-        existing_ids: defaultdict = defaultdict(int)
-
-        for selection, selection_stats, selection_degen in self.selection_info:
-            # check for duplicate selection IDs
-            _selection_id: str
-            if selection.selection_id in existing_ids:
-                _selection_id = (
-                    f"{selection.selection_id}_{existing_ids[selection.selection_id] + 1}"
-                )
-                warnings.warn(
-                    f"Duplicate selection ID found: {selection.selection_id}. "
-                    f"Saving as duplicate {_selection_id}.",
-                    stacklevel=2,
-                )
-            else:
-                _selection_id = selection.selection_id
-
-            existing_ids[selection.selection_id] += 1
-
-            self.logger.info(f"Writing decode results for selection: {_selection_id}")
-            _decode_out_path = path.join(
-                decode_out_dir, f"{_selection_id}_{decode_output_suffix}.csv"
+        os.makedirs(out_dir, exist_ok=True)
+        for selection, selection_stats, _ in self.selection_info:
+            _filename = (
+                f"{prefix}_{selection.selection_id}_decode_report.html"
+                if prefix
+                else f"{selection.selection_id}_decode_report.html"
             )
-            _decode_statistics_out_path = path.join(
-                decode_out_dir, f"{_selection_id}_{decode_statistics_suffix}.json"
-            )
-            _decode_report_out_path = path.join(
-                decode_out_dir, f"{_selection_id}_{decode_report_suffix}.html"
-            )
-
-            selection_degen.to_file(_decode_out_path)
+            _out_path = os.path.join(out_dir, _filename)
+            build_decoding_report(self.experiment, selection, selection_stats, _out_path)
             self.logger.debug(
-                f"Wrote decode results for selection " f"{_selection_id} to {_decode_out_path}"
+                f"Wrote decode report for selection " f"{selection.selection_id} to {_out_path}"
             )
-            selection_stats.to_file(_decode_statistics_out_path)
+
+    def write_decode_statistics(self, out_dir: str | os.PathLike, prefix: str = ""):
+        """
+        Write the decoding statistics for this run
+
+        Notes
+        -----
+        Will write a unique statistics file for each selection in the experiment.
+        All files will be `json` and be named "{?prefix}_<selection_id>_decode_statistics.json"
+
+        Parameters
+        ----------
+        out_dir: str | PathLike
+            path to directory to save results to
+            will create the directory if it does not exist
+        prefix: str, default = ""
+            prefix for output files
+        """
+        os.makedirs(out_dir, exist_ok=True)
+        for selection, selection_stats, _ in self.selection_info:
+            _filename = (
+                f"{prefix}_{selection.selection_id}_decode_statistics.json"
+                if prefix
+                else f"{selection.selection_id}_decode_statistics.json"
+            )
+            _out_path = os.path.join(out_dir, _filename)
+            selection_stats.to_file(_out_path)
             self.logger.debug(
                 f"Wrote decode statistics for selection "
-                f"{_selection_id} to {_decode_statistics_out_path}"
+                f"{selection.selection_id} to {_out_path}"
             )
-            build_decoding_report(
-                self.experiment, selection, selection_stats, _decode_report_out_path
+
+    def write_decode_results(self, out_dir: str | os.PathLike, prefix: str = ""):
+        """
+        Write the decoding results for this run
+
+        Notes
+        -----
+        Will write a unique result file for each selection in the experiment.
+        All files will be `csv` and be named "{?prefix}_<selection_id>_decode_results.csv"
+
+        Parameters
+        ----------
+        out_dir: str | PathLike
+            path to directory to save results to
+            will create the directory if it does not exist
+        prefix: str, default = ""
+            prefix for output files
+        """
+        os.makedirs(out_dir, exist_ok=True)
+        for selection, _, selection_degen in self.selection_info:
+            _filename = (
+                f"{prefix}_{selection.selection_id}_decode_results.csv"
+                if prefix
+                else f"{selection.selection_id}_decode_results.csv"
             )
+            _out_path = os.path.join(out_dir, _filename)
+            selection_degen.to_file(_out_path)
             self.logger.debug(
-                f"Wrote decode report for selection "
-                f"{_selection_id} to {_decode_report_out_path}"
+                f"Wrote decode results for selection " f"{selection.selection_id} to {_out_path}"
             )
