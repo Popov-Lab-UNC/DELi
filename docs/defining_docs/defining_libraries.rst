@@ -22,7 +22,6 @@ Below is and example of a library schema and
 definitions/explanations of each part
 ::
   {
-    "id": "DEL004",
     "library_tag": "GCCAGACC",
     "bb_sets": [
       "DEL004_BBA",
@@ -45,12 +44,6 @@ definitions/explanations of each part
     ],
     "dna_barcode_on": "DEL004_BBA"
   }
-
-``id``
-^^^^^^
-This element should hold a string.
-This is the ID associated with the library.
-It should be the same as the name of the file
 
 ``library_tag``
 ^^^^^^^^^^^^^^^

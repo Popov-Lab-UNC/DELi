@@ -208,8 +208,11 @@ class DELibrary(DeliDataLoadable):
         else:
             reaction_workflow = None
 
+        # get library id from path
+        library_id = Path(path).stem.replace(" ", "_")
+
         return cls(
-            library_id=data["id"],
+            library_id=library_id,
             anchored=data.get("anchored", False),
             dna_barcode_on=data["dna_barcode_on"],
             barcode_schema=BarcodeSchema.from_dict(data["barcode_schema"]),
