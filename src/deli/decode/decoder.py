@@ -67,6 +67,49 @@ class DecodeStatistics:
         self.num_failed_building_block_call: int = 0
         self.num_failed_alignment: int = 0
 
+    def __add__(self, other) -> "DecodeStatistics":
+        """Add two DecodeStatistics objects together"""
+        if not isinstance(other, DecodeStatistics):
+            raise TypeError(f"unsupported operand type(s) for +: {type(self)} and {type(other)}")
+        result = DecodeStatistics()
+        result.num_seqs_read = self.num_seqs_read + other.num_seqs_read
+        result.num_failed_too_short = self.num_failed_too_short + other.num_failed_too_short
+        result.num_failed_too_long = self.num_failed_too_long + other.num_failed_too_long
+        result.num_failed_library_call = (
+            self.num_failed_library_call + other.num_failed_library_call
+        )
+        result.num_failed_library_match_too_short = (
+            self.num_failed_library_match_too_short + other.num_failed_library_match_too_short
+        )
+        result.num_failed_building_block_call = (
+            self.num_failed_building_block_call + other.num_failed_building_block_call
+        )
+        result.num_failed_alignment = self.num_failed_alignment + other.num_failed_alignment
+
+        # Merge defaultdicts
+        result.seq_lengths = defaultdict(
+            int,
+            {
+                k: self.seq_lengths[k] + other.seq_lengths[k]
+                for k in set(self.seq_lengths) | set(other.seq_lengths)
+            },
+        )
+        result.num_seqs_decoded_per_lib = defaultdict(
+            int,
+            {
+                k: self.num_seqs_decoded_per_lib[k] + other.num_seqs_decoded_per_lib[k]
+                for k in set(self.num_seqs_decoded_per_lib) | set(other.num_seqs_decoded_per_lib)
+            },
+        )
+        result.num_seqs_degen_per_lib = defaultdict(
+            int,
+            {
+                k: self.num_seqs_degen_per_lib[k] + other.num_seqs_degen_per_lib[k]
+                for k in set(self.num_seqs_degen_per_lib) | set(other.num_seqs_degen_per_lib)
+            },
+        )
+        return result
+
     def __str__(self) -> str:
         """Convert the statistic object to a string (new line seperated)"""
         return "\n".join([f"{key}={val}\n" for key, val in self.__dict__.items()])
