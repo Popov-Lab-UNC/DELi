@@ -1,26 +1,160 @@
 """code for running a decoding experiment"""
 
+import datetime
 import logging
 import os
+import random
 import warnings
-from copy import deepcopy
-from functools import partial
-from typing import Callable
+from os import PathLike
+from typing import Any, Literal, Self
 
+import yaml
 from tqdm import tqdm
 
 from deli._logging import get_dummy_logger, get_logger
-from deli.dels import SequencedSelection
+from deli.dels import DELibrary, DELibraryPool, SequencedSelection
 
 from .decoder import DecodedBarcode, DecodeStatistics, DELPoolDecoder
 from .degen import DELibraryPoolCounter, DELibraryPoolIdCounter, DELibraryPoolIdUmiCounter
-from .experiment import DecodingExperiment
 from .report import build_decoding_report
 
 
-class DecodingExperimentRunner:
+class DecodingRunParsingError(Exception):
+    """Exception to raise when a decoding experiment file is invalid"""
+
+    pass
+
+
+class DecodingSettings(dict):
     """
-    Main runner for decoding experiments
+    Define parameters for decoding experiments
+
+    Only parameters relating to the algorithm should be here
+    Setting relating to IO should be handled outside this context
+    (like in the click command)
+    """
+
+    def __init__(
+        self,
+        library_error_tolerance: float = 0.1,
+        min_library_overlap: int | None = 10,
+        alignment_algorithm: Literal["semi", "hybrid"] = "semi",
+        bb_calling_approach: Literal["alignment", "bio"] = "bio",
+        revcomp: bool = False,
+        max_read_length: int | None = None,
+        min_read_length: int | None = None,
+        read_type: Literal["single", "paired"] = "single",
+        use_hamming: bool = True,
+        umi_clustering: bool = False,
+        umi_min_distance: int = 2,
+    ):
+        """
+        Initialize the decoder settings
+
+        Notes
+        -----
+        More details about the exact effect of these settings can
+        be found in the "Decoding" docs
+
+        Parameters
+        ----------
+        library_error_tolerance: float, default = 0.2
+            the percent error to be tolerated in the library section
+            this will be converted to number of errors based on tag size
+            and down to the nearest whole number
+            for example, a library with 14 nucleotides would tolerate
+            1, 2, and 4 errors for an error tolerance of 0.1, 0.2 and 0.3 respectively
+        min_library_overlap: int or None, default = 7
+            the minimum number of nucleotides required to match
+            the library tag
+            This is because the demultiplexing will accept truncated matches
+            at the front/back of the tag. For example a tag of AGCTGGTTC
+            could match a read of GTTC if the min overlap was <=4
+            If `None`, will default to the exact length of the tag, meaning
+            the whole tag is expected.
+            The recommended value is greater than 8, as the odds of a match this strong
+            to be accidental are low
+        alignment_algorithm: Literal["semi", "hybrid"], default = "semi"
+            the algorithm to use for alignment
+            only used if bb_calling_approach is "alignment"
+        read_type: Literal["single", "paired"], default = "single"
+            the type of read
+            paired are for paired reads
+            all other read types are single
+        revcomp: bool, default = False
+            If true, search the reverse compliment as well
+        max_read_length: int or None, default = None
+            maximum length of a read to be considered for decoding
+            if above the max, decoding will fail
+            if `None` will default to 5x the min_read_length
+        min_read_length: int or None, default = None
+            minimum length of a read to be considered for decoding
+            if below the min, decoding will fail
+            if `None` will default to smallest min match length of
+            any library in the pool considered for decoding
+        bb_calling_approach: Literal["alignment"], default = "alignment"
+            the algorithm to use for bb_calling
+            right now only "alignment" mode is supported
+        use_hamming: bool, default = True
+            enable (`True`) or disable (`False`) hamming decoding
+            only used if a library specifies tags as hamming encoded
+            Note: if hamming encoded libraries are given, and `use_hamming` is
+            `False`, the hamming decoding will not occur, even though it is possible
+        umi_clustering: bool, default = False
+            when doing degeneration, consider two similar UMIs to be the same
+            similarity is based on levenshtein distance and `umi_min_distance`
+        umi_min_distance: int, default = 2
+            the minimum distance between two UMIs to be considered unique
+            only used `umi_clustering` is `True`
+        """
+        super().__init__(
+            library_error_tolerance=library_error_tolerance,
+            min_library_overlap=min_library_overlap,
+            alignment_algorithm=alignment_algorithm,
+            read_type=read_type,
+            revcomp=revcomp,
+            max_read_length=max_read_length,
+            min_read_length=min_read_length,
+            bb_calling_approach=bb_calling_approach,
+            use_hamming=use_hamming,
+            umi_clustering=umi_clustering,
+            umi_min_distance=umi_min_distance,
+        )
+
+    def to_file(self, path: str | PathLike):
+        """
+        Save settings to a YAML file
+
+        Parameters
+        ----------
+        path : str | PathLike
+            path to save settings to
+        """
+        yaml.dump(self.__dict__, open(path, "w"))
+
+    @classmethod
+    def from_file(cls, path: str | PathLike) -> Self:
+        """
+        Load settings from a yaml file
+
+        Parameters
+        ----------
+        path : str | PathLike
+            Path to yaml file
+
+        Returns
+        -------
+        Self
+        """
+        try:
+            return cls(**yaml.safe_load(open(path, "r")))
+        except Exception as e:
+            raise RuntimeError(f"Failed to load settings from {path}") from e
+
+
+class DecodingRunner:
+    """
+    Main runner for decoding selections
 
     For most users, this in the main entry point for doing decoding.
 
@@ -33,54 +167,67 @@ class DecodingExperimentRunner:
 
     def __init__(
         self,
-        decode_experiment: DecodingExperiment,
+        selection: SequencedSelection,
+        decode_settings: DecodingSettings | None = None,
         disable_logging: bool = False,
         debug: bool = False,
+        run_id: str | None = None,
     ):
         """
-        Initialize the DecodingExperimentRunner
+        Initialize the DecodingRunner
 
         Parameters
         ----------
-        decode_experiment: DecodingExperiment
-            the experiment to decode
+        selection: SequencedSelection
+            the selection to decode
+        decode_settings: DecodingSettings | None, default = None
+            the settings to use for decoding
+            if `None`, will use the default settings
         disable_logging: bool, default = False
             if true, will turn off logging
         debug: bool, default = False
             if true, will enable debug logging
+        run_id: str, default = None
+            a unique id for this run
+            if `None`, will default to the PID and random number
         """
-        _name = f"DELi-DECODER-{os.getpid()}"
+        if run_id is None:
+            self.run_id = f"DELi-DECODER-{os.getpid()}-" + f"{random.randint(0, 100000):06d}"
+        else:
+            self.run_id = run_id
+
         self.logger: logging.Logger = (
-            get_dummy_logger() if disable_logging else get_logger(_name, debug=debug)
+            get_dummy_logger() if disable_logging else get_logger(self.run_id, debug=debug)
         )
 
-        self.experiment = decode_experiment
+        self.selection = selection
+        self.decode_settings = (
+            decode_settings if decode_settings is not None else DecodingSettings()
+        )
 
         # initialize all the decoding object required
         self.decoder = DELPoolDecoder(
-            library_pool=self.experiment.library_pool,
+            library_pool=self.selection.library_pool,
             decode_statistics=DecodeStatistics(),
-            library_error_tolerance=self.experiment.decode_settings.get(
-                "library_error_tolerance", 0.1
-            ),
-            min_library_overlap=self.experiment.decode_settings.get("min_library_overlap", 10),
-            alignment_algorithm=self.experiment.decode_settings.get("alignment_algorithm", "semi"),
-            bb_calling_approach=self.experiment.decode_settings.get("bb_calling_approach", "bio"),
-            revcomp=self.experiment.decode_settings.get("revcomp", False),
-            max_read_length=self.experiment.decode_settings.get("max_read_length", None),
-            min_read_length=self.experiment.decode_settings.get("min_read_length", None),
-            read_type=self.experiment.decode_settings.get("read_type", "single"),
-            use_hamming=self.experiment.decode_settings.get("use_hamming", True),
+            library_error_tolerance=self.decode_settings.get("library_error_tolerance", 0.1),
+            min_library_overlap=self.decode_settings.get("min_library_overlap", 10),
+            alignment_algorithm=self.decode_settings.get("alignment_algorithm", "semi"),
+            bb_calling_approach=self.decode_settings.get("bb_calling_approach", "bio"),
+            revcomp=self.decode_settings.get("revcomp", False),
+            max_read_length=self.decode_settings.get("max_read_length", None),
+            min_read_length=self.decode_settings.get("min_read_length", None),
+            read_type=self.decode_settings.get("read_type", "single"),
+            use_hamming=self.decode_settings.get("use_hamming", True),
         )
 
         _has_umi = all(
-            [lib.barcode_schema.has_umi() for lib in self.experiment.library_pool.libraries]
+            [lib.barcode_schema.has_umi() for lib in self.selection.library_pool.libraries]
         )
 
         # TODO right now all barcodes must have a UMI to enable, maybe should not be this
         #  will throw warning and ask user to raise issue to see if that ever happens
         if any(
-            [lib.barcode_schema.has_umi() for lib in self.experiment.library_pool.libraries]
+            [lib.barcode_schema.has_umi() for lib in self.selection.library_pool.libraries]
         ) and (not _has_umi):
             warnings.warn(
                 "DELi does not support UMI degeneration for library collections with "
@@ -89,19 +236,14 @@ class DecodingExperimentRunner:
                 stacklevel=2,
             )
 
-        self._degen: Callable
+        self.degen: DELibraryPoolCounter
         if _has_umi:
-            self._degen = partial(
-                DELibraryPoolIdUmiCounter,
-                umi_clustering=decode_experiment.decode_settings.get("umi_clustering", False),
-                min_umi_cluster_dist=decode_experiment.decode_settings.get("umi_min_distance", 2),
+            self.degen = DELibraryPoolIdUmiCounter(
+                umi_clustering=self.decode_settings.get("umi_clustering", False),
+                min_umi_cluster_dist=self.decode_settings.get("umi_min_distance", 2),
             )
         else:
-            self._degen = DELibraryPoolIdCounter
-
-        self.selection_info: list[
-            tuple[SequencedSelection, DecodeStatistics, DELibraryPoolCounter]
-        ] = list()
+            self.degen = DELibraryPoolIdCounter()
 
     def run(self, save_failed_to: str | os.PathLike | None = None, use_tqdm: bool = False):
         """
@@ -118,75 +260,171 @@ class DecodingExperimentRunner:
             only recommended if running a single
             runner
         """
-        # loop through all selections
-        for selection in self.experiment.selections:
-            # initalization of selection specific objects
-            self.logger.info(f"Running decoding for selection: {selection.selection_id}")
-            selection_degen_counter = self._degen()
-            selection_decoder = deepcopy(self.decoder)
-            selection_statistics = selection_decoder.decode_statistics
+        self.logger.info(f"Running decoding for selection: {self.selection.selection_id}")
 
-            # open failed reads file if specified
-            self.logger.info(
-                f"Saving failed reads to {save_failed_to} for selection {selection.selection_id}"
+        # open failed reads file if specified
+        self.logger.info(
+            f"Saving failed reads to {save_failed_to} for selection {self.selection.selection_id}"
+        )
+        _failed_file = (
+            os.path.join(save_failed_to, f"{self.selection.selection_id}_decode_failed.csv")
+            if save_failed_to is not None
+            else None
+        )
+        fail_csv_file = open(_failed_file, "w") if _failed_file is not None else None
+
+        # write header to the failed reads CSV
+        if fail_csv_file is not None:
+            fail_csv_file.write("read_id,sequence,quality,reason_failed,lib_call\n")
+
+        # look through all sequences in the selection
+        for i, seq_record in enumerate(
+            tqdm(
+                self.selection.get_sequence_reader(),
+                desc=f"Running Decoding for selection {self.selection.selection_id}",
+                disable=not use_tqdm,
             )
-            _failed_file = (
-                os.path.join(save_failed_to, f"{selection.selection_id}_decode_failed.csv")
-                if save_failed_to is not None
-                else None
-            )
-            fail_csv_file = open(_failed_file, "w") if _failed_file is not None else None
+        ):
+            self.decoder.decode_statistics.num_seqs_read += 1
 
-            # write header to the failed reads CSV
-            if fail_csv_file is not None:
-                fail_csv_file.write("read_id,sequence,quality,reason_failed,lib_call\n")
+            # decode the read
+            decoded_barcode = self.decoder.decode_read(seq_record)
 
-            # look through all sequences in the selection
-            for i, seq_record in enumerate(
-                tqdm(
-                    selection.get_sequence_reader(),
-                    desc=f"Running Decoding for selection {selection.selection_id}",
-                    disable=not use_tqdm,
-                )
-            ):
-                selection_statistics.num_seqs_read += 1
-
-                # decode the read
-                decoded_barcode = selection_decoder.decode_read(seq_record)
-
-                # skip failed reads
-                if isinstance(decoded_barcode, DecodedBarcode):
-                    selection_statistics.num_seqs_decoded_per_lib[
+            # skip failed reads
+            if isinstance(decoded_barcode, DecodedBarcode):
+                self.decoder.decode_statistics.num_seqs_decoded_per_lib[
+                    decoded_barcode.library.library_id
+                ] += 1
+                if self.degen.count_barcode(decoded_barcode):
+                    # only up the degen count if not a degenerate read
+                    self.decoder.decode_statistics.num_seqs_degen_per_lib[
                         decoded_barcode.library.library_id
                     ] += 1
-                    if selection_degen_counter.count_barcode(decoded_barcode):
-                        # only up the degen count if not a degenerate read
-                        selection_statistics.num_seqs_degen_per_lib[
-                            decoded_barcode.library.library_id
-                        ] += 1
-                elif fail_csv_file is not None:
-                    # if we are saving failed reads, save the read
-                    fail_csv_file.write(
-                        f"{seq_record.id},"
-                        f"{seq_record.sequence},"
-                        f"{seq_record.qualities},"
-                        f"{decoded_barcode.__class__.__name__}\n"
-                    )
-
-                if ((i + 1) % 1000) == 0:
-                    self.logger.debug(
-                        f"Decoded {i+1} reads for selection {selection.selection_id}"
-                    )
-
-            if fail_csv_file is not None:
-                fail_csv_file.close()
-                self.logger.debug(
-                    f"Saved failed reads to {save_failed_to} "
-                    f"for selection {selection.selection_id}"
+            elif fail_csv_file is not None:
+                # if we are saving failed reads, save the read
+                fail_csv_file.write(
+                    f"{seq_record.id},"
+                    f"{seq_record.sequence},"
+                    f"{seq_record.qualities},"
+                    f"{decoded_barcode.__class__.__name__}\n"
                 )
 
-            self.selection_info.append((selection, selection_statistics, selection_degen_counter))
-            self.logger.info(f"Completed decoding for selection: {selection.selection_id}")
+            if ((i + 1) % 1000) == 0:
+                self.logger.debug(
+                    f"Decoded {i+1} reads for selection {self.selection.selection_id}"
+                )
+
+        if fail_csv_file is not None:
+            fail_csv_file.close()
+            self.logger.debug(
+                f"Saved failed reads to {save_failed_to} "
+                f"for selection {self.selection.selection_id}"
+            )
+
+        self.logger.info(f"Completed decoding for selection: {self.selection.selection_id}")
+
+    def to_file(self, out_path: str | PathLike):
+        """
+        Write decode runner config to a human-readable file
+
+        Parameters
+        ----------
+        out_path: str or PathLike
+            path to save experiment to
+        """
+        data = {
+            "selection_id": self.selection.selection_id,
+            "target_id": self.selection.selection_condition.target_id,
+            "selection_condition": self.selection.selection_condition.selection_condition,
+            "additional_info": self.selection.selection_condition.additional_info
+            if self.selection.selection_condition.additional_info
+            else "NA",
+            "data_ran": self.selection.get_run_date_as_str(),
+            "sequence_files": self.selection.sequence_files,
+            "libraries": [lib.loaded_from for lib in self.selection.library_pool.libraries],
+            "decode_settings": self.decode_settings.__dict__,
+        }
+        yaml.safe_dump(data, open(out_path, "w"))
+
+    @classmethod
+    def from_file(
+        cls, file_path: str | PathLike, debug: bool = False, disable_logging: bool = False
+    ) -> "DecodingRunner":
+        """
+        Load the experiment from a human-readable file
+
+        Parameters
+        ----------
+        file_path: str or PathLike
+            path to load experiment from
+        debug: bool, default = False
+            if true, will enable debug logging
+        disable_logging: bool, default = False
+            if true, will disable logging
+            this is useful for running the experiment without logging
+            or when running in a script where logging is not needed
+
+        Returns
+        -------
+        DecodingExperiment
+        """
+        data = yaml.safe_load(open(file_path, "r"))
+
+        try:
+            _libraries: list[str] = data["libraries"]
+        except KeyError as e:
+            raise DecodingRunParsingError(
+                f"{file_path} decoding run config file does not contain a 'libraries' section"
+            ) from e
+
+        _library_pool = DELibraryPool([DELibrary.load(lib_path) for lib_path in _libraries])
+
+        _selection_id = data.get("selection_id", None)
+        _target_id = data.get("target_id", None)
+        _selection_condition = data.get("selection_condition", None)
+        _additional_info = data.get("additional_info", None)
+        _date_ran = data.get("data_ran", None)
+
+        # parse date ran if given
+        _date_ran_timestamp: datetime.datetime | None
+        try:
+            _date_ran_timestamp = datetime.datetime.fromisoformat(_date_ran) if _date_ran else None
+        except ValueError:
+            _date_ran_timestamp = None
+
+        _seq_files = data.get("sequence_files", [])
+        if len(_seq_files) == 0:
+            raise DecodingRunParsingError("Decoding run config missing sequence files;")
+
+        # make selection object
+        _selection = SequencedSelection(
+            library_pool=_library_pool,
+            sequence_files=_seq_files,
+            date_ran=_date_ran_timestamp,
+            target_id=_target_id,
+            selection_condition=_selection_condition,
+            selection_id=_selection_id,
+            additional_info=_additional_info,
+        )
+
+        _decode_settings: dict[str, Any] | None = data.get("decode_settings", None)
+        if _decode_settings is None:
+            _decode_setting_obj = DecodingSettings()
+        else:
+            try:
+                _decode_setting_obj = DecodingSettings(**_decode_settings)
+            except TypeError as e:
+                _unknown_arg = e.args[0].split()[-1]
+                raise DecodingRunParsingError(
+                    f"unrecognized decoding settings: {_unknown_arg}"
+                ) from e
+
+        return cls(
+            selection=_selection,
+            decode_settings=_decode_setting_obj,
+            disable_logging=disable_logging,
+            debug=debug,
+        )
 
     def write_decode_report(self, out_dir: str | os.PathLike, prefix: str = ""):
         """
@@ -207,17 +445,16 @@ class DecodingExperimentRunner:
             prefix for output files
         """
         os.makedirs(out_dir, exist_ok=True)
-        for selection, selection_stats, _ in self.selection_info:
-            _filename = (
-                f"{prefix}_{selection.selection_id}_decode_report.html"
-                if prefix
-                else f"{selection.selection_id}_decode_report.html"
-            )
-            _out_path = os.path.join(out_dir, _filename)
-            build_decoding_report(self.experiment, selection, selection_stats, _out_path)
-            self.logger.debug(
-                f"Wrote decode report for selection " f"{selection.selection_id} to {_out_path}"
-            )
+        _filename = (
+            f"{prefix}_{self.selection.selection_id}_decode_report.html"
+            if prefix
+            else f"{self.selection.selection_id}_decode_report.html"
+        )
+        _out_path = os.path.join(out_dir, _filename)
+        build_decoding_report(self.selection, self.decoder.decode_statistics, _out_path)
+        self.logger.debug(
+            f"Wrote decode report for selection " f"{self.selection.selection_id} to {_out_path}"
+        )
 
     def write_decode_statistics(self, out_dir: str | os.PathLike, prefix: str = ""):
         """
@@ -237,18 +474,17 @@ class DecodingExperimentRunner:
             prefix for output files
         """
         os.makedirs(out_dir, exist_ok=True)
-        for selection, selection_stats, _ in self.selection_info:
-            _filename = (
-                f"{prefix}_{selection.selection_id}_decode_statistics.json"
-                if prefix
-                else f"{selection.selection_id}_decode_statistics.json"
-            )
-            _out_path = os.path.join(out_dir, _filename)
-            selection_stats.to_file(_out_path)
-            self.logger.debug(
-                f"Wrote decode statistics for selection "
-                f"{selection.selection_id} to {_out_path}"
-            )
+        _filename = (
+            f"{prefix}_{self.selection.selection_id}_decode_statistics.json"
+            if prefix
+            else f"{self.selection.selection_id}_decode_statistics.json"
+        )
+        _out_path = os.path.join(out_dir, _filename)
+        self.decoder.decode_statistics.to_file(_out_path)
+        self.logger.debug(
+            f"Wrote decode statistics for selection "
+            f"{self.selection.selection_id} to {_out_path}"
+        )
 
     def write_decode_results(self, out_dir: str | os.PathLike, prefix: str = ""):
         """
@@ -268,14 +504,13 @@ class DecodingExperimentRunner:
             prefix for output files
         """
         os.makedirs(out_dir, exist_ok=True)
-        for selection, _, selection_degen in self.selection_info:
-            _filename = (
-                f"{prefix}_{selection.selection_id}_decode_results.csv"
-                if prefix
-                else f"{selection.selection_id}_decode_results.csv"
-            )
-            _out_path = os.path.join(out_dir, _filename)
-            selection_degen.to_file(_out_path)
-            self.logger.debug(
-                f"Wrote decode results for selection " f"{selection.selection_id} to {_out_path}"
-            )
+        _filename = (
+            f"{prefix}_{self.selection.selection_id}_decode_results.csv"
+            if prefix
+            else f"{self.selection.selection_id}_decode_results.csv"
+        )
+        _out_path = os.path.join(out_dir, _filename)
+        self.degen.to_file(_out_path)
+        self.logger.debug(
+            f"Wrote decode results for selection " f"{self.selection.selection_id} to {_out_path}"
+        )

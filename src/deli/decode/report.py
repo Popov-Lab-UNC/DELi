@@ -10,7 +10,6 @@ import plotly.graph_objects as go
 from deli.dels import SequencedSelection
 
 from .decoder import DecodeStatistics
-from .experiment import DecodingExperiment
 
 
 def _generate_calling_pie_chart(
@@ -167,7 +166,6 @@ def _generate_lib_degen_pie_chart(decode_stats: DecodeStatistics):
 
 
 def build_decoding_report(
-    experiment: DecodingExperiment,
     selection: SequencedSelection,
     stats: DecodeStatistics,
     out_path: str | os.PathLike = "./decode_report.html",
@@ -181,8 +179,6 @@ def build_decoding_report(
 
     Parameters
     ----------
-    experiment: DecodingExperiment
-        the decoding experiment to build the report for
     selection: SequencedSelection
         the selection to build the report for
     stats: DecodeStatistics
@@ -194,30 +190,35 @@ def build_decoding_report(
     _seq_count_data: dict = {
         **{
             "Total": (
-                "{:,}".format(experiment.library_pool.pool_size),
+                "{:,}".format(selection.library_pool.pool_size),
                 "{:,}".format(stats.num_seqs_decoded),
                 "{:,}".format(stats.num_seqs_degen),
             )
         },
         **{
-            lib: (
+            lib.library_id: (
                 "{:,}".format(lib.library_size),
                 "{:,}".format(stats.num_seqs_decoded_per_lib.get(lib.library_id, 0)),
                 "{:,}".format(stats.num_seqs_degen_per_lib.get(lib.library_id, 0)),
             )
-            for lib in experiment.library_pool.libraries
+            for lib in selection.library_pool.libraries
         },
     }
 
     jinja_data = {
         "timestamp": datetime.now().strftime("%b %d, %Y %H:%M"),
-        "experiment": experiment.experiment_id,
         "selection": selection.selection_id,
         "run_date": selection.get_run_date_as_str(),
-        "target": selection.selection_condition.target_id,
-        "selection_cond": selection.selection_condition.selection_condition,
-        "additional_info": selection.selection_condition.additional_info,
-        "libs": ", ".join(sorted([lib.library_id for lib in experiment.library_pool.libraries])),
+        "target": selection.selection_condition.target_id
+        if selection.selection_condition.target_id
+        else "NA",
+        "selection_cond": selection.selection_condition.selection_condition
+        if selection.selection_condition.selection_condition
+        else "NA",
+        "additional_info": selection.selection_condition.additional_info
+        if selection.selection_condition.additional_info
+        else "NA",
+        "libs": ", ".join(sorted([lib.library_id for lib in selection.library_pool.libraries])),
         "num_reads": stats.num_seqs_read,
         "num_decoded": stats.num_seqs_decoded,
         "num_degen": stats.num_seqs_degen,
