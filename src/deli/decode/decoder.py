@@ -55,6 +55,7 @@ class DecodeStatistics:
     def __init__(self):
         """Initialize a DecodeStatistics object"""
         self.num_seqs_read: int = 0
+        self.seq_lengths: defaultdict[int, int] = defaultdict(int)
         self.num_seqs_decoded_per_lib: defaultdict[str, int] = defaultdict(int)
         self.num_seqs_degen_per_lib: defaultdict[str, int] = defaultdict(int)
 
@@ -73,6 +74,16 @@ class DecodeStatistics:
     def __repr__(self) -> str:
         """Represent the statistic object as string ('; ' seperated)"""
         return "; ".join([f"{key}={val}\n" for key, val in self.__dict__.items()])
+
+    @property
+    def num_seqs_decoded(self) -> int:
+        """Number of sequences decoded successfully in total"""
+        return sum(self.num_seqs_decoded_per_lib.values())
+
+    @property
+    def num_seqs_degen(self) -> int:
+        """Number of degen sequences observed in total"""
+        return sum(self.num_seqs_degen_per_lib.values())
 
     def to_file(self, out_path: str | os.PathLike):
         """
@@ -405,7 +416,6 @@ class DELPoolDecoder:
         Given a sequence read, decode its barcode
 
         """
-        self.decode_statistics.num_seqs_read += 1
         # check lengths
         if len(sequence) > self._max_read_length:
             self.decode_statistics.num_failed_too_long += 1
@@ -414,6 +424,7 @@ class DELPoolDecoder:
             self.decode_statistics.num_failed_too_short += 1
             return ReadTooShort()
 
+        self.decode_statistics.seq_lengths[len(sequence)] += 1
         library_call = self.library_caller.call_library(sequence)
         if isinstance(library_call, ValidLibraryCall):
             return self.library_decoders[library_call.library.library_id].call_barcode(

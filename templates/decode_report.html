@@ -80,8 +80,11 @@
 <body>
     <div class="container">
         <h1>DELi Decode Report</h1>
-        <h4>Report generated on {{ timestamp }} for experiment {{ experiment }}</h4>
-        <p>Searched for indexes: {{ idx }}</p>
+        <h4>Report generated on {{ timestamp }} for experiment {{ experiment }} and selection {{ selection }}</h4>
+        <p>Selection run on: {{ run_date }}</p>
+        <p>Target: {{ target }}</p>
+        <p>Selection condition: {{ selection_cond }}</p>
+        <p>Additional selection info: {{ additional_info }}</p>
         <p>Searched for libraries: {{ libs }}</p>
         <div class="chart-container">
             <h3>Sequence Lengths</h3>
@@ -90,16 +93,39 @@
         </div>
         <div class="chart-container">
             <h3>Barcode Calling</h3>
-            {{ pie }}
+            {{ decoding_pie }}
+        </div>
+        <div class="chart-container">
+            <h3>Sequence Count Metadata</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Library</th>
+                        <th>Total Size</th>
+                        <th>Num Decoded Sequences</th>
+                        <th>Num UMI Corrected Sequences</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for key, val in seq_counts.items() %}
+                    <tr>
+                        <td>{{ key }}</td>
+                        <td>{{ val[0] }}</td>
+                        <td>{{ val[1] }}</td>
+                        <td>{{ val[2] }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
         <div class="chart-container-double">
             <div class="chart-container-double-sub">
-                <h3>Called index</h3>
-                {{ indexpie }}
+                <h3>Decoded Library Counts</h3>
+                {{ decode_pie }}
             </div>
             <div class="chart-container-double-sub">
-                <h3>Called libs</h3>
-                {{ libpie }}
+                <h3>UMI Corrected Library Counts</h3>
+                {{ degen_pie }}
             </div>
         </div>
     </div>

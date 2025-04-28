@@ -7,7 +7,7 @@ from .align import (
     SemiGlobalAligner,
     SemiGlobalAlignment,
 )
-from .io import SequenceDirectoryReader, SequenceReader
+from .io import SequenceDirectoryReader, SequenceGlobReader, SequenceReader
 
 
 __all__ = [
@@ -18,4 +18,5 @@ __all__ = [
     "HybridSemiGlobalAlignment",
     "SequenceReader",
     "SequenceDirectoryReader",
+    "SequenceGlobReader",
 ]

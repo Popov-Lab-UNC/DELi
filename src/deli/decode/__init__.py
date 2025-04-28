@@ -2,7 +2,8 @@
 
 from .decoder import DecodedBarcode, DecodeStatistics, FailedDecode
 from .degen import DELibraryPoolCounter, DELibraryPoolIdCounter, DELibraryPoolIdUmiCounter
-from .runner import DecodingExperiment, DecodingExperimentRunner, DecodingSettings
+from .experiment import DecodingExperiment, DecodingSettings
+from .runner import DecodingExperimentRunner
 
 
 __all__ = [
