@@ -395,6 +395,20 @@ class BarcodeSchema:
         end = max(required_section_indexes)
         self.min_length = sum([len(section) for section in self.barcode_sections[start : end + 1]])
 
+    def __eq__(self, other):
+        """Return `True` if two barcode schemas are the same"""
+        if isinstance(other, BarcodeSchema):
+            if len(self.barcode_sections) != len(other.barcode_sections):
+                return False
+            for section in self.barcode_sections:
+                if section not in other.barcode_sections:
+                    return False
+            for section in other.barcode_sections:
+                if section not in self.barcode_sections:
+                    return False
+            return True
+        return False
+
     def __len__(self) -> int:
         """Get the length of all sections of the barcode schema"""
         return sum([len(section) for section in self.barcode_sections])
