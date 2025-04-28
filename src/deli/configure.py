@@ -118,7 +118,7 @@ def _validate_deli_data_dir(deli_data_dir_: Union[str, Path]) -> bool:
     if not os.path.exists(deli_data_dir_):
         raise DeliDataDirError(
             f"DELi data directory '{deli_data_dir_}' does not exist; "
-            f"create it using 'deli create_data_dir {deli_data_dir_}'"
+            f"create it using 'deli data init {deli_data_dir_}'"
         )
 
     sub_dirs = os.listdir(deli_data_dir_)
@@ -127,7 +127,7 @@ def _validate_deli_data_dir(deli_data_dir_: Union[str, Path]) -> bool:
         raise DeliDataDirError(
             f"DELi data directory '{deli_data_dir_}' is invalid; "
             f"missing sub-directories {list(missing_sub_dirs)}"
-            f"use 'deli create_data_dir {deli_data_dir_} --fix'"
+            f"use 'deli data fix {deli_data_dir_}'"
         )
     return True
 
@@ -180,6 +180,38 @@ def init_deli_data_directory(
                 with open(extra_parity_file_path, "w") as f:
                     f.write(f"hamming_order: {','.join(extra_hamming_order)}\n")
                     f.write(f"custom_order: {','.join(extra_hamming_order)}\n")
+
+
+def fix_deli_data_directory(path: Union[str, os.PathLike]):
+    """
+    Fix a Deli Data Directory by creating any missing subfolders
+
+    Parameters
+    ----------
+    path: Union[str, os.PathLike]
+        path to the deli data dir to fix
+    """
+    _path = Path(path)
+    if not os.path.exists(_path):
+        raise DeliDataDirError(
+            f"DELi data directory '{_path}' does not exist;"
+            f" create it using 'deli data init {path}'"
+        )
+
+    if not os.path.exists(_path / "hamming"):
+        init_deli_data_directory(
+            path=_path,
+            fail_on_exist=False,
+            create_default_hamming_files=True,
+            use_extra_parity=True,
+        )
+    else:
+        init_deli_data_directory(
+            path=_path,
+            fail_on_exist=False,
+            create_default_hamming_files=False,
+            use_extra_parity=False,
+        )
 
 
 def init_deli_config_dir(
