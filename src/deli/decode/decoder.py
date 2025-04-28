@@ -5,7 +5,7 @@ import json
 import os
 import warnings
 from collections import defaultdict
-from typing import Literal, Self, no_type_check
+from typing import Literal, no_type_check
 
 import numpy as np
 from Bio.Align import PairwiseAligner
@@ -142,7 +142,7 @@ class DecodeStatistics:
         json.dump(self.__dict__, open(out_path, "w"))
 
     @classmethod
-    def from_file(cls, path: str | os.PathLike) -> Self:
+    def from_file(cls, path: str | os.PathLike) -> "DecodeStatistics":
         """
         Read in a Statistics Object from a file
 
@@ -155,9 +155,26 @@ class DecodeStatistics:
 
         Returns
         -------
-        Self
+        DecodeStatistics
         """
-        return cls(**json.load(open(path, "r")))
+        result = cls()
+        data = json.load(open(path, "r"))
+
+        result.num_seqs_read = data.get("num_seqs_read", 0)
+        result.seq_lengths = defaultdict(int, data.get("seq_lengths", {}))
+        result.num_seqs_decoded_per_lib = defaultdict(
+            int, data.get("num_seqs_decoded_per_lib", {})
+        )
+        result.num_seqs_degen_per_lib = defaultdict(int, data.get("num_seqs_degen_per_lib", {}))
+        result.num_failed_too_short = data.get("num_failed_too_short", 0)
+        result.num_failed_too_long = data.get("num_failed_too_long", 0)
+        result.num_failed_library_call = data.get("num_failed_library_call", 0)
+        result.num_failed_library_match_too_short = data.get(
+            "num_failed_library_match_too_short", 0
+        )
+        result.num_failed_building_block_call = data.get("num_failed_building_block_call", 0)
+        result.num_failed_alignment = data.get("num_failed_alignment", 0)
+        return result
 
 
 class DecodedBarcode:
