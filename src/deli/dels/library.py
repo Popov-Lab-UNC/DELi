@@ -116,12 +116,6 @@ class DELibrary(DeliDataLoadable):
         """Represent the library as its name"""
         return self.library_id
 
-    def __eq__(self, other):
-        """Check if two libraries are equal by their library_id"""
-        if isinstance(other, DELibrary):
-            return self.library_id == other.library_id
-        return False
-
     @classmethod
     @accept_deli_data_name("libraries", "json")
     def load(cls, path: str) -> Self:
@@ -324,12 +318,6 @@ class DELibraryPool:
     def __iter__(self) -> Iterator[DELibrary]:
         """Iterate through all libraries in the library pool"""
         return iter(self.libraries)
-
-    def __eq__(self, other):
-        """Check if two library pools are equal by their libraries"""
-        if isinstance(other, DELibraryPool):
-            return set(self.libraries) == set(other.libraries)
-        return False
 
     def get_library(self, library_id: str) -> DELibrary:
         """

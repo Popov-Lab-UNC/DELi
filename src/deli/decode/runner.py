@@ -431,7 +431,7 @@ class DecodingRunner:
                 f"either {decode_file} should have a 'sequence_files' section OR "
                 f"`fastq_files` is a non-None list of files; found neither"
             )
-        elif (len(_fastq_files) == 0) and (not ignore_decode_seqs):
+        elif (len(_fastq_files) == 0) and ignore_decode_seqs:
             raise DecodingRunParsingError(
                 "``ignore_decode_seqs`` is True, but no `fastq_files` "
                 "provided; pass `fastq_files` OR set `ignore_decode_seqs` to True"
