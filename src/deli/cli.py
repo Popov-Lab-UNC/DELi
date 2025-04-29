@@ -154,7 +154,7 @@ def decode():
     "-o",
     type=click.Path(),
     required=False,
-    default="./deli_decoding_results",
+    default="./",
     help="Output directory",
 )
 @click.option(
@@ -166,6 +166,7 @@ def decode():
 @click.option("--tqdm", "-t", is_flag=True, help="Show tqdm progress")
 @click.option("--debug", is_flag=True, help="Enable debug mode")
 @click.option("--disable-logging", is_flag=True, help="Turn off DELi logging")
+@click.option("--skip-report", is_flag=True, help="Skip generating the decoding report at the end")
 @click.option(
     "--deli-data-dir",
     type=click.Path(),
@@ -173,7 +174,9 @@ def decode():
     default=None,
     help="Path to DELi data directory to read libraries from",
 )
-def run_decode(decode_, out_dir, prefix, save_failed, tqdm, debug, disable_logging, deli_data_dir):
+def run_decode(
+    decode_, out_dir, prefix, save_failed, tqdm, debug, disable_logging, skip_report, deli_data_dir
+):
     """
     Run decoding on a given fastq file of DEL sequences
 
@@ -187,9 +190,10 @@ def run_decode(decode_, out_dir, prefix, save_failed, tqdm, debug, disable_loggi
     runner.run(save_failed_to=save_failed_to, use_tqdm=tqdm)
 
     runner.logger.info(f"Saving outputs to {out_dir}")
-    runner.write_decode_results(out_dir=out_dir, prefix=prefix)
+    runner.write_cube(out_dir=out_dir, prefix=prefix)
     runner.write_decode_statistics(out_dir=out_dir, prefix=prefix)
-    runner.write_decode_report(out_dir=out_dir, prefix=prefix)
+    if not skip_report:
+        runner.write_decode_report(out_dir=out_dir, prefix=prefix)
 
 
 @decode.group()
@@ -202,10 +206,10 @@ def statistics():
 @click.argument("statistics", type=click.Path(exists=True), required=True, nargs=-1)
 @click.option(
     "-o",
-    "--out_path",
+    "--out-path",
     type=click.STRING,
     required=False,
-    default="merged_decoding_statistics.yaml",
+    default="merged_decoding_statistics.json",
     help="location to save merged statistics file",
 )
 def merge_statistics_file(statistics_, out_path):
@@ -230,7 +234,7 @@ def report():
 @click.argument("statistics", nargs=-1, type=click.Path(exists=True, dir_okay=False))
 @click.option(
     "-o",
-    "--out_path",
+    "--out-path",
     type=click.STRING,
     required=False,
     default="merged_decoding_report.html",
@@ -266,7 +270,7 @@ def merge(decode_, statistics_, out_path):
 @click.argument("statistic", type=click.Path(exists=True, dir_okay=False), required=True)
 @click.option(
     "-o",
-    "--out_path",
+    "--out-path",
     type=click.STRING,
     required=False,
     default="decoding_report.html",
