@@ -1,6 +1,0 @@
-id,bases,smiles
-C001,CGAGC,O=Cc1ccc2cccnc2c1
-C002,GGCGA,O=Cc1ccc(F)cc1
-C003,TTCAT,COc1ccnc(C=O)c1
-C004,GGAAT,O=Cc1ccc(O)cc1
-C005,ATTCA,O=Cc1ccc2[nH]ccc2c1

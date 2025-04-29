@@ -1,0 +1,41 @@
+{
+    "barcode_schema": {
+        "library": {
+            "tag":  "CCTTGGCACCCGAGAATTCCAGCCAGACC",
+            "overhang": "AG"
+        },
+        "bb1": {
+            "tag": "NNNNN",
+            "overhang": "GT"
+        },
+        "bb2": {
+            "tag": "NNNNN",
+            "overhang": "GA"
+        },
+        "bb3": {
+            "tag": "NNNNN",
+            "overhang": "TT"
+        },
+        "pre-umi": {
+            "tag": "AATGCCAGTACG"
+        },
+        "umi": {
+            "tag": "NNNNNNNNNNN"
+        }
+    },
+    "bb_sets": [
+        {
+            "cycle": 1,
+            "bb_set_name": "DEL004_BBA"
+        },
+        {
+            "cycle": 2,
+            "bb_set_name": "DEL004_BBB"
+        },
+        {
+            "cycle": 3,
+            "bb_set_name": "DEL004_BBC"
+        }
+    ],
+    "dna_barcode_on": "DEL004_BBA"
+}

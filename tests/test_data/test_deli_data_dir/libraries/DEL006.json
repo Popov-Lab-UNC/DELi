@@ -1,18 +1,47 @@
 {
-    "id": "DEL006",
-    "library_tag": "AGCTAGCT",
-    "barcode_schema": "Make6",
+    "barcode_schema": {
+        "library": {
+            "tag":  "CCTTGGCACCCGAGAATTCCAATCGCTGA",
+            "overhang": "CTA"
+        },
+        "bb1": {
+            "tag": "NNNNNNNN",
+            "overhang": "ACG"
+        },
+        "bb2": {
+            "tag": "NNNNNNNN",
+            "overhang": "GAT"
+        },
+        "bb3": {
+            "tag": "NNNNNNNN",
+            "overhang": "TGC"
+        },
+        "pre-umi": {
+            "tag": "AATGCCAGTACG"
+        },
+        "umi": {
+            "tag": "NNNNNNNNNNN"
+        }
+    },
     "bb_sets": [
-        "DEL006_BBA",
-        "DEL006_BBB",
-        "DEL006_BBC"
+        {
+            "cycle": 1,
+            "bb_set_name": "DEL006_BBA"
+        },
+        {
+            "cycle": 2,
+            "bb_set_name": "DEL006_BBB"
+        },
+        {
+            "cycle": 3,
+            "bb_set_name": "DEL006_BBC"
+        }
     ],
-    "scaffold": "C1CC(Cl)CCC1",
     "reactions": [
         {
             "step": 1,
-            "rxn_smarts": "[#6:101]-C(=O)-O.[#7]-[*:102]>>[*:102]-N-C(=O)-[#6:101]",
-            "reactants": ["DEL006_BBA", "N[*]"]
+            "rxn_smarts": "[#6:1]-C(=O)-O.[15N:2]>>[15N:2]-C(=O)-[#6:1]",
+            "reactants": ["DEL006_BBA", "[15N]"]
         },
         {
             "step": 2,
@@ -35,5 +64,5 @@
             "reactants": ["product_4", "DEL006_BBC"]
         }
     ],
-    "dna_barcode_on": "scaffold"
+    "dna_barcode_on": "DEL006_BBA"
 }
