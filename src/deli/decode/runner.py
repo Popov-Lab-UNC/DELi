@@ -348,15 +348,36 @@ class DecodingRunner:
 
     @classmethod
     def from_file(
-        cls, file_path: str | PathLike, debug: bool = False, disable_logging: bool = False
+        cls,
+        decode_file: str | PathLike,
+        fastq_files: list[str | PathLike] | None = None,
+        debug: bool = False,
+        disable_logging: bool = False,
     ) -> "DecodingRunner":
         """
-        Load the experiment from a human-readable file
+        Load the decode run from a human-readable file
+
+        Notes
+        -----
+        This will raise an exception if both `fastq_files` and the "sequence_files" key
+        in the decode file are not provided OR if both are provided.
+        This is to avoid confusion about which files to use for decoding.
+        Only one of these two parameters should be used to provide fastq files for the
+        runner.
+
+        NOTE: it is best practice to add the sequences to the decode file.
+        This way the full settings needed for the run are in a single file.
+        The ability to also pass fastq files is for convenience and mainly
+        meant to support parallelization efforts when splitting fastq files
+        into smaller chunks on the fly.
 
         Parameters
         ----------
-        file_path: str or PathLike
+        decode_file: str or PathLike
             path to load experiment from
+        fastq_files: list[str | PathLike], default = None
+            list of paths to fastq files to decode
+            if `None`, will use the sequence files from the decode file
         debug: bool, default = False
             if true, will enable debug logging
         disable_logging: bool, default = False
@@ -364,19 +385,44 @@ class DecodingRunner:
             this is useful for running the experiment without logging
             or when running in a script where logging is not needed
 
+        Raises
+        ------
+        DecodingRunParsingError
+            raised if both `fastq_files` and the "sequence_files" key in the
+            passed `decode_file` are not provided OR if both are provided.
+
         Returns
         -------
         DecodingExperiment
         """
-        data = yaml.safe_load(open(file_path, "r"))
+        # just to make it list for typing constancy
+        if fastq_files is None:
+            _fastq_files = []
+        else:
+            _fastq_files = fastq_files
 
+        data = yaml.safe_load(open(decode_file, "r"))
+
+        # check this early so we dont waste time loading libraries if format error
+        _seq_files = data.get("sequence_files", [])
+        if (len(_fastq_files) > 0) and (len(_seq_files) > 0):
+            raise DecodingRunParsingError(
+                f"`fastq_files` cannot be provided when "
+                f"{decode_file} has a 'sequence_files' section;"
+            )
+        if (len(_fastq_files) == 0) and (len(_seq_files) == 0):
+            raise DecodingRunParsingError(
+                f"either {decode_file} should have a 'sequence_files' section OR "
+                f"`fastq_files` is a non-None list of files; found neither"
+            )
+
+        # load in the libraries
         try:
             _libraries: list[str] = data["libraries"]
         except KeyError as e:
             raise DecodingRunParsingError(
-                f"{file_path} decoding run config file does not contain a 'libraries' section"
+                f"{decode_file} decoding run config file does not contain a 'libraries' section"
             ) from e
-
         _library_pool = DELibraryPool([DELibrary.load(lib_path) for lib_path in _libraries])
 
         _selection_id = data.get("selection_id", None)
@@ -392,10 +438,6 @@ class DecodingRunner:
         except ValueError:
             _date_ran_timestamp = None
 
-        _seq_files = data.get("sequence_files", [])
-        if len(_seq_files) == 0:
-            raise DecodingRunParsingError("Decoding run config missing sequence files;")
-
         # make selection object
         _selection = SequencedSelection(
             library_pool=_library_pool,
@@ -407,6 +449,7 @@ class DecodingRunner:
             additional_info=_additional_info,
         )
 
+        # if decode setting provided, load otherwise use defaults
         _decode_settings: dict[str, Any] | None = data.get("decode_settings", None)
         if _decode_settings is None:
             _decode_setting_obj = DecodingSettings()
@@ -426,7 +469,7 @@ class DecodingRunner:
             debug=debug,
         )
 
-    def write_decode_report(self, out_dir: str | os.PathLike, prefix: str = ""):
+    def write_decode_report(self, out_dir: str | os.PathLike, prefix: str | None = None):
         """
         Write the decoding report for this run
 
@@ -441,22 +484,24 @@ class DecodingRunner:
         out_dir: str | PathLike
             path to directory to save results to
             will create the directory if it does not exist
-        prefix: str, default = ""
-            prefix for output files
+        prefix: str, default = None
+            prefix for output files,
+            if None will default to the selection ID
         """
+        if prefix is None:
+            _prefix = self.selection.selection_id
+        else:
+            _prefix = prefix
+
         os.makedirs(out_dir, exist_ok=True)
-        _filename = (
-            f"{prefix}_{self.selection.selection_id}_decode_report.html"
-            if prefix
-            else f"{self.selection.selection_id}_decode_report.html"
-        )
+        _filename = f"{prefix}_decode_report.html"
         _out_path = os.path.join(out_dir, _filename)
         build_decoding_report(self.selection, self.decoder.decode_statistics, _out_path)
         self.logger.debug(
             f"Wrote decode report for selection " f"{self.selection.selection_id} to {_out_path}"
         )
 
-    def write_decode_statistics(self, out_dir: str | os.PathLike, prefix: str = ""):
+    def write_decode_statistics(self, out_dir: str | os.PathLike, prefix: str | None = None):
         """
         Write the decoding statistics for this run
 
@@ -470,15 +515,17 @@ class DecodingRunner:
         out_dir: str | PathLike
             path to directory to save results to
             will create the directory if it does not exist
-        prefix: str, default = ""
-            prefix for output files
+        prefix: str, default = None
+            prefix for output files,
+            if None will default to the selection ID
         """
+        if prefix is None:
+            _prefix = self.selection.selection_id
+        else:
+            _prefix = prefix
+
         os.makedirs(out_dir, exist_ok=True)
-        _filename = (
-            f"{prefix}_{self.selection.selection_id}_decode_statistics.json"
-            if prefix
-            else f"{self.selection.selection_id}_decode_statistics.json"
-        )
+        _filename = f"{prefix}_decode_statistics.json"
         _out_path = os.path.join(out_dir, _filename)
         self.decoder.decode_statistics.to_file(_out_path)
         self.logger.debug(
@@ -486,29 +533,31 @@ class DecodingRunner:
             f"{self.selection.selection_id} to {_out_path}"
         )
 
-    def write_decode_results(self, out_dir: str | os.PathLike, prefix: str = ""):
+    def write_cube(self, out_dir: str | os.PathLike, prefix: str | None = None):
         """
-        Write the decoding results for this run
+        Write the decoding results in a cube format for this run
 
         Notes
         -----
         Will write a unique result file for each selection in the experiment.
-        All files will be `csv` and be named "{?prefix}_<selection_id>_decode_results.csv"
+        All files will be `csv` and be named "{?prefix}_<selection_id>_cube.csv"
 
         Parameters
         ----------
         out_dir: str | PathLike
             path to directory to save results to
             will create the directory if it does not exist
-        prefix: str, default = ""
-            prefix for output files
+        prefix: str, default = None
+            prefix for output files,
+            if None will default to the selection ID
         """
+        if prefix is None:
+            _prefix = self.selection.selection_id
+        else:
+            _prefix = prefix
+
         os.makedirs(out_dir, exist_ok=True)
-        _filename = (
-            f"{prefix}_{self.selection.selection_id}_decode_results.csv"
-            if prefix
-            else f"{self.selection.selection_id}_decode_results.csv"
-        )
+        _filename = f"{prefix}_cube.csv"
         _out_path = os.path.join(out_dir, _filename)
         self.degen.to_file(_out_path)
         self.logger.debug(
