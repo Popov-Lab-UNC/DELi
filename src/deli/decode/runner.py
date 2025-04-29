@@ -351,6 +351,7 @@ class DecodingRunner:
         cls,
         decode_file: str | PathLike,
         fastq_files: list[str | PathLike] | None = None,
+        ignore_decode_seqs: bool = False,
         debug: bool = False,
         disable_logging: bool = False,
     ) -> "DecodingRunner":
@@ -365,6 +366,10 @@ class DecodingRunner:
         Only one of these two parameters should be used to provide fastq files for the
         runner.
 
+        The exception to this is when 'ignore_decode_seqs' is set to `True`.
+        In this case, the sequence files used will always be the one provided
+        to the function and the decode file sequences will be ignored.
+
         NOTE: it is best practice to add the sequences to the decode file.
         This way the full settings needed for the run are in a single file.
         The ability to also pass fastq files is for convenience and mainly
@@ -378,6 +383,9 @@ class DecodingRunner:
         fastq_files: list[str | PathLike], default = None
             list of paths to fastq files to decode
             if `None`, will use the sequence files from the decode file
+        ignore_decode_seqs: bool, default = False
+            if true, will ignore the sequence files in the decode file
+            in this case, the `fastq_files` parameter must be provided
         debug: bool, default = False
             if true, will enable debug logging
         disable_logging: bool, default = False
@@ -389,13 +397,15 @@ class DecodingRunner:
         ------
         DecodingRunParsingError
             raised if both `fastq_files` and the "sequence_files" key in the
-            passed `decode_file` are not provided OR if both are provided.
+            passed `decode_file` are not provided OR if both are provided and
+            `ignore_decode_seqs` is `False`.
 
         Returns
         -------
         DecodingExperiment
         """
         # just to make it list for typing constancy
+        _fastq_files: list[str | PathLike]
         if fastq_files is None:
             _fastq_files = []
         else:
@@ -403,18 +413,33 @@ class DecodingRunner:
 
         data = yaml.safe_load(open(decode_file, "r"))
 
-        # check this early so we dont waste time loading libraries if format error
-        _seq_files = data.get("sequence_files", [])
-        if (len(_fastq_files) > 0) and (len(_seq_files) > 0):
-            raise DecodingRunParsingError(
-                f"`fastq_files` cannot be provided when "
-                f"{decode_file} has a 'sequence_files' section;"
-            )
-        if (len(_fastq_files) == 0) and (len(_seq_files) == 0):
+        # check this early so we do not waste time loading libraries if format error
+        _seq_files: list[str | PathLike]
+        _decode_seq_files = data.get("sequence_files", [])
+        if (len(_fastq_files) > 0) and (len(_decode_seq_files) > 0):
+            # if we are ignoring the decode seqs, just use the fastq files
+            if ignore_decode_seqs:
+                _seq_files = _fastq_files
+            else:
+                raise DecodingRunParsingError(
+                    f"`fastq_files` cannot be provided when "
+                    f"{decode_file} has a 'sequence_files' section; "
+                    f"did you mean to set `ignore_decode_seqs` to True?"
+                )
+        elif (len(_fastq_files) == 0) and (len(_decode_seq_files) == 0):
             raise DecodingRunParsingError(
                 f"either {decode_file} should have a 'sequence_files' section OR "
                 f"`fastq_files` is a non-None list of files; found neither"
             )
+        elif (len(_fastq_files) == 0) and (not ignore_decode_seqs):
+            raise DecodingRunParsingError(
+                "``ignore_decode_seqs`` is True, but no `fastq_files` "
+                "provided; pass `fastq_files` OR set `ignore_decode_seqs` to True"
+            )
+        elif len(_fastq_files) > 0:
+            _seq_files = _fastq_files
+        else:
+            _seq_files = _decode_seq_files
 
         # load in the libraries
         try:

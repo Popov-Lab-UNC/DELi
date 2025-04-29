@@ -157,6 +157,13 @@ def decode():
     default="./",
     help="Output directory",
 )
+@click.argument("fastq_files", nargs=-1, type=click.Path(exists=True), required=False)
+@click.option(
+    "--ignore-decode-seqs",
+    "-i",
+    is_flag=True,
+    help="Ignore the fastq sequence files in the decode file",
+)
 @click.option(
     "--prefix", "-p", type=click.STRING, required=False, default="", help="Prefix for output files"
 )
@@ -175,17 +182,36 @@ def decode():
     help="Path to DELi data directory to read libraries from",
 )
 def run_decode(
-    decode_, out_dir, prefix, save_failed, tqdm, debug, disable_logging, skip_report, deli_data_dir
+    decode_,
+    fastq_files,
+    ignore_decode_seqs,
+    out_dir,
+    prefix,
+    save_failed,
+    tqdm,
+    debug,
+    disable_logging,
+    skip_report,
+    deli_data_dir,
 ):
     """
     Run decoding on a given fastq file of DEL sequences
 
     DECODE is the path to a YAML file describing the decoding run settings.
+    FASTQ_FILES is a path, list of paths or glob of FASTQ files to decode.
+
+    NOTE: if the DECODE file contains a `selection` field, it will be used to select the
     """
     if deli_data_dir is not None:
         set_deli_data_dir(deli_data_dir)
 
-    runner = DecodingRunner.from_file(decode_, debug=debug, disable_logging=disable_logging)
+    runner = DecodingRunner.from_file(
+        decode_,
+        fastq_files,
+        ignore_decode_seqs=ignore_decode_seqs,
+        debug=debug,
+        disable_logging=disable_logging,
+    )
     save_failed_to = out_dir if save_failed else None
     runner.run(save_failed_to=save_failed_to, use_tqdm=tqdm)
 
