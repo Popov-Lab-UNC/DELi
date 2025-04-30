@@ -66,12 +66,12 @@ class _DeliConfig:
 
     def __init__(self, **kwargs):
         # process deli data director
-        self.deli_data_dir: Path
+        self.deli_data_dir: Path | None
         if kwargs.get("deli_data_dir", None) is None:
-            self.deli_data_dir = Path(os.path.join(os.path.expanduser("~"), ".deli", "deli_data"))
+            self.deli_data_dir = None
         else:
             self.deli_data_dir = Path(os.fspath(os.path.expanduser(kwargs.get("deli_data_dir"))))
-        validate_deli_data_dir(self.deli_data_dir)
+            validate_deli_data_dir(self.deli_data_dir)
 
         self.bb_mask: str = (
             str(kwargs["BB_MASK"]) if kwargs.get("BB_MASK") is not None else BB_MASK_TOKEN_DEFAULT
@@ -81,6 +81,25 @@ class _DeliConfig:
             if (kwargs.get("NUC_2_INT", None) is not None)
             else NUC_2_INT_DEFAULT
         )
+
+    def get_data_dir_path(self) -> Path:
+        """
+        Get the path to the DELi data directory
+
+        Returns
+        -------
+        Path
+            the path to the DELi data directory
+
+        Raises
+        ------
+        RuntimeError
+            if the deli_data_dir is not set
+        """
+        if self.deli_data_dir is None:
+            raise RuntimeError("DELi data directory is not set")
+        else:
+            return self.deli_data_dir
 
     @classmethod
     def load_config(cls, path: Union[str, Path], use_env: bool = False) -> Self:
@@ -328,7 +347,7 @@ def accept_deli_data_name(
         if os.path.exists(path):
             return Path(path)
 
-        _sub_dir_path = DELI_CONFIG.deli_data_dir / sub_dir
+        _sub_dir_path = DELI_CONFIG.get_data_dir_path() / sub_dir
         if not os.path.exists(_sub_dir_path):
             raise DeliDataNotFound(
                 f"cannot find DELi data subdirectory at `{_sub_dir_path}`; "
@@ -336,7 +355,7 @@ def accept_deli_data_name(
             )
 
         _file_name = os.path.basename(path).split(".")[0] + "." + extension
-        file_path = DELI_CONFIG.deli_data_dir / sub_dir / _file_name
+        file_path = DELI_CONFIG.get_data_dir_path() / sub_dir / _file_name
 
         if not os.path.exists(file_path):
             raise DeliDataNotFound(f"cannot find file '{path}.{extension}' in {_sub_dir_path}")

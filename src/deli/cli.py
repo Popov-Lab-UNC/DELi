@@ -148,7 +148,7 @@ def decode():
 
 
 @decode.command(name="run")
-@click.argument("decode", type=click.Path(exists=True), required=True)
+@click.argument("decode-file", type=click.Path(exists=True), required=True)
 @click.option(
     "--out-dir",
     "-o",
@@ -182,7 +182,7 @@ def decode():
     help="Path to DELi data directory to read libraries from",
 )
 def run_decode(
-    decode_,
+    decode_file,
     fastq_files,
     ignore_decode_seqs,
     out_dir,
@@ -206,7 +206,7 @@ def run_decode(
         set_deli_data_dir(deli_data_dir)
 
     runner = DecodingRunner.from_file(
-        decode_,
+        decode_file,
         fastq_files,
         ignore_decode_seqs=ignore_decode_seqs,
         debug=debug,
@@ -229,7 +229,7 @@ def statistics():
 
 
 @statistics.command(name="merge")
-@click.argument("statistics", type=click.Path(exists=True), required=True, nargs=-1)
+@click.argument("statistic-files", type=click.Path(exists=True), required=True, nargs=-1)
 @click.option(
     "-o",
     "--out-path",
@@ -238,13 +238,13 @@ def statistics():
     default="merged_decoding_statistics.json",
     help="location to save merged statistics file",
 )
-def merge_statistics_file(statistics_, out_path):
+def merge_statistics_file(statistic_files, out_path):
     """
     Merge multiple decode statistics files into one
 
     STATISTICS is a list of paths to decode statistics files to merge.
     """
-    loaded_statistics = [DecodeStatistics.from_file(p) for p in statistics_]
+    loaded_statistics = [DecodeStatistics.from_file(p) for p in statistic_files]
     merged_stats = sum(loaded_statistics, DecodeStatistics())
     merged_stats.to_file(out_path)
 
@@ -256,8 +256,8 @@ def report():
 
 
 @report.command("merge")
-@click.argument("decode", type=click.Path(exists=True, dir_okay=False), required=True)
-@click.argument("statistics", nargs=-1, type=click.Path(exists=True, dir_okay=False))
+@click.argument("decode-file", type=click.Path(exists=True, dir_okay=False), required=True)
+@click.argument("statistic-files", nargs=-1, type=click.Path(exists=True, dir_okay=False))
 @click.option(
     "-o",
     "--out-path",
@@ -266,7 +266,7 @@ def report():
     default="merged_decoding_report.html",
     help="location to dave merged report",
 )
-def merge(decode_, statistics_, out_path):
+def merge(decode_file, statistic_files, out_path):
     """
     Given decode settings and set of decode stats, merge into a single report
 
@@ -276,10 +276,10 @@ def merge(decode_, statistics_, out_path):
     DECODE is the path to a YAML file describing the decoding run.
     STATISTICS is a list of paths to decode statistics files to merge.
     """
-    loaded_decode_settings = DecodingRunner.from_file(decode_)
+    loaded_decode_settings = DecodingRunner.from_file(decode_file)
 
     loaded_statistics: list[DecodeStatistics] = [
-        DecodeStatistics.from_file(p) for p in statistics_
+        DecodeStatistics.from_file(p) for p in statistic_files
     ]
     merged_stats = sum(loaded_statistics, DecodeStatistics())
 
@@ -291,9 +291,8 @@ def merge(decode_, statistics_, out_path):
 
 
 @report.command(name="generate")
-@report.command("merge")
-@click.argument("decode", type=click.Path(exists=True, dir_okay=False), required=True)
-@click.argument("statistic", type=click.Path(exists=True, dir_okay=False), required=True)
+@click.argument("decode-file", type=click.Path(exists=True, dir_okay=False), required=True)
+@click.argument("statistic-file", type=click.Path(exists=True, dir_okay=False), required=True)
 @click.option(
     "-o",
     "--out-path",
@@ -302,15 +301,15 @@ def merge(decode_, statistics_, out_path):
     default="decoding_report.html",
     help="location to dave merged report",
 )
-def generate(decode_, statistic_, out_path):
+def generate(decode_file, statistic_file, out_path):
     """
     Generate a decoding report from a decode run config and statistic file
 
     DECODE is the path to a YAML file describing the decoding experiment.
     STATISTIC is the path to a decode statistics file to use for the report.
     """
-    loaded_decode_settings = DecodingRunner.from_file(decode_)
-    loaded_statistic = DecodeStatistics.from_file(statistic_)
+    loaded_decode_settings = DecodingRunner.from_file(decode_file)
+    loaded_statistic = DecodeStatistics.from_file(statistic_file)
 
     build_decoding_report(
         selection=loaded_decode_settings.selection,
