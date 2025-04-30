@@ -252,7 +252,8 @@ class DecodingRunner:
         Parameters
         ----------
         save_failed_to: str | PathLike | None, default = None
-            if provided, will save failed reads to this file
+            if provided, will save failed reads to this directory
+            file will be named <selection_id>_decode_failed.csv
             will include the read_id, the sequence, the quality chain,
             and reason failed
         use_tqdm: bool, default = False
@@ -341,7 +342,7 @@ class DecodingRunner:
             else "NA",
             "data_ran": self.selection.get_run_date_as_str(),
             "sequence_files": self.selection.sequence_files,
-            "libraries": [lib.loaded_from for lib in self.selection.library_pool.libraries],
+            "libraries": [str(lib.loaded_from) for lib in self.selection.library_pool.libraries],
             "decode_settings": self.decode_settings.__dict__,
         }
         yaml.safe_dump(data, open(out_path, "w"))
@@ -519,7 +520,7 @@ class DecodingRunner:
             _prefix = prefix
 
         os.makedirs(out_dir, exist_ok=True)
-        _filename = f"{prefix}_decode_report.html"
+        _filename = f"{_prefix}_decode_report.html"
         _out_path = os.path.join(out_dir, _filename)
         build_decoding_report(self.selection, self.decoder.decode_statistics, _out_path)
         self.logger.debug(
@@ -550,7 +551,7 @@ class DecodingRunner:
             _prefix = prefix
 
         os.makedirs(out_dir, exist_ok=True)
-        _filename = f"{prefix}_decode_statistics.json"
+        _filename = f"{_prefix}_decode_statistics.json"
         _out_path = os.path.join(out_dir, _filename)
         self.decoder.decode_statistics.to_file(_out_path)
         self.logger.debug(
@@ -582,7 +583,7 @@ class DecodingRunner:
             _prefix = prefix
 
         os.makedirs(out_dir, exist_ok=True)
-        _filename = f"{prefix}_cube.csv"
+        _filename = f"{_prefix}_cube.csv"
         _out_path = os.path.join(out_dir, _filename)
         self.degen.to_file(_out_path)
         self.logger.debug(
