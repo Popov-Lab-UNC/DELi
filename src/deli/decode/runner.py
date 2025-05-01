@@ -137,6 +137,10 @@ class DecodingSettings(dict):
         """
         Load settings from a yaml file
 
+        Will first check if there is a "decode_settings" key
+        and load settings from that sub dict.
+        Otherwise will load from the yaml file keys
+
         Parameters
         ----------
         path : str | PathLike
@@ -144,12 +148,24 @@ class DecodingSettings(dict):
 
         Returns
         -------
-        Self
+        DecodingSettings
+
+        Raises
+        ------
+        RuntimeError
+            if valid decode settings cannot be loaded from the passed yaml file
         """
-        try:
-            return cls(**yaml.safe_load(open(path, "r")))
-        except Exception as e:
-            raise RuntimeError(f"Failed to load settings from {path}") from e
+        _data = yaml.safe_load(open(path, "r"))
+        if "decode_settings" not in _data:
+            try:
+                return cls(**yaml.safe_load(open(path, "r")))
+            except Exception as e:
+                raise RuntimeError(f"Failed to load decode settings from {path}") from e
+        else:
+            try:
+                return cls(**_data["decode_settings"])
+            except Exception as e:
+                raise RuntimeError(f"Failed to load decode settings from {path}") from e
 
 
 class DecodingRunner:

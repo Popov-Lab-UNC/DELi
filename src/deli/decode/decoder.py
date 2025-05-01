@@ -3,6 +3,7 @@
 import abc
 import json
 import os
+import sys
 import warnings
 from collections import defaultdict
 from typing import Literal, no_type_check
@@ -816,6 +817,11 @@ class BioAlignmentLibraryDecoder(LibraryDecoder):
             )
         self.decode_statistics.num_failed_building_block_call += 1
         return BuildingBlockLookupFailed()
+
+
+# TODO for some reason, this is needed to prevent when running as a CMD,
+#  but not in a python interpreter... not sure why?
+sys.setrecursionlimit(3000)
 
 
 @no_type_check

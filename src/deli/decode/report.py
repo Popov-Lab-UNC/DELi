@@ -7,7 +7,7 @@ from datetime import datetime
 import jinja2
 import plotly.graph_objects as go
 
-from deli.dels import SequencedSelection
+from deli.dels import Selection
 
 from .decoder import DecodeStatistics
 
@@ -166,7 +166,7 @@ def _generate_lib_degen_pie_chart(decode_stats: DecodeStatistics):
 
 
 def build_decoding_report(
-    selection: SequencedSelection,
+    selection: Selection,
     stats: DecodeStatistics,
     out_path: str | os.PathLike = "./decode_report.html",
 ):

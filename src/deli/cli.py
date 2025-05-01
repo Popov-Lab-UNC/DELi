@@ -55,13 +55,20 @@ def init_config():
     PATH is the path to the deli config directory to initialize.
     If not provided, defaults to ~/.deli/.deli
     """
-    init_deli_config_dir(
-        None,
-        fail_on_exist=True,
-        include_deli_data_dir=False,
-        create_default_hamming_files=True,
-        use_extra_parity=True,
-    )
+    try:
+        init_deli_config_dir(
+            None,
+            fail_on_exist=True,
+            include_deli_data_dir=False,
+            create_default_hamming_files=True,
+            use_extra_parity=True,
+        )
+    except FileExistsError:
+        print(
+            f"DELi config directory already exists at "
+            f"{os.path.join(os.path.expanduser('~'), '.deli')}, "
+            f"skipping initialization."
+        )
 
 
 @cli.group()
@@ -204,6 +211,8 @@ def run_decode(
     """
     if deli_data_dir is not None:
         set_deli_data_dir(deli_data_dir)
+
+    os.makedirs(out_dir, exist_ok=True)
 
     runner = DecodingRunner.from_file(
         decode_file,

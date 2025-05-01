@@ -4,6 +4,8 @@ import os
 from datetime import datetime
 from typing import Any
 
+import yaml
+
 from deli.dna import SequenceGlobReader, SequenceReader
 
 from .library import DELibraryPool
@@ -135,6 +137,23 @@ class Selection:
             selection_id=data.get("selection_id"),
             additional_info=data.get("additional_info"),
         )
+
+    @classmethod
+    def from_yaml(cls, path: str | os.PathLike) -> "Selection":
+        """
+        Create a Selection object from a YAML file
+
+        Parameters
+        ----------
+        path: str | os.PathLike
+            the path to the YAML file containing selection data
+
+        Returns
+        -------
+        Selection
+        """
+        data = yaml.safe_load(open(path, "r"))
+        return cls.from_dict(data)
 
     def to_dict(self, ignore_library_pool: bool = False) -> dict:
         """
