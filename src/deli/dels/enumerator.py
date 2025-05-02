@@ -29,7 +29,7 @@ class EnumeratedDELCompound:
     A fully enumerated DEL compound
 
     Will have the rdkit Mol of the chemical, the SMILES
-    and all teh building blocks in at as attributes
+    and all the building blocks in at as attributes
     named after the building block set id
     """
 

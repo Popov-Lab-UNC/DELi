@@ -20,6 +20,7 @@ from deli.decode import (
     build_decoding_report,
 )
 from deli.dels import Selection
+from deli.dels.enumerator import DELEnumerator
 
 
 def _timestamp() -> str:
@@ -230,6 +231,31 @@ def run_decode(
     runner.write_decode_statistics(out_dir=out_dir, prefix=prefix)
     if not skip_report:
         runner.write_decode_report(out_dir=out_dir, prefix=prefix)
+
+
+@cli.command(name="enumerate")
+@click.argument("library_file", type=click.Path(exists=True), required=True)
+@click.option(
+    "--out_path", "-o", type=click.Path(), required=False, default="", help="Output CSV file path"
+)
+@click.option("--debug", is_flag=True, help="Enable debug mode")
+@click.option("--no_tqdm", is_flag=True, help="Disable progress bar")
+def enumerate(library_file, out_path, debug, no_tqdm):
+    """
+    Enumerates compounds from a given library
+
+    Parameters
+    ----------
+    library_file: path to library JSON definition file
+    """
+    output_file = (
+        out_path if out_path != "" else os.path.join(os.getcwd(), "enumerated_library.csv")
+    )
+
+    _start = datetime.datetime.now()
+
+    enumerator = DELEnumerator.load(library_file)
+    enumerator.enumerate_to_csv_file(output_file, use_tqdm=not no_tqdm)
 
 
 @decode.group()

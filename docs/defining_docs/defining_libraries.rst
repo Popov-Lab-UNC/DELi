@@ -32,15 +32,20 @@ definitions/explanations of each part
     "scaffold": "NA",
     "reactions": [
       {
-          "cycle_id_1": "DEL004_BBA",
-          "cycle_id_2": "DEL004_BBB",
-          "reaction": "NA"
+          "step": 1,
+          "rxn_smarts": "...",
+          "reactants": ["DEL004_BBA", "scaffold"]
       },
       {
-          "cycle_id_1": "DEL004_BBB",
-          "cycle_id_2": "DEL004_BBC",
-          "reaction": "NA"
-      }
+          "step": 2,
+          "rxn_smarts": "...",
+          "reactants": ["product_1", "DEL004_BBB"],
+      },
+      {
+          "step": 3,
+          "rxn_smarts": "...",
+          "reaction": ["product_2", "DEL004_BBC"]
+      },
     ],
     "dna_barcode_on": "DEL004_BBA"
   }
@@ -156,7 +161,7 @@ An example of a reaction step dictionary for a three step reaction is
 .. note::
     reaction steps do not need to be ordered in the list as long as the ``step``
     key still provides the correct order. However, for readability providing the
-    steps in the order they occur is preferred
+    steps in the order they occur is preferred.
 
 ``dna_barcode_on``
 ^^^^^^^^^^^^^^^^^^
