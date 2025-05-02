@@ -1,36 +1,25 @@
 """DNA barcode classes and functions"""
 
-from .barcode import BarcodeSchema
+from .barcode import BarcodeSchema, BuildingBlockBarcodeSection
 from .building_block import BaseBuildingBlock, BuildingBlock, BuildingBlockSet, MaskedBuildingBlock
 from .enumerator import DELEnumerator
-from .index import Index, IndexSet, get_min_index_distance
-from .library import (
-    DELibrary,
-    DELibraryGroup,
-    DELibrarySchemaGroup,
-    get_min_library_tag_distance,
-)
-from .synthon import Disynthon, HasDisynthonMixin, HasMonosynthonMixin, Monosynthon
+from .library import DELibrary, DELibraryPool
+from .selection import SectionCondition, Selection, SequencedSelection
 from .umi import Umi
 
 
 __all__ = [
     "BarcodeSchema",
-    "Index",
-    "IndexSet",
-    "get_min_index_distance",
+    "BuildingBlockBarcodeSection",
     "DELibrary",
-    "DELibraryGroup",
-    "DELibrarySchemaGroup",
+    "DELibraryPool",
     "DELEnumerator",
-    "get_min_library_tag_distance",
     "BaseBuildingBlock",
     "BuildingBlock",
     "MaskedBuildingBlock",
     "BuildingBlockSet",
-    "Monosynthon",
-    "HasDisynthonMixin",
-    "Disynthon",
-    "HasMonosynthonMixin",
     "Umi",
+    "SectionCondition",
+    "SequencedSelection",
+    "Selection",
 ]

@@ -1,24 +1,25 @@
 """command line functions for deli"""
 
+import configparser
 import datetime
-import json
 import os
-from collections import Counter
-from csv import DictWriter
 from pathlib import Path
 
 import click
 
-from deli.configure import init_deli_config_dir, init_deli_data_directory, load_deli_config
+from deli.configure import (
+    fix_deli_data_directory,
+    init_deli_config_dir,
+    init_deli_data_directory,
+    set_deli_data_dir,
+    validate_deli_data_dir,
+)
 from deli.decode import (
-    BarcodeCaller,
-    BarcodeMatcher,
-    DecodeReportStats,
-    DELExperiment,
+    DecodeStatistics,
+    DecodingRunner,
     build_decoding_report,
 )
-from deli.logging.logger import setup_logger
-from deli.sequence import read_fastq
+from deli.dels import Selection
 
 
 def _timestamp() -> str:
@@ -47,459 +48,283 @@ def config():
     pass
 
 
-@config.command(name="init-config")
+@config.command(name="init")
+def init_config():
+    """
+    Initialize the configuration directory
+
+    PATH is the path to the deli config directory to initialize.
+    If not provided, defaults to ~/.deli/.deli
+    """
+    try:
+        init_deli_config_dir(
+            None,
+            fail_on_exist=True,
+            include_deli_data_dir=False,
+            create_default_hamming_files=True,
+            use_extra_parity=True,
+        )
+    except FileExistsError:
+        print(
+            f"DELi config directory already exists at "
+            f"{os.path.join(os.path.expanduser('~'), '.deli')}, "
+            f"skipping initialization."
+        )
+
+
+@cli.group()
+def data():
+    """Group for config related commands"""
+    pass
+
+
+@data.command(name="init")
 @click.argument(
     "path",
     type=click.Path(exists=True),
     required=False,
-    default=os.path.join(os.getcwd(), ".deli"),
+    default="./deli_data",
 )
-@click.option(
-    "--include-data-dir",
-    is_flag=True,
-    help="include a default deli data directory in the new config directory",
-)
-@click.option(
-    "--include-hamming", is_flag=True, help="include a default hamming files (if include-data-dir)"
-)
-@click.option(
-    "--use-extra-parity-hamming",
-    is_flag=True,
-    help="include a extra parity hamming files (if include-hamming)",
-)
-def init_config(path, include_data_dir, include_hamming, use_extra_parity_hamming):
-    """Initialize the configuration directory"""
-    init_deli_config_dir(
-        path,
-        fail_on_exist=True,
-        include_deli_data_dir=include_data_dir,
-        create_default_hamming_files=include_hamming,
-        use_extra_parity=use_extra_parity_hamming,
-    )
+def init_deli_data_dir(path):
+    """
+    Initialize the configuration directory
+
+    PATH is the path to the deli data directory to initialize.
+    If not provided, defaults to CWD './deli_data'.
+    """
+    init_deli_data_directory(path, fail_on_exist=True)
 
 
-@config.command(name="init-deli-data-dir")
+@data.command(name="fix")
 @click.argument(
     "path",
     type=click.Path(exists=True),
     required=False,
-    default=os.path.join(os.getcwd(), ".deli"),
+    default="./",
 )
 @click.option(
-    "--include-hamming", is_flag=True, help="include a default hamming files (if include-data-dir)"
-)
-@click.option(
-    "--use-extra-parity-hamming",
+    "--overwrite-hamming",
     is_flag=True,
-    help="include a extra parity hamming files (if include-hamming)",
+    help="overwrite/fix the hamming files in the data directory",
 )
-def init_deli_data_dir(path, include_hamming, use_extra_parity_hamming):
-    """Initialize the configuration directory"""
-    init_deli_data_directory(
-        path,
-        fail_on_exist=True,
-        create_default_hamming_files=include_hamming,
-        use_extra_parity=use_extra_parity_hamming,
-    )
+def fix_deli_data_dir(path, overwrite_hamming):
+    """
+    Fix a deli data directory that has missing subfolders or files
+
+    PATH is the path to the deli data directory to fix.
+    """
+    path = Path(path)
+    if not path.exists():
+        raise click.ClickException(f"Path {path} does not exist")
+    if not path.is_dir():
+        raise click.ClickException(f"Path {path} is not a directory")
+    fix_deli_data_directory(path, overwrite_hamming=overwrite_hamming)
 
 
-@cli.command()
-@click.argument("fastq_file", type=click.Path(exists=True), required=True)
-@click.argument("experiment_file", type=click.Path(exists=True), required=True)
+@data.command(name="set")
+@click.argument("path", type=click.Path(exists=True), required=True)
 @click.option(
-    "--out_dir", "-o", type=click.Path(), required=False, default="", help="Output directory"
+    "--update-config",
+    is_flag=True,
+    help="Update the DELi config to use this data directory as default",
+)
+def set_deli_data_dir_command(path, update_config):
+    """
+    Set the DELi data directory to use for decoding
+
+    PATH is the path to the deli data directory to set.
+    """
+    validate_deli_data_dir(path)
+    os.environ["DELI_DATA_DIR"] = str(path)
+
+    # update the config with the new data directory if requested
+    if update_config:
+        if os.path.exists(os.path.join(os.path.expanduser("~"), ".deli", ".deli")):
+            deli_config_path = os.path.join(os.path.expanduser("~"), ".deli", ".deli")
+            _config = configparser.RawConfigParser()
+            _config.read(os.path.normpath(deli_config_path))
+            _config["SETTINGS"]["deli_data_dir"] = str(path)
+            _config.write(open(deli_config_path, "w"), True)
+        else:
+            raise FileNotFoundError("cannot find DELi config file for user")
+
+
+@cli.group()
+def decode():
+    """Decode command group"""
+    pass
+
+
+@decode.command(name="run")
+@click.argument("decode-file", type=click.Path(exists=True), required=True)
+@click.option(
+    "--out-dir",
+    "-o",
+    type=click.Path(),
+    required=False,
+    default="./",
+    help="Output directory",
+)
+@click.argument("fastq_files", nargs=-1, type=click.Path(exists=True), required=False)
+@click.option(
+    "--ignore-decode-seqs",
+    "-i",
+    is_flag=True,
+    help="Ignore the fastq sequence files in the decode file",
 )
 @click.option(
     "--prefix", "-p", type=click.STRING, required=False, default="", help="Prefix for output files"
 )
-@click.option("--debug", is_flag=True, help="Enable debug mode")
-@click.option("--save_report_data", is_flag=True, help="Save data required for reporting")
-@click.option("--skip_report", is_flag=True, help="Do not render a decoding report")
 @click.option(
-    "--save_failed_calls", is_flag=True, help="save failed calls to a separate failed call file"
+    "--save-failed", is_flag=True, help="Save failed decoding results to a separate file"
 )
+@click.option("--tqdm", "-t", is_flag=True, help="Show tqdm progress")
+@click.option("--debug", is_flag=True, help="Enable debug mode")
+@click.option("--disable-logging", is_flag=True, help="Turn off DELi logging")
+@click.option("--skip-report", is_flag=True, help="Skip generating the decoding report at the end")
 @click.option(
-    "--deli-config",
-    "-o",
+    "--deli-data-dir",
     type=click.Path(),
     required=False,
-    default="",
-    help="Path to DELi config file to use",
+    default=None,
+    help="Path to DELi data directory to read libraries from",
 )
-def decode(
-    fastq_file,
-    experiment_file,
+def run_decode(
+    decode_file,
+    fastq_files,
+    ignore_decode_seqs,
     out_dir,
     prefix,
+    save_failed,
+    tqdm,
     debug,
-    save_report_data,
+    disable_logging,
     skip_report,
-    save_failed_calls,
-    deli_config,
+    deli_data_dir,
 ):
     """
-    run decoding on a given fastq file of DEL sequences
+    Run decoding on a given fastq file of DEL sequences
 
-    Parameters
-    ----------
-    fastq_file: Path
-        the path to a fastq file
-    experiment_file: Path
-        the path to a DEL experiment outline
-    out_dir: Path
-        the path to a directory to write the output files
-    prefix: str, default=""
-        a prefix to append to the output files
-    debug: bool, default=False
-        enable debug logging mode
-    save_report_data: bool, default=False
-        save data required for reporting
-    skip_report: bool, default=False
-        do not render a decoding report
-    save_failed_calls: bool, default=False
-        save failed calls to a separate failed call file
-    deli_config: str, default=""
-        Path to DELi config file to use
+    DECODE is the path to a YAML file describing the decoding run settings.
+    FASTQ_FILES is a path, list of paths or glob of FASTQ files to decode.
+
+    NOTE: if the DECODE file contains a `selection` field, it will be used to select the
     """
-    logger = setup_logger("deli-decode", debug=debug)
-    out_dir = _setup_outdir(out_dir)
+    if deli_data_dir is not None:
+        set_deli_data_dir(deli_data_dir)
 
-    if deli_config != "":
-        load_deli_config(deli_config)
+    os.makedirs(out_dir, exist_ok=True)
 
-    _start = datetime.datetime.now()
-
-    # load in the experiment data
-    logger.debug(f"reading experiment settings from {experiment_file}")
-    _experiment = DELExperiment.load_experiment(experiment_file)
-    _experiment_name = os.path.basename(experiment_file).split(".")[0]
-    if _experiment.indexes:
-        logger.info(f"loaded experiment {_experiment_name}")
-        logger.debug("detected indexes; turning on de-multiplexing")
-        logger.debug(f"detected indexes {[idx.index_id for idx in _experiment.indexes]}")
-    logger.debug(f"detected libraries {[lib.library_id for lib in _experiment.libraries]}")
-
-    primer_experiments = _experiment.break_into_matching_experiments()
-    logger.debug(f"detected {len(primer_experiments)} primer experiments")
-
-    # check for hamming encoding (for logging)
-    _hamming_encoded_dict = {
-        library.library_id: library.barcode_schema.is_hamming_encoded()
-        for primer_experiment in primer_experiments
-        for library in primer_experiment.libraries
-    }
-    for _lib_id, _is_hamming_enc in _hamming_encoded_dict.items():
-        logger.debug(f"library {_lib_id} {'IS' if _is_hamming_enc else 'IS NOT'} hamming encoded")
-    _has_any_hamming_encoding = any(_hamming_encoded_dict.values())  # overall hamming in use
-
-    # write the sub experiment files
-    _sub_experiment_filenames = []
-    for i, primer_experiment in enumerate(primer_experiments):
-        _sub_experiment_filename = out_dir / f"{_experiment_name}_sub_{i}.txt"
-        _sub_experiment_filenames.append(_sub_experiment_filename)
-        primer_experiment.to_experiment_file(_sub_experiment_filename)
-        logger.debug(f"saving experiment {i} file at {_sub_experiment_filename}")
-
-    logger.info(f"reading sequences from {fastq_file}")
-    sequences = read_fastq(fastq_file)
-    _num_reads = len(sequences)
-    seq_lengths = Counter([len(seq) for seq in sequences])
-    logger.info(f"read in {_num_reads:,} reads")
-
-    # prep call file
-    call_file_name = f"{prefix}_{_experiment_name}_{_timestamp()}_calls.csv"
-    failed_call_file_name = f"{prefix}_{_experiment_name}_{_timestamp()}_calls_FAILED.csv"
-    call_file_path = out_dir / call_file_name
-    failed_call_file_path = out_dir / failed_call_file_name
-    logger.debug(f"writing calls to {call_file_path}")
-    if save_failed_calls:
-        logger.debug(f"saving failed calls to {failed_call_file_path}")
-    else:
-        logger.debug("ignoring failed called")
-
-    _headers_fieldnames = list()
-    for lib in _experiment.libraries:
-        _headers_fieldnames.extend(lib.barcode_schema.to_csv_header())
-    _headers_fieldnames = list(set(_headers_fieldnames))
-    _headers_fieldnames.extend(["from_read", "from_match", "match_seq"])
-
-    with open(call_file_path, "w") as csv_file:
-        csv_writer = DictWriter(csv_file, fieldnames=_headers_fieldnames)
-        csv_writer.writeheader()
-
-    _total_match_count = 0
-    _total_match_too_big = 0
-    _total_match_too_small = 0
-    _total_valid_match_count = 0
-    _reads_with_matches = set()
-    _total_call_count = 0
-    _total_valid_call_count = 0
-    _reads_with_calls = set()
-
-    _lib_calls = Counter()
-    _index_calls = Counter()
-
-    # Experiment matching loop
-    for i, primer_experiment in enumerate(primer_experiments):
-        _match_start = datetime.datetime.now()
-        logger.info(f"running matching experiment {i + 1} of {len(primer_experiments)}")
-
-        matcher = BarcodeMatcher(primer_experiment, **primer_experiment.matching_settings.__dict__)
-
-        logger.debug(f"detected primer sequence {primer_experiment.primer}")
-        if matcher.primer_match_length != -1:
-            logger.debug("matching to truncated primer region")
-        logger.debug(f"matching to pattern {matcher.pattern}")
-        logger.debug(f"using error tolerance of {matcher.error_tolerance}")
-
-        matches = matcher.match(sequences)
-
-        _num_valid_matches = sum([_match.passed for _match in matches])
-        _seqs_matched = set([_match.sequence.read_id for _match in matches if _match.passed])
-        _num_seqs_matched = len(_seqs_matched)
-
-        _num_matches = len(matches)
-        logger.debug(
-            f"matching experiment {i} made {_num_matches:,} match "
-            f"attempts in {datetime.datetime.now() - _match_start}"
-        )
-        logger.info(f"matching experiment {i} found {_num_valid_matches:,} valid matches")
-
-        _total_match_count += _num_matches
-        _total_valid_match_count += _num_valid_matches
-        _reads_with_matches = _reads_with_matches.union(_seqs_matched)
-        _total_match_too_big += sum([m.match_type() == "SequenceTooBig" for m in matches])
-        _total_match_too_small += sum([m.match_type() == "SequenceTooSmall" for m in matches])
-
-        # calling loop
-        _sub_total_call_count = 0
-        _sub_total_valid_call_count = 0
-        _sub_reads_with_calls = set()
-        _uncalled_matches = [m for m in matches if m.passed]
-        _call_start = datetime.datetime.now()
-
-        logger.debug(
-            f"detected {len(primer_experiment.library_schema_groups)} library schema groups"
-        )
-        for j, _sub_library_set in enumerate(primer_experiment.library_schema_groups):
-            _call_cycle_start = datetime.datetime.now()
-            logger.info(
-                f"running calling cycle {j + 1} of "
-                f"{len(primer_experiment.library_schema_groups)}"
-            )
-            logger.debug(
-                f"detected library call region "
-                f"{_sub_library_set.library_call_schema.full_barcode}"
-            )
-
-            caller = BarcodeCaller(
-                libraries=_sub_library_set,
-                indexes=primer_experiment.indexes,
-                **primer_experiment.caller_settings.__dict__,
-            )
-            logger.debug(f"index calling turned {'off' if caller.skip_calling_index else 'on'}")
-            logger.debug(f"library calling turned {'off' if caller.skip_calling_lib else 'on'}")
-            _hamming_turned_on = primer_experiment.caller_settings.__dict__["hamming"]
-            logger.debug(f"hamming decoding turned {'on' if _hamming_turned_on else 'off'}")
-            if not _has_any_hamming_encoding and _hamming_turned_on:
-                logger.warning(
-                    "hamming decoding turned on but no libraries have hamming encoding; "
-                    "set 'hamming' to 'false' for 'call_settings' in experiment file"
-                )
-            if _has_any_hamming_encoding and not _hamming_turned_on:
-                logger.warning(
-                    "hamming decoding turned off but some libraries have hamming encoding; "
-                    "set 'hamming' to 'true' for 'call_settings' in experiment file"
-                )
-            if _sub_library_set.requires_multistep_calling:
-                logger.debug("turned on multistep (library first) calling")
-                logger.debug(
-                    f"calling library with barcode schema'"
-                    f"{_sub_library_set.library_call_schema.full_barcode}'"
-                )
-
-            calls = caller.call_tags(_uncalled_matches)
-
-            _uncalled_matches = [
-                _uncalled_matches[idx]
-                for idx, _call in enumerate(calls)
-                if not _call.called_successfully()
-            ]
-
-            _seq_with_calls = [
-                _call.parent_match.sequence.read_id
-                for _call in calls
-                if _call.called_successfully()
-            ]
-
-            _lib_calls += Counter([str(c.library_call) for c in calls])
-            if _experiment.has_index():
-                _index_calls += Counter([str(c.index_call) for c in calls])
-
-            for _seq in _seq_with_calls:
-                _sub_reads_with_calls.add(_seq)
-
-            _num_passed_calls = len(_seq_with_calls)
-            _call_attempts = len(calls)
-            _sub_total_call_count += _call_attempts
-            _sub_total_valid_call_count += _num_passed_calls
-
-            logger.debug(
-                f"calling cycle {j} called {_num_passed_calls:,} "
-                f"matches out of {_call_attempts:,} attempts"
-            )
-
-            # split out calls
-            _passed_calls = []
-            _failed_calls = []
-            for c in calls:
-                if c.called_successfully():
-                    _passed_calls.append(c)
-                else:
-                    _failed_calls.append(c)
-
-            with open(call_file_path, "a") as csv_file:
-                csv_writer = DictWriter(csv_file, fieldnames=_headers_fieldnames)
-                csv_writer.writeheader()
-                for _call in _passed_calls:
-                    csv_writer.writerow(_call.to_row_dict())
-
-            logger.debug(
-                f"wrote calls {_call_attempts:,} for calling cycle {j} to {call_file_path}"
-            )
-
-            # write failed calls if asked
-            if save_failed_calls:
-                with open(failed_call_file_path, "a") as csv_file:
-                    csv_writer = DictWriter(csv_file, fieldnames=_headers_fieldnames)
-                    csv_writer.writeheader()
-                    for _call in _failed_calls:
-                        csv_writer.writerow(_call.to_row_dict())
-
-                logger.debug(
-                    f"wrote {len(_failed_calls)} failed calls for "
-                    f"calling cycle {j} to {failed_call_file_path}"
-                )
-
-            logger.debug(
-                f"call cycle {i + 1} completed in {datetime.datetime.now() - _call_cycle_start}"
-            )
-
-        logger.debug(
-            f"calling for experiment {i} attempted {_sub_total_call_count:,} calls in"
-            f"{datetime.datetime.now() - _call_start}"
-        )
-        logger.info(f"calling for experiment {i} made {_sub_total_valid_call_count:,} valid calls")
-
-        _total_valid_call_count += _sub_total_valid_call_count
-        _total_call_count += _sub_total_call_count
-        _reads_with_calls = _reads_with_calls.union(_sub_reads_with_calls)
-
-    logger.debug(
-        f"made {_total_valid_match_count:,} matches out of {_total_match_count:,} attempts"
+    runner = DecodingRunner.from_file(
+        decode_file,
+        fastq_files,
+        ignore_decode_seqs=ignore_decode_seqs,
+        debug=debug,
+        disable_logging=disable_logging,
     )
-    logger.debug(f"made {_total_valid_call_count:,} calls out of {_total_call_count:,} attempts")
+    save_failed_to = out_dir if save_failed else None
+    runner.run(save_failed_to=save_failed_to, use_tqdm=tqdm)
 
-    logger.info(f"called {len(_reads_with_calls):,} out of {_num_reads:,} reads")
-    logger.info(f"calls written to {call_file_path}")
-
-    # handle report generation
-    # only need to do this if report is turned on
-    if (not skip_report) or save_report_data:
-        # need to add in the missing libraries/index if 0 calls made
-        for lib in _experiment.libraries:
-            if lib.library_id not in _lib_calls.keys():
-                _lib_calls[lib.library_id] = 0
-
-        for idx in _experiment.indexes:
-            if idx.index_id not in _index_calls.keys():
-                _index_calls[idx.index_id] = 0
-
-        _report_stats = DecodeReportStats(
-            num_reads=_num_reads,
-            read_length=seq_lengths,
-            num_match_attempts=_total_match_count,
-            num_call_attempts=_total_call_count,
-            num_valid_matches=_total_valid_match_count,
-            num_valid_calls=_total_valid_call_count,
-            num_reads_with_match=len(_reads_with_matches),
-            num_reads_with_calls=len(_reads_with_calls),
-            num_match_too_big=_total_match_too_big,
-            num_match_too_small=_total_match_too_small,
-            experiment_name=_experiment_name,
-            libraries=_lib_calls,
-            indexes=_index_calls,
-        )
-
-        if save_report_data:
-            logger.debug("saving report data files")
-            json.dump(
-                _report_stats.__dict__,
-                open(
-                    out_dir / f"{prefix}_{_experiment_name}_{_timestamp()}_report_stats.json", "w"
-                ),
-            )
-
-        if not skip_report:
-            logger.debug("generating html decoding report")
-            report_path = (
-                out_dir / f"{prefix}_{_experiment_name}_{_timestamp()}_decode_report.html"
-            )
-            build_decoding_report(report_stats=_report_stats, out_path=report_path)
-            logger.info(f"decoding report written to {report_path}")
-    else:
-        logger.debug("reporting turned off")
-
-    logger.info(
-        f"DELi decoding for experiment {_experiment_name} "
-        f"completed in {datetime.datetime.now() - _start}"
-    )
+    runner.logger.info(f"Saving outputs to {out_dir}")
+    runner.write_cube(out_dir=out_dir, prefix=prefix)
+    runner.write_decode_statistics(out_dir=out_dir, prefix=prefix)
+    if not skip_report:
+        runner.write_decode_report(out_dir=out_dir, prefix=prefix)
 
 
-@cli.group()
-def report():
-    """Report command group"""
+@decode.group()
+def statistics():
+    """Decode statistics command group"""
     pass
 
 
-@report.command()
-@click.argument("report_stats", nargs=-1, type=click.Path(exists=True, dir_okay=False))
+@statistics.command(name="merge")
+@click.argument("statistic-files", type=click.Path(exists=True), required=True, nargs=-1)
 @click.option(
-    "-n",
-    "--name",
+    "-o",
+    "--out-path",
     type=click.STRING,
     required=False,
-    default="merged_decoding_report",
-    help="name to give the merged report file",
+    default="merged_decoding_statistics.json",
+    help="location to save merged statistics file",
 )
-@click.option("--render_report", is_flag=True, help="render merged report as html file")
-def merge(report_stats, name, render_report):
+def merge_statistics_file(statistic_files, out_path):
     """
-    Merge a set of decode reports into a single report stat file.
+    Merge multiple decode statistics files into one
 
-    Optionally renders an html report if --render_report is used
-    Will always created the merged report in the current working directory
+    STATISTICS is a list of paths to decode statistics files to merge.
     """
-    report_stat = DecodeReportStats.load_report_file(report_stats[0])
-    for file in report_stats[1:]:
-        report_stat = report_stat + DecodeReportStats.load_report_file(file)
-
-    print(render_report)
-
-    if render_report:
-        build_decoding_report(report_stat, os.path.join(os.getcwd(), f"{name}.html"))
-
-    json.dump(report_stat.__dict__, open(os.path.join(os.getcwd(), f"{name}.json"), "w"))
+    loaded_statistics = [DecodeStatistics.from_file(p) for p in statistic_files]
+    merged_stats = sum(loaded_statistics, DecodeStatistics())
+    merged_stats.to_file(out_path)
 
 
-@report.command()
-@click.argument("report_stat", nargs=1, type=click.Path(exists=True, dir_okay=False))
-def render(report_stat):
+@decode.group()
+def report():
+    """Decode report command group"""
+    pass
+
+
+@report.command("merge")
+@click.argument("decode-file", type=click.Path(exists=True, dir_okay=False), required=True)
+@click.argument("statistic-files", nargs=-1, type=click.Path(exists=True, dir_okay=False))
+@click.option(
+    "-o",
+    "--out-path",
+    type=click.STRING,
+    required=False,
+    default="merged_decoding_report.html",
+    help="location to dave merged report",
+)
+def merge(decode_file, statistic_files, out_path):
     """
-    Given a report stat json file, render the decoding html report from it
+    Given decode settings and set of decode stats, merge into a single report
 
-    Will create the html report in the current working directory
+    Should only be used to merge stats generated from the same decode experiment
+    Helpful for parallelization stuff
+
+    DECODE is the path to a YAML file describing the decoding run.
+    STATISTICS is a list of paths to decode statistics files to merge.
     """
-    name = os.path.basename(os.path.abspath(report_stat)).split(".")[0] + ".html"
-    _report_stat = DecodeReportStats.load_report_file(report_stat)
-    build_decoding_report(_report_stat, os.path.join(os.getcwd(), name))
+    # decode_settings = DecodingSettings.from_file(decode_file)
+    selection_info = Selection.from_yaml(decode_file)
+
+    loaded_statistics: list[DecodeStatistics] = [
+        DecodeStatistics.from_file(p) for p in statistic_files
+    ]
+    merged_stats = sum(loaded_statistics, DecodeStatistics())
+
+    build_decoding_report(
+        selection=selection_info,
+        stats=merged_stats,
+        out_path=out_path,
+    )
+
+
+@report.command(name="generate")
+@click.argument("decode-file", type=click.Path(exists=True, dir_okay=False), required=True)
+@click.argument("statistic-file", type=click.Path(exists=True, dir_okay=False), required=True)
+@click.option(
+    "-o",
+    "--out-dir",
+    type=click.STRING,
+    required=False,
+    default="./",
+    help="location to dave merged report",
+)
+def generate(decode_file, statistic_file, out_dir):
+    """
+    Generate a decoding report from a decode run config and statistic file
+
+    DECODE is the path to a YAML file describing the decoding experiment.
+    STATISTIC is the path to a decode statistics file to use for the report.
+    """
+    # decode_settings = DecodingSettings.from_file(decode_file)
+    selection_info = Selection.from_yaml(decode_file)
+    loaded_statistic = DecodeStatistics.from_file(statistic_file)
+
+    build_decoding_report(
+        selection=selection_info,
+        stats=loaded_statistic,
+        out_dir=out_dir,
+    )

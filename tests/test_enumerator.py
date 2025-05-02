@@ -18,7 +18,7 @@ def del_library() -> DELibrary:
     return DELibrary.load("DEL006")
 
 
-@pytest.mark.functional
+@pytest.mark.unit
 def test_enumerate_from_library(del_library: DELibrary, tmpdir):
     """Test is enumerate from library object to file is working"""
     file_path = tmpdir.join("enumerate_test.csv")
@@ -34,7 +34,7 @@ def test_enumerate_from_library(del_library: DELibrary, tmpdir):
     assert num_compounds == del_library.library_size
 
 
-@pytest.mark.functional
+@pytest.mark.unit
 def test_enumerator_load_from_file():
     """Test loading enumerator from file"""
     DELEnumerator.load("DEL006")

@@ -6,6 +6,7 @@ authors = [
     "James Wellnitz <wellnitz.james@gmail.com>",
     "Brandon Novy",
     "Travis Maxfield",
+    "Jason Lin"
 ]
 maintainers = [
     "James Wellnitz <wellnitz.james@gmail.com>"
@@ -30,8 +31,9 @@ deli = "deli.cli:cli"
 [tool.poetry.dependencies]
 python = ">=3.11,<4.0"
 click = "^8.1.3"
+pyyaml = "6.0.2"
 numba = "^0.60.0"
-regex = "^2023.12.25"
+numpy = "^2.0.2"
 Levenshtein = "^0.25.0"
 polars = "^0.20.10"
 tqdm = "^4.66.4"
@@ -41,9 +43,9 @@ matplotlib = "^3.9.3"
 scipy = "^1.14.1"
 rdkit = "^2024.9.5"
 pandas = "^2.2.3"
-seaborn = "^0.13.2"
-scikit-learn = "^1.5.2"
-matplotlib-venn = "^1.1.1"
+cutadapt = "5.0"
+biopython = "1.85"
+dnaio = "1.2.3"
 
 [tool.poetry.group.dev]
 optional = true
@@ -51,6 +53,7 @@ optional = true
 [tool.poetry.group.dev.dependencies]
 pre-commit = "~3.8.0"
 mypy = "^1.8.0"
+types-PyYAML = "6.0.12.20241230"
 poetry = "^1.7.1"
 poetry-bumpversion = "^0.3.1"
 ruff = "^0.5.5"
@@ -84,6 +87,10 @@ replace = 'release = "{new_version}"'
 [tool.poetry_bumpversion.file."src/deli/__init__.py"]
 search = '__version__ = "{current_version}"'
 replace = '__version__ = "{new_version}"'
+
+[[tool.mypy.overrides]]
+module = ["untyped_package.*"]
+follow_untyped_imports = true
 
 [tool.coverage.report]
 fail_under = 75
@@ -122,5 +129,3 @@ convention = "numpy"
 
 [tool.ruff.lint.isort]
 lines-after-imports = 2
-
-[mypy]

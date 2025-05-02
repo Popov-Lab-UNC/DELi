@@ -308,8 +308,19 @@ class BuildingBlockSet(DeliDataLoadable):
         _building_blocks = []
         with open(path, "r") as f:
             header = f.readline().strip().split(",")
-            _id_col_idx = header.index("id")
-            _dna_col_idx = header.index("tag")
+
+            try:
+                _id_col_idx = header.index("id")
+            except ValueError as e:
+                raise BuildingBlockSetError(
+                    f"missing column 'id' of building block set '{_set_id}'"
+                ) from e
+            try:
+                _dna_col_idx = header.index("tag")
+            except ValueError as e:
+                raise BuildingBlockSetError(
+                    f"missing column 'tag' of building block set '{_set_id}'"
+                ) from e
 
             if not no_smiles:
                 if "smiles" not in header:
