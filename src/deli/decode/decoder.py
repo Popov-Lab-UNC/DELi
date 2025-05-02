@@ -162,11 +162,18 @@ class DecodeStatistics:
         data = json.load(open(path, "r"))
 
         result.num_seqs_read = data.get("num_seqs_read", 0)
-        result.seq_lengths = defaultdict(int, data.get("seq_lengths", {}))
-        result.num_seqs_decoded_per_lib = defaultdict(
-            int, data.get("num_seqs_decoded_per_lib", {})
+
+        result.seq_lengths = defaultdict(
+            int, {int(key): int(val) for key, val in data.get("seq_lengths", {}).items()}
         )
-        result.num_seqs_degen_per_lib = defaultdict(int, data.get("num_seqs_degen_per_lib", {}))
+        result.num_seqs_decoded_per_lib = defaultdict(
+            int,
+            {str(key): int(val) for key, val in data.get("num_seqs_decoded_per_lib", {}).items()},
+        )
+        result.num_seqs_degen_per_lib = defaultdict(
+            int,
+            {str(key): int(val) for key, val in data.get("num_seqs_degen_per_lib", {}).items()},
+        )
         result.num_failed_too_short = data.get("num_failed_too_short", 0)
         result.num_failed_too_long = data.get("num_failed_too_long", 0)
         result.num_failed_library_call = data.get("num_failed_library_call", 0)

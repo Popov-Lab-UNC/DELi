@@ -168,10 +168,13 @@ def _generate_lib_degen_pie_chart(decode_stats: DecodeStatistics):
 def build_decoding_report(
     selection: Selection,
     stats: DecodeStatistics,
-    out_path: str | os.PathLike = "./decode_report.html",
+    out_dir: str | os.PathLike = "./",
+    prefix: str | None = None,
 ):
     """
     Generates a deli decoding html report from report stats
+
+    The name of the report will be "{selection_id}_decode_report.html"
 
     Notes
     -----
@@ -183,10 +186,23 @@ def build_decoding_report(
         the selection to build the report for
     stats: DecodeStatistics
         the decode run statistics to build the report for
-    out_path: Union[str, os.PathLike]
-        full path (with file name) to save the report to
-        will raise exception if the directory used does not exist
+    out_dir: Union[str, os.PathLike], default = "./"
+        the directory to save the report to
+        defaults to the current working directory
+    prefix: Union[str, None], default = None
+        the prefix to use for the report file name
+        if None, will use the selection_id
+        if provided, will be used as the prefix for the report file name
     """
+    if prefix is None:
+        _prefix = selection.selection_id
+    else:
+        _prefix = prefix
+    os.makedirs(out_dir, exist_ok=True)
+    _filename = f"{_prefix}_decode_statistics.json"
+
+    out_path = os.path.join(out_dir, _filename)
+
     _seq_count_data: dict = {
         **{
             "Total": (
@@ -228,9 +244,6 @@ def build_decoding_report(
         "decode_pie": _generate_lib_decode_pie_chart(stats),
         "degen_pie": _generate_lib_degen_pie_chart(stats),
     }
-
-    # makes any missing directories
-    os.makedirs(os.path.dirname(out_path), exist_ok=True)
 
     # write the report as a rendered jinja2 template
     # the template is stored as a resource in the package under templates

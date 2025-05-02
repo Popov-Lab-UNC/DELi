@@ -1,6 +1,7 @@
 #!/usr/bin/env nextflow
 
 params.decode_run
+params.fastq_file = null
 params.out_dir = "${launchDir}"
 params.prefix = ""
 params.debug = false
@@ -13,16 +14,25 @@ process GetSelectionIDPrefix {
     path decode_file
 
     output:
-    val prefix into prefix_channel
+    stdout
 
     script:
     """
-    grep '^selection_id:' $decode_file | sed 's/^selection_id: "\(.*\)"/\1/' | sed 's/ /_/g' | awk -v prefix="${params.prefix}" 'prefix != "" {print prefix "_" $0} prefix == "" {print $0}'
+    #!/usr/bin/env python
+
+    import yaml
+    with open('${params.decode_run}', 'r') as f:
+        data = yaml.safe_load(f)
+    selection_id = data.get('selection_id', None)
+    prefix = "${params.prefix}" + "_" + selection_id if selection_id else "Unknown"
+    if prefix.startswith("_"):
+        prefix = prefix[1:]
+    print(prefix)
     """
 }
 
 process Decode {
-    publishDir "$params.out_dir/logs/", mode: 'move'
+    publishDir "$params.out_dir/logs/", mode: 'move', pattern: "*.log"
 
     input:
     path fastq_file
@@ -34,9 +44,8 @@ process Decode {
 
     script:
     """
-    export sub_job_id=`basename ${params.decode_file} | sed 's/\.[^.]*$//'`
-    deli decode run $decode_file $fastq_files --ignore-decode-seqs --skip-report ${params.debug ? '--debug' : ''} \
-    ${params.save_failed ? '--save-failed' : ''} --prefix \$sub_job_id
+    export sub_job_id=`basename ${fastq_file}`
+    deli decode run ${params.decode_run} $fastq_file --ignore-decode-seqs --skip-report ${params.debug ? '--debug ' : ''}${params.save_failed ? '--save-failed ' : ''}--prefix \$sub_job_id
     mv deli.log "deli.\$sub_job_id.log"
     """
 }
@@ -46,14 +55,14 @@ process MergeCubes {
 
     input:
     path "*_cube.csv"
-    val prefix from prefix_channel
+    val prefix
 
     output:
     path "${prefix}_cube.csv"
 
     script:
     """
-    awk 'FNR==1 && NR!=1{next;}{print}' *_calls.csv > ${prefix}_cube.csv
+    awk 'FNR==1 && NR!=1{next;}{print}' *_cube.csv > ${prefix}_cube.csv
     """
 }
 
@@ -62,7 +71,7 @@ process MergeStats {
 
     input:
     path '*_decode_statistics.json'
-    val prefix from prefix_channel
+    val prefix
 
     output:
     path "${prefix}_decode_statistics.json"
@@ -70,8 +79,8 @@ process MergeStats {
 
     script:
     """
-    deli decode statistics merge *_report_stats.json --out-path ${prefix}_decode_statistics.json
-    deli decode report generate ${params.decode_run} ${prefix}_decode_statistics.json --out-path ${prefix}_decode_report.html
+    deli decode statistics merge *_decode_statistics.json --out-path ${prefix}_decode_statistics.json
+    deli decode report generate ${params.decode_run} ${prefix}_decode_statistics.json --out-dir ${prefix}_decode_report.html
     """
 }
 
@@ -92,21 +101,22 @@ process ExtractSequenceFiles {
     sequence_files = data.get('sequence_files', [])
     with open('sequence_files.txt', 'w') as out_f:
         out_f.write('\\n'.join(sequence_files))
-    "
     """
 }
 
 workflow {
-    decode_run = Channel.fromPath( params.decode_run ).first()
-    GetSelectionIDPrefix( decode_run )
+    DecodeRunChannel = Channel.fromPath( params.decode_run ).first()
+    PrefixChannel = GetSelectionIDPrefix( DecodeRunChannel ).map( {it.trim()} )
 
-    sequence_files = ExtractSequenceFiles( decode_run )
-        .splitText()
-        .map { file(it.trim() }
-
-    chunk_sequence_files = sequence_files.splitFastq( by: params.chunk_size, file: true )
-
+    if ( params.fastq_file ) {
+        chunk_sequence_files = Channel.fromPath( params.fastq_file ).splitFastq( by: params.chunk_size, file: true )
+    }
+    else {
+        sequence_files = ExtractSequenceFiles( DecodeRunChannel ).splitText().map{ file(it.trim()) }
+        chunk_sequence_files = sequence_files.splitFastq( by: params.chunk_size, file: true )
+    }
     Decode(chunk_sequence_files)
-    MergeCalls(Decode.out.cubes.collect())
-    MergeReport(Decode.out.decode_stats.collect())
+
+    MergeCubes(Decode.out.cubes.collect(), PrefixChannel)
+    MergeStats(Decode.out.decode_stats.collect(), PrefixChannel)
 }

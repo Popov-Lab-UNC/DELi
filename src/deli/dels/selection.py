@@ -8,7 +8,7 @@ import yaml
 
 from deli.dna import SequenceGlobReader, SequenceReader
 
-from .library import DELibraryPool
+from .library import DELibrary, DELibraryPool
 
 
 class SectionCondition:
@@ -153,6 +153,8 @@ class Selection:
         Selection
         """
         data = yaml.safe_load(open(path, "r"))
+        data["library_pool"] = DELibraryPool([DELibrary.load(lib) for lib in data["libraries"]])
+
         return cls.from_dict(data)
 
     def to_dict(self, ignore_library_pool: bool = False) -> dict:

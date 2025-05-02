@@ -19,6 +19,7 @@ from deli.decode import (
     DecodingRunner,
     build_decoding_report,
 )
+from deli.dels import Selection
 
 
 def _timestamp() -> str:
@@ -285,7 +286,8 @@ def merge(decode_file, statistic_files, out_path):
     DECODE is the path to a YAML file describing the decoding run.
     STATISTICS is a list of paths to decode statistics files to merge.
     """
-    loaded_decode_settings = DecodingRunner.from_file(decode_file)
+    # decode_settings = DecodingSettings.from_file(decode_file)
+    selection_info = Selection.from_yaml(decode_file)
 
     loaded_statistics: list[DecodeStatistics] = [
         DecodeStatistics.from_file(p) for p in statistic_files
@@ -293,7 +295,7 @@ def merge(decode_file, statistic_files, out_path):
     merged_stats = sum(loaded_statistics, DecodeStatistics())
 
     build_decoding_report(
-        selection=loaded_decode_settings.selection,
+        selection=selection_info,
         stats=merged_stats,
         out_path=out_path,
     )
@@ -304,24 +306,25 @@ def merge(decode_file, statistic_files, out_path):
 @click.argument("statistic-file", type=click.Path(exists=True, dir_okay=False), required=True)
 @click.option(
     "-o",
-    "--out-path",
+    "--out-dir",
     type=click.STRING,
     required=False,
-    default="decoding_report.html",
+    default="./",
     help="location to dave merged report",
 )
-def generate(decode_file, statistic_file, out_path):
+def generate(decode_file, statistic_file, out_dir):
     """
     Generate a decoding report from a decode run config and statistic file
 
     DECODE is the path to a YAML file describing the decoding experiment.
     STATISTIC is the path to a decode statistics file to use for the report.
     """
-    loaded_decode_settings = DecodingRunner.from_file(decode_file)
+    # decode_settings = DecodingSettings.from_file(decode_file)
+    selection_info = Selection.from_yaml(decode_file)
     loaded_statistic = DecodeStatistics.from_file(statistic_file)
 
     build_decoding_report(
-        selection=loaded_decode_settings.selection,
+        selection=selection_info,
         stats=loaded_statistic,
-        out_path=out_path,
+        out_dir=out_dir,
     )
