@@ -9,6 +9,7 @@ from typing import Literal
 
 from Levenshtein import distance as levenshtein_distance
 
+from ..dels import DELEnumerator
 from .decoder import DecodedBarcode
 from .umi import UMI
 
@@ -449,14 +450,20 @@ class DELibraryPoolCounter(abc.ABC):
         tuple[str, str, str]
             the row tuple for a given DEL ID
         """
-        for decoded_barcode_id, counter in self.del_counter.items():
-            yield (
-                decoded_barcode_id,
-                str(counter.get_raw_count()),
-                str(counter.get_degen_count()),
-            )
+        for lib_counter in self.del_counter.values():
+            for decoded_barcode_id, counter in lib_counter.items():
+                yield (
+                    decoded_barcode_id,
+                    str(counter.get_raw_count()),
+                    str(counter.get_degen_count()),
+                )
 
-    def to_csv(self, path: str | os.PathLike, file_format: Literal["csv", "tsv"] = "csv") -> None:
+    def to_csv(
+        self,
+        path: str | os.PathLike,
+        file_format: Literal["csv", "tsv"] = "csv",
+        enumerator: list[DELEnumerator] | None = None,
+    ) -> None:
         """
         Write the Pool Counter to a human-readable separated value file
 
@@ -471,6 +478,8 @@ class DELibraryPoolCounter(abc.ABC):
             path to save file to
         file_format: Literal["csv", "tsv"] = "csv"
             which file format to write to
+        enumerator: list[DELEnumerator] | None, default = None
+            a list of DELEnumerator objects to use for enumerating SMILES during output
         """
         delimiter: str
         if file_format == "tsv":
