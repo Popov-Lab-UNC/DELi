@@ -601,7 +601,7 @@ class DecodingRunner:
         os.makedirs(out_dir, exist_ok=True)
         _filename = f"{_prefix}_cube.csv"
         _out_path = os.path.join(out_dir, _filename)
-        self.degen.to_file(_out_path)
+        self.degen.to_csv(_out_path, file_format="csv")
         self.logger.debug(
             f"Wrote decode results for selection " f"{self.selection.selection_id} to {_out_path}"
         )

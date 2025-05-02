@@ -42,6 +42,25 @@ class DELIdCounter(DELCounter):
         """Initialize the DEL ID counter"""
         self.count: int = 0
 
+    def __add__(self, other):
+        """
+        Add two DELIdCounters together by summing the counts
+
+        Parameters
+        ----------
+        other: DELIdCounter
+            the other counter to add
+
+        Returns
+        -------
+        DELIdCounter
+        """
+        if isinstance(other, DELIdCounter):
+            new_counter = DELIdCounter()
+            new_counter.count = self.count + other.count
+            return new_counter
+        raise TypeError(f"unsupported operand type(s) for +: '{type(self)}' and '{type(other)}'")
+
     def add_id(self):
         """Increment the ID counter by 1"""
         self.count += 1
@@ -113,6 +132,26 @@ class UMICounter(UMIDegenerate, DELCounter):
         self.umis: set[str] = set()
         self._raw_count = 0
 
+    def __add__(self, other):
+        """
+        Add two UMICounters together by merging the UMI set and summing raw counts
+
+        Parameters
+        ----------
+        other: UMICounter
+            the other counter to add
+
+        Returns
+        -------
+        UMICounter
+        """
+        if isinstance(other, UMICounter):
+            new_counter = UMICounter()
+            new_counter.umis = self.umis.union(other.umis)
+            new_counter._raw_count = self._raw_count + other._raw_count
+            return new_counter
+        raise TypeError(f"unsupported operand type(s) for +: '{type(self)}' and '{type(other)}'")
+
     def add_umi(self, umi: UMI) -> bool:
         """
         Given a UMI, add it to the set and track its count
@@ -182,6 +221,33 @@ class UMICluster(UMIDegenerate, DELCounter):
         self.min_dist = min_dist
         self.umis: list[UMI] = list()
         self._raw_count = 0
+
+    def __add__(self, other):
+        """
+        Add two UMIClusters together by merging the UMI clusters and summing raw counts
+
+        Parameters
+        ----------
+        other: UMICluster
+            the other counter to add
+
+        Returns
+        -------
+        UMICluster
+        """
+        if isinstance(other, UMICluster):
+            if self.min_dist != other.min_dist:
+                raise ValueError(
+                    f"cannot add UMIClusters with different min_dist values: "
+                    f"{self.min_dist} and {other.min_dist}"
+                )
+            new_counter = UMICluster(min_dist=self.min_dist)
+            _all_umis = self.umis + other.umis
+            for _umi in _all_umis:
+                new_counter.add_umi(_umi)
+            new_counter._raw_count = self._raw_count + other._raw_count
+            return new_counter
+        raise TypeError(f"unsupported operand type(s) for +: '{type(self)}' and '{type(other)}'")
 
     def add_umi(self, umi: UMI) -> bool:
         """
@@ -268,6 +334,25 @@ class DELIdUmiCounter(DELCounter):
         else:
             self.umis = UMICounter()
 
+    def __add__(self, other):
+        """
+        Add two DELIdUmiCounters together by merging the UMI clusters and summing raw counts
+
+        Parameters
+        ----------
+        other: DELIdUmiCounter
+            the other counter to add
+
+        Returns
+        -------
+        DELIdUmiCounter
+        """
+        if isinstance(other, DELIdUmiCounter):
+            new_counter = DELIdUmiCounter()
+            new_counter.umis = self.umis + other.umis
+            return new_counter
+        raise TypeError(f"unsupported operand type(s) for +: '{type(self)}' and '{type(other)}'")
+
     def add_umi(self, umi: UMI) -> bool:
         """
         Add a UMI to the umi counter
@@ -315,6 +400,22 @@ class DELibraryPoolCounter(abc.ABC):
     del_counter: dict
 
     @abc.abstractmethod
+    def __add__(self, other):
+        """
+        Add two DELibraryPoolCounters together by merging their counters
+
+        Parameters
+        ----------
+        other: DELibraryPoolCounter
+            the other counter to add
+
+        Returns
+        -------
+        DELibraryPoolCounter
+        """
+        raise NotImplementedError()
+
+    @abc.abstractmethod
     def count_barcode(self, barcode: DecodedBarcode) -> bool:
         """
         Given a barcode, add it to the current degen count
@@ -334,36 +435,33 @@ class DELibraryPoolCounter(abc.ABC):
         """
         raise NotImplementedError()
 
-    def _get_barcode_rows(self) -> Iterator[tuple[str, str, str, str]]:
+    def _get_barcode_rows(self) -> Iterator[tuple[str, str, str]]:
         """
         Covert the barcode-count key value pair to a file row
 
         Should return a tuple with the following order:
         - DEL ID
-        - SMILES (empty string if not available)
         - Raw count
         - UMI corrected count (same as raw count if no UMI)
 
         Yields
         ------
-        tuple[str, str, str, str]
+        tuple[str, str, str]
             the row tuple for a given DEL ID
         """
-        for decoded_barcode, counter in self.del_counter.items():
+        for decoded_barcode_id, counter in self.del_counter.items():
             yield (
-                decoded_barcode.id,
-                decoded_barcode.get_smiles(""),
+                decoded_barcode_id,
                 str(counter.get_raw_count()),
                 str(counter.get_degen_count()),
             )
 
-    def to_file(self, path: str | os.PathLike, file_format: Literal["csv", "tsv"] = "tsv") -> None:
+    def to_csv(self, path: str | os.PathLike, file_format: Literal["csv", "tsv"] = "csv") -> None:
         """
-        Write the Pool Counter to a human-readable file
+        Write the Pool Counter to a human-readable separated value file
 
-        Each row will be a unique DEL ID with 4 columns:
+        Each row will be a unique DEL ID with 3 columns:
         - DEL ID
-        - SMILES (empty string if not available)
         - Raw count
         - UMI corrected count (same as raw count if no UMI)
 
@@ -371,7 +469,7 @@ class DELibraryPoolCounter(abc.ABC):
         ----------
         path: str | os.PathLike
             path to save file to
-        file_format: Literal["csv", "tsv"] = "tsv"
+        file_format: Literal["csv", "tsv"] = "csv"
             which file format to write to
         """
         delimiter: str
@@ -411,13 +509,52 @@ class DELibraryPoolIdUmiCounter(DELibraryPoolCounter):
             the minimum levenshtein distance between two UMI
             ignored if `umi_clustering` is False
         """
-        self.del_counter: defaultdict[DecodedBarcode, DELIdUmiCounter] = defaultdict(
+        self.del_counter: defaultdict[str, DELIdUmiCounter] = defaultdict(
             partial(
                 DELIdUmiCounter,
                 umi_clustering=umi_clustering,
                 min_umi_cluster_dist=min_umi_cluster_dist,
             )
         )
+        self.umi_clustering = umi_clustering
+        self.min_umi_cluster_dist = min_umi_cluster_dist
+
+    def __add__(self, other):
+        """
+        Add two DELibraryPoolIdUmiCounter objects together
+
+        Parameters
+        ----------
+        other: DELibraryPoolIdUmiCounter
+            the other counter to add
+
+        Returns
+        -------
+        DELibraryPoolIdUmiCounter
+            the new counter with the sum of the two
+        """
+        if isinstance(other, DELibraryPoolIdUmiCounter):
+            if self.umi_clustering != other.umi_clustering:
+                raise ValueError(
+                    f"cannot add DELibraryPoolIdUmiCounters with "
+                    f"different `umi_clustering` values: "
+                    f"{self.umi_clustering} and {other.umi_clustering}"
+                )
+            if self.min_umi_cluster_dist != other.min_umi_cluster_dist:
+                raise ValueError(
+                    f"cannot add DELibraryPoolIdUmiCounters with different "
+                    f"`min_umi_cluster_dist` values: "
+                    f"{self.min_umi_cluster_dist} and {other.min_umi_cluster_dist}"
+                )
+            new_counter = DELibraryPoolIdUmiCounter(
+                umi_clustering=self.umi_clustering, min_umi_cluster_dist=self.min_umi_cluster_dist
+            )
+            for barcode in self.del_counter.keys() | other.del_counter.keys():
+                new_counter.del_counter[barcode] = (
+                    self.del_counter[barcode] + self.del_counter[barcode]
+                )
+            return new_counter
+        raise TypeError(f"unsupported operand type(s) for +: '{type(self)}' and '{type(other)}'")
 
     def count_barcode(self, barcode: DecodedBarcode) -> bool:
         """
@@ -444,7 +581,7 @@ class DELibraryPoolIdUmiCounter(DELibraryPoolCounter):
         if barcode.umi is None:
             raise RuntimeError("cannot UMI degen on read missing UMI")
         else:
-            return self.del_counter[barcode].add_umi(barcode.umi)
+            return self.del_counter[barcode.id].add_umi(barcode.umi)
 
 
 class DELibraryPoolIdCounter(DELibraryPoolCounter):
@@ -458,7 +595,29 @@ class DELibraryPoolIdCounter(DELibraryPoolCounter):
     """
 
     def __init__(self):
-        self.del_counter: defaultdict[DecodedBarcode, DELIdCounter] = defaultdict(DELIdCounter)
+        self.del_counter: defaultdict[str, DELIdCounter] = defaultdict(DELIdCounter)
+
+    def __add__(self, other):
+        """
+        Add two DELibraryPoolIdCounters together by merging the counters
+
+        Parameters
+        ----------
+        other: DELibraryPoolIdCounter
+            the other counter to add
+
+        Returns
+        -------
+        DELibraryPoolIdCounter
+        """
+        if isinstance(other, DELibraryPoolIdCounter):
+            new_counter = DELibraryPoolIdCounter()
+            for barcode in self.del_counter.keys() | other.del_counter.keys():
+                new_counter.del_counter[barcode] = (
+                    self.del_counter[barcode] + other.del_counter[barcode]
+                )
+            return new_counter
+        raise TypeError(f"unsupported operand type(s) for +: '{type(self)}' and '{type(other)}'")
 
     def count_barcode(self, barcode: DecodedBarcode) -> bool:
         """
@@ -476,5 +635,5 @@ class DELibraryPoolIdCounter(DELibraryPoolCounter):
         bool
             `True` is added barcode is new (not degenerate), else `False`
         """
-        self.del_counter[barcode].add_id()
+        self.del_counter[barcode.id].add_id()
         return True  # always not degenerate with this counter
