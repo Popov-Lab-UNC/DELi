@@ -1,32 +1,42 @@
+import base64
+import importlib.resources as resources
 import os
 import sys
-import base64
-from jinja2 import Environment, FileSystemLoader
 from datetime import datetime
+
+import jinja2
+
 
 def encode_image_to_base64(image_path):
     """Convert image to base64-encoded string."""
     with open(image_path, "rb") as image_file:
         return base64.b64encode(image_file.read()).decode("utf-8")
 
+
 def get_plot_files(directory):
     """Retrieve base64-encoded plots from a given directory."""
     if os.path.exists(directory) and os.path.isdir(directory):
-        return [encode_image_to_base64(os.path.join(directory, f)) for f in os.listdir(directory) if f.endswith('.png')]
+        return [
+            encode_image_to_base64(os.path.join(directory, f))
+            for f in os.listdir(directory)
+            if f.endswith(".png")
+        ]
     return []
+
 
 def get_experiment_info(indexes, control_cols):
     experiment_info = []
     for exp_name, columns in indexes.items():
-        experiment_info.append({
-            'name': exp_name,
-            'index': columns,
-            'control_columns': control_cols.get(exp_name, [])
-        })
+        experiment_info.append(
+            {"name": exp_name, "index": columns, "control_columns": control_cols.get(exp_name, [])}
+        )
     return experiment_info
 
-def generate_report(base_dir, indexes, control_cols, nsc_max_dict=None, sd_min_dict=None, sampling_depth_dict=None):
-    today_date = datetime.today().strftime('%Y%m%d')
+
+def generate_report(
+    base_dir, indexes, control_cols, nsc_max_dict=None, sd_min_dict=None, sampling_depth_dict=None
+):
+    today_date = datetime.today().strftime("%Y%m%d")
     analysis_dir = os.path.join(base_dir, f"{today_date}_analysis")
 
     # Define directories for different plot categories
@@ -59,24 +69,23 @@ def generate_report(base_dir, indexes, control_cols, nsc_max_dict=None, sd_min_d
         for exp_name, value in sampling_depth_dict.items()
     ]
 
-    # Load the Jinja2 template
-    template_dir = os.path.dirname(__file__)
-    env = Environment(loader=FileSystemLoader(template_dir))
-    template = env.get_template("report_test_template.html")
-        
-    rendered_html = template.render(
-        experiment_info=experiment_info,
-        sampling_depth_values=sampling_depth_values,
-        sampling_depth_only=sampling_depth_values_only,
-        **plot_data  # Inject base64 plot data
-    )
+    with resources.path("templates", "decode_report.html") as template_path:
+        template = jinja2.Template(open(template_path).read())
 
-    # Save the report as an HTML file
-    output_file = os.path.join(base_dir, f"{today_date}_report_test_report.html")
-    with open(output_file, "w") as f:
-        f.write(rendered_html)
+        rendered_html = template.render(
+            experiment_info=experiment_info,
+            sampling_depth_values=sampling_depth_values,
+            sampling_depth_only=sampling_depth_values_only,
+            **plot_data,  # Inject base64 plot data
+        )
+
+        # Save the report as an HTML file
+        output_file = os.path.join(base_dir, f"{today_date}_report_test_report.html")
+        with open(output_file, "w") as f:
+            f.write(rendered_html)
 
     print(f"Report generated successfully: {output_file}")
+
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
@@ -90,4 +99,6 @@ if __name__ == "__main__":
     sd_min_dict = {}
     sampling_depth_dict = {}
 
-    generate_report(base_directory, indexes, control_cols, nsc_max_dict, sd_min_dict, sampling_depth_dict)
+    generate_report(
+        base_directory, indexes, control_cols, nsc_max_dict, sd_min_dict, sampling_depth_dict
+    )
