@@ -509,11 +509,14 @@ class DELibraryPoolIdUmiCounter(DELibraryPoolCounter):
             the minimum levenshtein distance between two UMI
             ignored if `umi_clustering` is False
         """
-        self.del_counter: defaultdict[str, DELIdUmiCounter] = defaultdict(
-            partial(
-                DELIdUmiCounter,
-                umi_clustering=umi_clustering,
-                min_umi_cluster_dist=min_umi_cluster_dist,
+        # god forgive me for this one
+        self.del_counter: dict[str, defaultdict[str, DELIdUmiCounter]] = defaultdict(
+            lambda: defaultdict(
+                partial(
+                    DELIdUmiCounter,
+                    umi_clustering=umi_clustering,
+                    min_umi_cluster_dist=min_umi_cluster_dist,
+                )
             )
         )
         self.umi_clustering = umi_clustering
@@ -549,10 +552,12 @@ class DELibraryPoolIdUmiCounter(DELibraryPoolCounter):
             new_counter = DELibraryPoolIdUmiCounter(
                 umi_clustering=self.umi_clustering, min_umi_cluster_dist=self.min_umi_cluster_dist
             )
-            for barcode in self.del_counter.keys() | other.del_counter.keys():
-                new_counter.del_counter[barcode] = (
-                    self.del_counter[barcode] + self.del_counter[barcode]
-                )
+            for library_id in self.del_counter.keys() | other.del_counter.keys():
+                for barcode_id in self.del_counter[library_id] | other.del_counter[library_id]:
+                    new_counter.del_counter[library_id][barcode_id] = (
+                        self.del_counter[library_id][barcode_id]
+                        + self.del_counter[library_id][barcode_id]
+                    )
             return new_counter
         raise TypeError(f"unsupported operand type(s) for +: '{type(self)}' and '{type(other)}'")
 
@@ -581,7 +586,7 @@ class DELibraryPoolIdUmiCounter(DELibraryPoolCounter):
         if barcode.umi is None:
             raise RuntimeError("cannot UMI degen on read missing UMI")
         else:
-            return self.del_counter[barcode.id].add_umi(barcode.umi)
+            return self.del_counter[barcode.library.library_id][barcode.id].add_umi(barcode.umi)
 
 
 class DELibraryPoolIdCounter(DELibraryPoolCounter):
@@ -595,7 +600,9 @@ class DELibraryPoolIdCounter(DELibraryPoolCounter):
     """
 
     def __init__(self):
-        self.del_counter: defaultdict[str, DELIdCounter] = defaultdict(DELIdCounter)
+        self.del_counter: defaultdict[str, defaultdict[str, DELIdCounter]] = defaultdict(
+            lambda: defaultdict(DELIdCounter)
+        )
 
     def __add__(self, other):
         """
@@ -612,10 +619,11 @@ class DELibraryPoolIdCounter(DELibraryPoolCounter):
         """
         if isinstance(other, DELibraryPoolIdCounter):
             new_counter = DELibraryPoolIdCounter()
-            for barcode in self.del_counter.keys() | other.del_counter.keys():
-                new_counter.del_counter[barcode] = (
-                    self.del_counter[barcode] + other.del_counter[barcode]
-                )
+            for lib_id in self.del_counter.keys() | other.del_counter.keys():
+                for barcode in self.del_counter[lib_id].keys() | other.del_counter[lib_id].keys():
+                    new_counter.del_counter[lib_id][barcode] = (
+                        self.del_counter[lib_id][barcode] + other.del_counter[lib_id][barcode]
+                    )
             return new_counter
         raise TypeError(f"unsupported operand type(s) for +: '{type(self)}' and '{type(other)}'")
 
@@ -635,5 +643,5 @@ class DELibraryPoolIdCounter(DELibraryPoolCounter):
         bool
             `True` is added barcode is new (not degenerate), else `False`
         """
-        self.del_counter[barcode.id].add_id()
+        self.del_counter[barcode.library.library_id][barcode.id].add_id()
         return True  # always not degenerate with this counter
