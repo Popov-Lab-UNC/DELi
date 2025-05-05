@@ -1042,6 +1042,12 @@ class DELi_Cube:
             metric (str, optional): Metric to rank the compounds. Defaults to 'sum'.
             output_dir (str, optional): Directory to save the image. Defaults to None (current directory).
         """
+        if metric == 'avg':
+            for exp_name, index_range in self.indexes.items():
+                avg_col_name = f'{exp_name}_avg'
+                if avg_col_name not in self.data.columns:
+                    self.data[avg_col_name] = self.data[index_range].mean(axis=1).round(2)
+
         for exp_name, indices in self.indexes.items():
             # Ensure the compound is present at least once in each replicate
             filtered_data = self.data[(self.data[indices] > 0).all(axis=1)]
