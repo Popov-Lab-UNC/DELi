@@ -38,23 +38,38 @@ process Decode {
     path fastq_file
 
     output:
-    path '*_cube.csv', emit: cubes
+    path '*_counters.pkl', emit: counters
     path '*_decode_statistics.json', emit: decode_stats
     path '*.log', emit: log
 
     script:
     """
     export sub_job_id=`basename ${fastq_file}`
-    deli decode run ${params.decode_run} $fastq_file --ignore-decode-seqs --skip-report ${params.debug ? '--debug ' : ''}${params.save_failed ? '--save-failed ' : ''}--prefix \$sub_job_id
+    deli decode run ${params.decode_run} $fastq_file --ignore-decode-seqs --skip-report ${params.debug ? '--debug ' : ''}${params.save_failed ? '--save-failed ' : ''}--prefix \$sub_job_id --save-degen
     mv deli.log "deli.\$sub_job_id.log"
     """
 }
 
-process MergeCubes {
+
+process MergeCounters {
+    input:
+    path "*_counters.pkl"
+
+    output:
+    path "merged_counters.pkl"
+
+    script:
+    """
+    deli decode counter merge *_counters.pkl --out-path merged_counters.pkl
+    """
+}
+
+
+process MakeCube {
     publishDir "$params.out_dir/", mode: 'move'
 
     input:
-    path "*_cube.csv"
+    path "merged_counters.pkl"
     val prefix
 
     output:
@@ -62,7 +77,7 @@ process MergeCubes {
 
     script:
     """
-    awk 'FNR==1 && NR!=1{next;}{print}' *_cube.csv > ${prefix}_cube.csv
+    deli cube from-counters merged_counters.pkl ${params.decode_run} --out-path ${prefix}_cube.csv
     """
 }
 
@@ -71,6 +86,7 @@ process MergeStats {
 
     input:
     path '*_decode_statistics.json'
+    path "merged_counters.pkl"
     val prefix
 
     output:
@@ -79,7 +95,7 @@ process MergeStats {
 
     script:
     """
-    deli decode statistics merge *_decode_statistics.json --out-path ${prefix}_decode_statistics.json
+    deli decode statistics merge *_decode_statistics.json --counter-file merged_counters.pkl --out-path ${prefix}_decode_statistics.json
     deli decode report generate ${params.decode_run} ${prefix}_decode_statistics.json --out-dir ${prefix}_decode_report.html
     """
 }
@@ -117,6 +133,7 @@ workflow {
     }
     Decode(chunk_sequence_files)
 
-    MergeCubes(Decode.out.cubes.collect(), PrefixChannel)
-    MergeStats(Decode.out.decode_stats.collect(), PrefixChannel)
+    CounterChannel = MergeCounters(Decode.out.counters.collect())
+    MakeCube(CounterChannel, PrefixChannel)
+    MergeStats(Decode.out.decode_stats.collect(), CounterChannel, PrefixChannel)
 }

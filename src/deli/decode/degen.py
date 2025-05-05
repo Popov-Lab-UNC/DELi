@@ -432,6 +432,37 @@ class DELibraryPoolCounter(abc.ABC):
         """
         raise NotImplementedError()
 
+    # def to_json_file(self, out_path: str | os.PathLike):
+    #     """
+    #     Convert the counter to a JSON file
+    #
+    #     Parameters
+    #     ----------
+    #     out_path: str | os.PathLike
+    #         the path to save the JSON file to
+    #     """
+    #
+    #     _data = {
+    #         library_id: [
+    #             barcode.library_id, [bb.bb_id for bb in barcode.building_blocks],
+    #         for barcode, counter in barcodes.items()
+    #         ]
+    #         for library_id, barcodes in self.del_counter.items()
+    #     }
+    #
+    #     return {
+    #         'del_counter': {
+    #             library_id: {
+    #                 str(barcode): {
+    #                     'umis': umis.get_degen_count(),
+    #                     'raw_count': umis.get_raw_count()
+    #                 }
+    #                 for barcode, umis in barcodes.items()
+    #             }
+    #             for library_id, barcodes in self.del_counter.items()
+    #         }
+    #     }
+
 
 class DELibraryPoolIdUmiCounter(DELibraryPoolCounter):
     """
@@ -468,9 +499,42 @@ class DELibraryPoolIdUmiCounter(DELibraryPoolCounter):
         self.umi_clustering = umi_clustering
         self.min_umi_cluster_dist = min_umi_cluster_dist
 
+    def __getstate__(self):
+        """
+        covert state to generic dict with no partial functions when requesting state
+        """
+        state = self.__dict__.copy()
+        state["del_counter"] = {k: dict(v) for k, v in self.del_counter.items()}
+        return state
+
+    def __setstate__(self, state):
+        """
+        set state for del_counter back to nested defaultdict when reloading state from getstate
+        """
+        self.__dict__.update(state)
+        self.del_counter = defaultdict(
+            lambda: defaultdict(
+                partial(
+                    DELIdUmiCounter,
+                    umi_clustering=self.umi_clustering,
+                    min_umi_cluster_dist=self.min_umi_cluster_dist,
+                )
+            ),
+            {k: defaultdict(DELIdUmiCounter, v) for k, v in state["del_counter"].items()},
+        )
+
+    def __len__(self):
+        """Get total number of unique DELs in the counter"""
+        return sum([len(barcodes) for barcodes in self.del_counter.values()])
+
     def __add__(self, other):
         """
         Add two DELibraryPoolIdUmiCounter objects together
+
+        Notes
+        -----
+        Adding two counters loaded from a pickle could cause
+        memory to grow unexpectedly
 
         Parameters
         ----------
@@ -495,15 +559,35 @@ class DELibraryPoolIdUmiCounter(DELibraryPoolCounter):
                     f"`min_umi_cluster_dist` values: "
                     f"{self.min_umi_cluster_dist} and {other.min_umi_cluster_dist}"
                 )
+
             new_counter = DELibraryPoolIdUmiCounter(
                 umi_clustering=self.umi_clustering, min_umi_cluster_dist=self.min_umi_cluster_dist
             )
             for library_id in self.del_counter.keys() | other.del_counter.keys():
-                for barcode_id in self.del_counter[library_id] | other.del_counter[library_id]:
-                    new_counter.del_counter[library_id][barcode_id] = (
-                        self.del_counter[library_id][barcode_id]
-                        + self.del_counter[library_id][barcode_id]
+                _length_self = len(self.del_counter[library_id])
+                _length_other = len(other.del_counter[library_id])
+                if (_length_self == 0) and (_length_other == 0):
+                    continue
+                _cached_lib = (
+                    self.del_counter[library_id].popitem()[0].library
+                    if _length_self > 0
+                    else other.del_counter[library_id].popitem()[0].library
+                )
+                for barcode in (
+                    self.del_counter[library_id].keys() | other.del_counter[library_id].keys()
+                ):
+                    barcode.library = _cached_lib
+                    barcode.building_blocks = [
+                        bb_set.get_bb_by_id(bb_id, fail_on_missing=True)
+                        for bb_id, bb_set in zip(
+                            [bb.bb_id for bb in barcode.building_blocks], _cached_lib.bb_sets
+                        )
+                    ]
+                    new_counter.del_counter[library_id][barcode] = (
+                        self.del_counter[library_id][barcode]
+                        + self.del_counter[library_id][barcode]
                     )
+
             return new_counter
         raise TypeError(f"unsupported operand type(s) for +: '{type(self)}' and '{type(other)}'")
 
@@ -548,6 +632,24 @@ class DELibraryPoolIdCounter(DELibraryPoolCounter):
     def __init__(self):
         self.del_counter: defaultdict[str, defaultdict[DecodedBarcode, DELIdCounter]] = (
             defaultdict(lambda: defaultdict(DELIdCounter))
+        )
+
+    def __getstate__(self):
+        """
+        covert state to generic dict with no partial functions when requesting state
+        """
+        state = self.__dict__.copy()
+        state["del_counter"] = {k: dict(v) for k, v in self.del_counter.items()}
+        return state
+
+    def __setstate__(self, state):
+        """
+        set state for del_counter back to nested defaultdict when reloading state from getstate
+        """
+        self.__dict__.update(state)
+        self.del_counter = defaultdict(
+            lambda: defaultdict(DELIdCounter),
+            {k: defaultdict(DELIdUmiCounter, v) for k, v in state["del_counter"].items()},
         )
 
     def __add__(self, other):
