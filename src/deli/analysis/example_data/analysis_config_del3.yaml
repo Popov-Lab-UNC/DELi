@@ -1,5 +1,5 @@
 general:
-  data: "analysis/example_data/DEL003_cube_noid.csv"
+  data: "./analysis/example_data/DEL003_cube_noid.csv"
   lib_size: 58000
   output_dir: "DEL3"
 

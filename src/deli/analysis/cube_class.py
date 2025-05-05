@@ -15,10 +15,10 @@ import torch
 from torch_geometric.loader import DataLoader
 import torch.optim as optim
 import torch.nn as nn
-from gnn import Final_Network, smi_to_pyg
+from deli.analysis.gnn import Final_Network, smi_to_pyg
 from PIL import ImageDraw, ImageFont
 from IPython.display import display
-from poly_o import PolyO
+from deli.analysis.poly_o import PolyO
 
 class DELi_Cube:
     def __init__(self, data: pd.DataFrame, id_col: str, indexes: dict, control_cols: dict = None, lib_size: int = None, raw_indexes: dict = None):
