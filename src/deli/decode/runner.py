@@ -5,6 +5,7 @@ import logging
 import os
 import random
 import warnings
+from itertools import zip_longest
 from os import PathLike
 from typing import Any, Literal, Self
 
@@ -575,33 +576,166 @@ class DecodingRunner:
             f"{self.selection.selection_id} to {_out_path}"
         )
 
-    def write_cube(self, out_dir: str | os.PathLike, prefix: str | None = None):
+    def write_cube(
+        self,
+        out_path: str | os.PathLike,
+        include_library_id_col: bool = False,
+        include_bb_id_cols: bool = False,
+        include_bb_smi_cols: bool = False,
+        include_raw_count_col: bool = True,
+        enumerate_smiles: bool = False,
+        file_format: Literal["csv", "tsv"] = "csv",
+    ) -> None:
         """
-        Write the decoding results in a cube format for this run
+        Write the resulting DEL counts to a human-readable separated value file
+
+        Will write a unique result file for each selection in the experiment.
+
+        Each row will be a unique DEL ID with at least 2 and at most 11 columns.
+        If including BB columns, the max cycle number is the number of columns included,
+        with DELs from libraries with smaller cycle counts set to 'null'.
+        Below are the columns in order of appearance:
+        - DEL_ID
+        - LIBRARY_ID (if `include_library_id_col` is True)
+        - <For [#] of bb cycles in the library>
+            - BB[#]_ID (if `include_bb_id_cols` is True)
+            - BB[#]_SMILES (if `include_bb_smi_cols` is True)
+        - ENUMERATED_SMILES
+        - RAW_COUNT (if `include_raw_count_col` is True)
+        - UMI_CORRECTED_COUNT (same as raw count if not using UMI degen)
+
+        If `enumerate_smiles` is True, the enumerated SMILES will be generated on the
+        fly using the reaction data provided in the library files.
+        If this is missing, the SMILES will be set to 'null'.
+        Also note that on the fly enumeration will have a dramatic impact on runtime.
+        For large DELs, it can be far more efficient to enumerate the SMILES
+        once, save in a database, and then map the enumerated SMILES to the DEL ID
+        in the CSV file with a join.
 
         Notes
         -----
-        Will write a unique result file for each selection in the experiment.
-        All files will be `csv` and be named "{?prefix}_<selection_id>_cube.csv"
+        If running decoding in parallel, a call to `to_csv` should be made after
+        all decoding is complete and the counters have been merged.
+        Merging raw csv files will result is data loss and incorrect counts,
+        especially if UMI degen is used.
 
         Parameters
         ----------
-        out_dir: str | PathLike
-            path to directory to save results to
+        out_path: str | PathLike
+            path to save results to
             will create the directory if it does not exist
-        prefix: str, default = None
-            prefix for output files,
-            if None will default to the selection ID
-        """
-        if prefix is None:
-            _prefix = self.selection.selection_id
-        else:
-            _prefix = prefix
+        file_format: Literal["csv", "tsv"] = "csv"
+            which file format to write to
+            either "csv" or "tsv"
+        include_library_id_col: bool, default = False
+            include the library ID in the output
+        include_bb_id_cols: bool, default = False
+            include the building block IDs in the output
+        include_bb_smi_cols: bool, default = False
+            include the building block SMILES in the output
+        include_raw_count_col: bool, default = True
+            include the raw count in the output
+        enumerate_smiles: bool, default = False
+            include the enumerated SMILES in the output
+            Note: this will have a dramatic impact on runtime
 
-        os.makedirs(out_dir, exist_ok=True)
-        _filename = f"{_prefix}_cube.csv"
-        _out_path = os.path.join(out_dir, _filename)
-        self.degen.to_csv(_out_path, file_format="csv")
+        Warnings
+        --------
+        UserWarning
+            - raised when enumeration is requested but some libraries are
+            missing enumerators
+            - raised when building block smiles are requested but some libraries
+            are missing this info
+        """
+        delimiter: str
+        if file_format == "tsv":
+            delimiter = "\t"
+        elif file_format == "csv":
+            delimiter = ","
+        else:
+            raise ValueError(f"file format '{file_format}' not recognized")
+
+        # check for enumeration
+        if enumerate_smiles:
+            if not self.selection.library_pool.all_libs_have_enumerators():
+                _libraries_missing_enumerators = [
+                    lib.library_id
+                    for lib in self.selection.library_pool.libraries
+                    if lib.enumerator is None
+                ]
+                warnings.warn(
+                    f"Some libraries are missing enumerators: "
+                    f"{_libraries_missing_enumerators}. "
+                    "On the fly enumeration will be skipped for these libraries. "
+                    "Please check the library files to ensure they have the "
+                    "correct reaction data.",
+                    stacklevel=2,
+                )
+
+        # check for building block smiles
+        if include_bb_smi_cols:
+            if not self.selection.library_pool.all_libs_have_building_block_smiles():
+                _libraries_missing_bb_smi = [
+                    lib.library_id
+                    for lib in self.selection.library_pool.libraries
+                    if not lib.building_blocks_have_smi()
+                ]
+                warnings.warn(
+                    f"Some libraries are missing building block smiles: "
+                    f"{_libraries_missing_bb_smi}. "
+                    "Building block smiles will be skipped for these libraries. "
+                    "Please check the building block files to ensure they have "
+                    "the correct smiles.",
+                    stacklevel=2,
+                )
+
+        # get max_cycle_size
+        _max_cycle_size = (
+            self.selection.library_pool.max_cycle_size()
+            if (include_bb_id_cols or include_bb_smi_cols)
+            else 0
+        )
+
+        # set header
+        _header = "DEL_ID"
+        if include_library_id_col:
+            _header += f"{delimiter}LIBRARY_ID"
+        for i in range(_max_cycle_size):
+            if include_bb_id_cols:
+                _header += f"{delimiter}BB{i+1}_ID"
+            if include_bb_smi_cols:
+                _header += f"{delimiter}BB{i+1}_SMILES"
+        if enumerate_smiles:
+            _header += f"{delimiter}SMILES"
+        if include_raw_count_col:
+            _header += f"{delimiter}RAW_COUNT"
+        _header += f"{delimiter}UMI_CORRECTED_COUNT\n"
+
+        # write the file
+        with open(out_path, "w") as f:
+            # write header
+            f.write(_header)
+            for library_count_set in self.degen.del_counter.values():
+                for decode_barcode, counts in library_count_set.items():
+                    _row = f"{decode_barcode.id}"
+                    if include_library_id_col:
+                        _row += f"{delimiter}{decode_barcode.library.library_id}"
+                    for _, bb in zip_longest(
+                        range(_max_cycle_size), decode_barcode.building_blocks
+                    ):
+                        if include_bb_id_cols:
+                            _row += f"{delimiter}" f"{bb.bb_id if bb is not None else 'null'}"
+                        if include_bb_smi_cols:
+                            _row += (
+                                f"{delimiter}"
+                                f"{bb.smiles if (bb is not None and bb.smiles) else 'null'}"
+                            )
+                    if enumerate_smiles:
+                        _row += f"{delimiter}{decode_barcode.get_smiles(default='null')}"
+                    if include_raw_count_col:
+                        _row += f"{delimiter}{counts.get_raw_count()}"
+                    _row += f"{delimiter}{counts.get_degen_count()}\n"
+
         self.logger.debug(
-            f"Wrote decode results for selection " f"{self.selection.selection_id} to {_out_path}"
+            f"Wrote decode results for selection " f"{self.selection.selection_id} to {out_path}"
         )

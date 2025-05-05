@@ -41,6 +41,16 @@ class LowMemDELCompound:
         self.building_block_smiles = building_block_smis
         self.enumerated_smi = enumerated_smi
 
+    def __eq__(self, other):
+        """Check if two LowMemDELCompound objects are equal."""
+        if not isinstance(other, LowMemDELCompound):
+            return False
+        return self.compound_id == other.compound_id
+
+    def __hash__(self):
+        """Return the hash of the object."""
+        return hash(self.compound_id)
+
     def __repr__(self):
         """Return a string representation of the object."""
         return self.compound_id

@@ -1,15 +1,11 @@
 """code for degenerating barcode reads"""
 
 import abc
-import os
 from collections import defaultdict
-from collections.abc import Iterator
 from functools import partial
-from typing import Literal
 
 from Levenshtein import distance as levenshtein_distance
 
-from ..dels import DELEnumerator
 from .decoder import DecodedBarcode
 from .umi import UMI
 
@@ -436,65 +432,6 @@ class DELibraryPoolCounter(abc.ABC):
         """
         raise NotImplementedError()
 
-    def _get_barcode_rows(self) -> Iterator[tuple[str, str, str]]:
-        """
-        Covert the barcode-count key value pair to a file row
-
-        Should return a tuple with the following order:
-        - DEL ID
-        - Raw count
-        - UMI corrected count (same as raw count if no UMI)
-
-        Yields
-        ------
-        tuple[str, str, str]
-            the row tuple for a given DEL ID
-        """
-        for lib_counter in self.del_counter.values():
-            for decoded_barcode_id, counter in lib_counter.items():
-                yield (
-                    decoded_barcode_id,
-                    str(counter.get_raw_count()),
-                    str(counter.get_degen_count()),
-                )
-
-    def to_csv(
-        self,
-        path: str | os.PathLike,
-        file_format: Literal["csv", "tsv"] = "csv",
-        enumerator: list[DELEnumerator] | None = None,
-    ) -> None:
-        """
-        Write the Pool Counter to a human-readable separated value file
-
-        Each row will be a unique DEL ID with 3 columns:
-        - DEL ID
-        - Raw count
-        - UMI corrected count (same as raw count if no UMI)
-
-        Parameters
-        ----------
-        path: str | os.PathLike
-            path to save file to
-        file_format: Literal["csv", "tsv"] = "csv"
-            which file format to write to
-        enumerator: list[DELEnumerator] | None, default = None
-            a list of DELEnumerator objects to use for enumerating SMILES during output
-        """
-        delimiter: str
-        if file_format == "tsv":
-            delimiter = "\t"
-        elif file_format == "csv":
-            delimiter = ","
-        else:
-            raise ValueError(f"file format '{file_format}' not recognized")
-
-        with open(path, "w") as f:
-            # write header
-            f.write(delimiter.join(["DEL_ID", "SMILES", "RAW_COUNT", "UMI_CORRECTED_COUNT"]))
-            for _row in self._get_barcode_rows():
-                f.write(delimiter.join(_row) + "\n")
-
 
 class DELibraryPoolIdUmiCounter(DELibraryPoolCounter):
     """
@@ -519,7 +456,7 @@ class DELibraryPoolIdUmiCounter(DELibraryPoolCounter):
             ignored if `umi_clustering` is False
         """
         # god forgive me for this one
-        self.del_counter: dict[str, defaultdict[str, DELIdUmiCounter]] = defaultdict(
+        self.del_counter: dict[str, defaultdict[DecodedBarcode, DELIdUmiCounter]] = defaultdict(
             lambda: defaultdict(
                 partial(
                     DELIdUmiCounter,
@@ -595,7 +532,7 @@ class DELibraryPoolIdUmiCounter(DELibraryPoolCounter):
         if barcode.umi is None:
             raise RuntimeError("cannot UMI degen on read missing UMI")
         else:
-            return self.del_counter[barcode.library.library_id][barcode.id].add_umi(barcode.umi)
+            return self.del_counter[barcode.library.library_id][barcode].add_umi(barcode.umi)
 
 
 class DELibraryPoolIdCounter(DELibraryPoolCounter):
@@ -609,8 +546,8 @@ class DELibraryPoolIdCounter(DELibraryPoolCounter):
     """
 
     def __init__(self):
-        self.del_counter: defaultdict[str, defaultdict[str, DELIdCounter]] = defaultdict(
-            lambda: defaultdict(DELIdCounter)
+        self.del_counter: defaultdict[str, defaultdict[DecodedBarcode, DELIdCounter]] = (
+            defaultdict(lambda: defaultdict(DELIdCounter))
         )
 
     def __add__(self, other):
@@ -652,5 +589,5 @@ class DELibraryPoolIdCounter(DELibraryPoolCounter):
         bool
             `True` is added barcode is new (not degenerate), else `False`
         """
-        self.del_counter[barcode.library.library_id][barcode.id].add_id()
+        self.del_counter[barcode.library.library_id][barcode].add_id()
         return True  # always not degenerate with this counter

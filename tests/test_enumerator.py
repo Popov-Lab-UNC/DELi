@@ -59,6 +59,6 @@ def test_enumerator_enumerate_bb(del_enumerator):
     compound = del_enumerator.get_enumerated_compound_from_bb_ids(bb_map)
 
     assert (
-        compound.smi == "*NC(=O)[C@H](Cc1ccc(I)cc1)N([H])C(=O)c1ccc2c"
-        "(c1)N=C(c1ccc3cccnc3c1)N2Cc1ccc(-n2cccn2)cc1"
+        compound.smi == "[H]N(C(=O)c1ccc2c(c1)N=C(c1ccc3cccnc3c1)N2Cc1ccc"
+        "(-n2cccn2)cc1)[C@@H](Cc1ccc(I)cc1)C([15NH2])=O"
     )

@@ -1,6 +1,7 @@
 """tests for decoding classes/functions"""
 
 import os
+import shutil
 
 import pytest
 
@@ -11,23 +12,33 @@ from deli.decode.runner import DecodingRunParsingError
 
 set_deli_data_dir(os.path.join(os.path.dirname(__file__), "test_data", "test_deli_data_dir"))
 
-DECODE_FILE = os.path.join(os.path.dirname(__file__), "test_data", "example_decode.yaml")
-NO_SEQ_DECODE_FILE = os.path.join(
-    os.path.dirname(__file__), "test_data", "example_decode_no_seqs.yaml"
+DECODE_FILE = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "test_data", "example_decode.yaml")
 )
-FASTQ_FILE = os.path.join(os.path.dirname(__file__), "test_data", "example.fastq")
+NO_SEQ_DECODE_FILE = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "test_data", "example_decode_no_seqs.yaml")
+)
+FASTQ_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), "test_data", "example.fastq"))
 
 
 @pytest.mark.unit
-def test_loading_decode_runner():
+def test_loading_decode_runner(tmpdir):
     """Test loading a DecodingRunner from a file"""
-    runner = DecodingRunner.from_file(DECODE_FILE)
+    os.chdir(tmpdir)
+    tmpdir.mkdir("test_data")
+    shutil.copyfile(FASTQ_FILE, tmpdir.join("test_data", "example.fastq"))
+    runner = DecodingRunner.from_file(DECODE_FILE, disable_logging=False)
+    assert isinstance(runner, DecodingRunner)
+    assert os.path.exists(tmpdir.join("deli.log"))
+
+    runner = DecodingRunner.from_file(
+        DECODE_FILE, [FASTQ_FILE], ignore_decode_seqs=True, disable_logging=True
+    )
     assert isinstance(runner, DecodingRunner)
 
-    runner = DecodingRunner.from_file(DECODE_FILE, [FASTQ_FILE], ignore_decode_seqs=True)
-    assert isinstance(runner, DecodingRunner)
-
-    runner = DecodingRunner.from_file(NO_SEQ_DECODE_FILE, [FASTQ_FILE], ignore_decode_seqs=False)
+    runner = DecodingRunner.from_file(
+        NO_SEQ_DECODE_FILE, [FASTQ_FILE], ignore_decode_seqs=False, disable_logging=True
+    )
     assert isinstance(runner, DecodingRunner)
 
     with pytest.raises(DecodingRunParsingError, match="`fastq_files` cannot be provided when"):
@@ -105,9 +116,18 @@ def test_decode_runner_write_stats(ran_decode_runner, tmpdir):
 @pytest.mark.unit
 def test_decode_runner_write_cube(ran_decode_runner, tmpdir):
     """Test writing decode cube to a file"""
-    ran_decode_runner.write_cube(tmpdir)
-    ran_decode_runner.write_cube(tmpdir, prefix="TEST")
-
-    selection_id = ran_decode_runner.selection.selection_id
-    assert os.path.exists(tmpdir.join(f"{selection_id}_cube.csv"))
+    ran_decode_runner.write_cube(tmpdir.join("TEST_cube.csv"))
     assert os.path.exists(tmpdir.join("TEST_cube.csv"))
+    _header = open(tmpdir.join("TEST_cube.csv"), "r").readline().strip().split(",")
+    assert "DEL_ID" in _header
+    assert "UMI_CORRECTED_COUNT" in _header
+
+    with pytest.warns(UserWarning, match="Some libraries are missing enumerators"):
+        ran_decode_runner.write_cube(tmpdir.join("TEST_cube.csv"), enumerate_smiles=True)
+        _header = open(tmpdir.join("TEST_cube.csv"), "r").readline().strip().split(",")
+        assert "SMILES" in _header
+
+    with pytest.warns(UserWarning, match="Some libraries are missing building block smiles"):
+        ran_decode_runner.write_cube(tmpdir.join("TEST_cube.csv"), include_bb_smi_cols=True)
+        _header = open(tmpdir.join("TEST_cube.csv"), "r").readline().strip().split(",")
+        assert "BB1_SMILES" in _header

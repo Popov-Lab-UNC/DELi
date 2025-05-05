@@ -2,6 +2,7 @@
 
 from .barcode import BarcodeSchema, BuildingBlockBarcodeSection
 from .building_block import BaseBuildingBlock, BuildingBlock, BuildingBlockSet, MaskedBuildingBlock
+from .compound import LowMemDELCompound
 from .enumerator import DELEnumerator
 from .library import DELibrary, DELibraryPool
 from .selection import SectionCondition, Selection, SequencedSelection
@@ -22,4 +23,5 @@ __all__ = [
     "SectionCondition",
     "SequencedSelection",
     "Selection",
+    "LowMemDELCompound",
 ]

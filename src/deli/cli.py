@@ -2,6 +2,7 @@
 
 import configparser
 import datetime
+import enum
 import os
 import pickle
 from collections import defaultdict
@@ -435,39 +436,90 @@ def cube():
     pass
 
 
+class FileType(enum.StrEnum):
+    """Enum for file types"""
+
+    CSV = "csv"
+    TSV = "tsv"
+
+
 @cube.command(name="from-counter")
 @click.argument("counter-file", type=click.Path(exists=True, dir_okay=False), required=True)
-@click.argument("decode-file", type=click.Path(exists=True, dir_okay=False), required=False)
-@click.option(
-    "--enumerate",
-    "-e",
-    is_flag=True,
-    help="Enumerate the SMILES of the compounds",
-)
+@click.argument("decode-file", type=click.Path(exists=True, dir_okay=False), required=True)
 @click.option(
     "-o",
-    "--out-dir",
-    type=click.Path(exists=True, dir_okay=True),
+    "--out-path",
+    type=click.Path(dir_okay=False),
     required=False,
-    default="./",
-    help="directory to save cube file",
+    default=None,
+    help="path to save cube file",
 )
-def cube_from_counter(counter_file, decode_file, enumerate, out_dir):
+@click.option(
+    "--file-format",
+    "-f",
+    type=click.Choice(["csv", "tsv"]),
+    required=False,
+    default="csv",
+    help="format of the cube file; will append file type to path if not present",
+)
+@click.option(
+    "--enumerate-smiles",
+    "-e",
+    is_flag=True,
+    help="Enumerate the SMILES of the compounds; WARNING: can have dramatic effect on runtime",
+)
+@click.option(
+    "--include-library-id", is_flag=True, help="Include the Library ID column in the cube file"
+)
+@click.option(
+    "--include-bb-id", is_flag=True, help="Include the building block ID columns in the cube file"
+)
+@click.option(
+    "--include-bb-smi",
+    is_flag=True,
+    help="Include the building block SMILES columns in the cube file",
+)
+@click.option(
+    "--exclude-raw-counts", is_flag=True, help="Exclude the raw counts columns in the cube file"
+)
+def cube_from_counter(
+    counter_file,
+    decode_file,
+    out_path,
+    enumerate_smiles,
+    file_format,
+    include_library_id,
+    include_bb_id,
+    include_bb_smi,
+    exclude_raw_counts,
+):
     """
     Generate a cube file from a counter pickle
 
-    Note: in order to use --enumerate, the decode file must be passed and all
-    DELs must define a reaction schema
-
     COUNTER_FILE is the path to a counter pickle file to use for the cube.
-    DECODE_FILE is the path to a YAML file describing the decoding run.
+    DECODE_FILE is the path to the decode YAML file used to generate the counters.
+
+    Note: Enumerating the SMILES of the compounds can have a dramatic increase on runtime.
     """
     loaded_counter: DELibraryPoolCounter = pickle.load(open(counter_file, "rb"))
-    os.makedirs(out_dir, exist_ok=True)
-    loaded_counter.to_csv(str(os.path.join(out_dir, counter_file.replace(".pkl", ".csv"))))
+    runner = DecodingRunner.from_file(decode_file)
 
-    if enumerate:
-        if decode_file is None:
-            raise click.ClickException("Must provide a decode file to enumerate the cube")
-        selection_info = Selection.from_yaml(decode_file)
-        loaded_counter.enumerate_cube(selection_info, out_dir=out_dir)
+    # to enable writing the cube, we need to set the degen counter
+    runner.degen = loaded_counter
+
+    if out_path is None:
+        _out_path = f"{runner.selection.selection_id}_cube.{file_format}"
+    else:
+        _out_path = out_path
+        if not _out_path.endswith(f".{file_format}"):
+            _out_path += f".{file_format}"
+
+    runner.write_cube(
+        out_path=_out_path,
+        file_format=file_format,
+        include_library_id_col=include_library_id,
+        include_bb_id_cols=include_bb_id,
+        include_bb_smi_cols=include_bb_smi,
+        include_raw_count_col=not exclude_raw_counts,
+        enumerate_smiles=enumerate_smiles,
+    )
