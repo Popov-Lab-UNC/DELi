@@ -528,7 +528,6 @@ class DecodingRunner:
         if fail_csv_file is not None:
             fail_csv_file.write("read_id\tsequence\tquality\treason_failed\tlib_call\n")
 
-        _decodes = []
         # look through all sequences in the selection
         for i, seq_record in enumerate(
             tqdm(
@@ -541,7 +540,6 @@ class DecodingRunner:
 
             # decode the read
             decoded_barcode = self.decoder.decode_read(seq_record)
-            _decodes.append(decoded_barcode)
             # skip failed reads
             if isinstance(decoded_barcode, DecodedBarcode):
                 self.decoder.decode_statistics.num_seqs_decoded_per_lib[
@@ -552,8 +550,6 @@ class DecodingRunner:
                     self.decoder.decode_statistics.num_seqs_degen_per_lib[
                         decoded_barcode.library.library_id
                     ] += 1
-                else:
-                    print("HERE")
             elif fail_csv_file is not None:
                 # if we are saving failed reads, save the read
                 fail_csv_file.write(
