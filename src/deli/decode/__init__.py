@@ -3,7 +3,7 @@
 from .decoder import DecodedBarcode, DecodeStatistics, FailedDecode
 from .degen import DELibraryPoolCounter, DELibraryPoolIdCounter, DELibraryPoolIdUmiCounter
 from .report import build_decoding_report
-from .runner import DecodingRunner, DecodingSettings
+from .runner import DecodingRunner, DecodingRunnerResults, DecodingSettings
 
 
 __all__ = [
@@ -16,4 +16,5 @@ __all__ = [
     "DELibraryPoolIdCounter",
     "DELibraryPoolIdUmiCounter",
     "build_decoding_report",
+    "DecodingRunnerResults",
 ]

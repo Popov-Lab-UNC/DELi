@@ -168,8 +168,7 @@ def _generate_lib_degen_pie_chart(decode_stats: DecodeStatistics):
 def build_decoding_report(
     selection: Selection,
     stats: DecodeStatistics,
-    out_dir: str | os.PathLike = "./",
-    prefix: str | None = None,
+    out_path: str | os.PathLike,
 ):
     """
     Generates a deli decoding html report from report stats
@@ -186,23 +185,9 @@ def build_decoding_report(
         the selection to build the report for
     stats: DecodeStatistics
         the decode run statistics to build the report for
-    out_dir: Union[str, os.PathLike], default = "./"
-        the directory to save the report to
-        defaults to the current working directory
-    prefix: Union[str, None], default = None
-        the prefix to use for the report file name
-        if None, will use the selection_id
-        if provided, will be used as the prefix for the report file name
+    out_path: Union[str, os.PathLike]
+        the path to save the report to
     """
-    if prefix is None:
-        _prefix = selection.selection_id
-    else:
-        _prefix = prefix
-    os.makedirs(out_dir, exist_ok=True)
-    _filename = f"{_prefix}_decode_statistics.json"
-
-    out_path = os.path.join(out_dir, _filename)
-
     _seq_count_data: dict = {
         **{
             "Total": (

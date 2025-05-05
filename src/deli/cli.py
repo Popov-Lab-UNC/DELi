@@ -20,6 +20,7 @@ from deli.configure import (
 from deli.decode import (
     DecodeStatistics,
     DecodingRunner,
+    DecodingRunnerResults,
     DELibraryPoolCounter,
     build_decoding_report,
 )
@@ -219,6 +220,8 @@ def run_decode(
 
     NOTE: if the DECODE file contains a `selection` field, it will be used to select the
     """
+    out_dir = os.path.abspath(out_dir)
+
     if deli_data_dir is not None:
         set_deli_data_dir(deli_data_dir)
 
@@ -235,16 +238,27 @@ def run_decode(
     if prefix is None or prefix == "":
         prefix = runner.selection.selection_id
 
-    runner.run(save_failed_to=save_failed_to, use_tqdm=tqdm)
+    results = runner.run(save_failed_to=save_failed_to, use_tqdm=tqdm)
 
     runner.logger.info(f"Saving outputs to {out_dir}")
-    runner.write_decode_statistics(out_dir=out_dir, prefix=prefix)
+
+    statistics_out_path = os.path.join(out_dir, f"{prefix}_decode_statistics.json")
+    runner.logger.debug(f"Saving decode statistics to {statistics_out_path}")
+    results.write_decode_statistics(statistics_out_path)
+
     if save_degen:
-        pickle.dump(runner.degen, open(os.path.join(out_dir, f"{prefix}_counters.pkl"), "wb"))
+        degen_out_path = os.path.join(out_dir, f"{prefix}_counters.pkl")
+        runner.logger.debug(f"Saving cube to {degen_out_path}")
+        pickle.dump(results.degen, open(degen_out_path, "wb"))
     else:
-        runner.write_cube(out_dir=out_dir, prefix=prefix)
+        cube_out_path = os.path.join(out_dir, f"{prefix}_cube.csv")
+        runner.logger.debug(f"Saving cube to {cube_out_path}")
+        results.write_cube(cube_out_path)
+
     if not skip_report:
-        runner.write_decode_report(out_dir=out_dir, prefix=prefix)
+        report_out_path = os.path.join(out_dir, f"{prefix}_report.html")
+        runner.logger.debug(f"Saving cube to {report_out_path}")
+        results.write_decode_report(report_out_path)
 
 
 @cli.command(name="enumerate")
@@ -397,7 +411,7 @@ def merge(decode_file, statistic_files, out_path):
     build_decoding_report(
         selection=selection_info,
         stats=merged_stats,
-        out_dir=out_path,
+        out_path=out_path,
     )
 
 
@@ -406,13 +420,13 @@ def merge(decode_file, statistic_files, out_path):
 @click.argument("statistic-file", type=click.Path(exists=True, dir_okay=False), required=True)
 @click.option(
     "-o",
-    "--out-dir",
+    "--out-path",
     type=click.STRING,
     required=False,
     default="./",
-    help="location to dave merged report",
+    help="path to save generated report",
 )
-def generate(decode_file, statistic_file, out_dir):
+def generate(decode_file, statistic_file, out_path):
     """
     Generate a decoding report from a decode run config and statistic file
 
@@ -426,7 +440,7 @@ def generate(decode_file, statistic_file, out_dir):
     build_decoding_report(
         selection=selection_info,
         stats=loaded_statistic,
-        out_dir=out_dir,
+        out_path=out_path,
     )
 
 
@@ -502,19 +516,18 @@ def cube_from_counter(
     Note: Enumerating the SMILES of the compounds can have a dramatic increase on runtime.
     """
     loaded_counter: DELibraryPoolCounter = pickle.load(open(counter_file, "rb"))
-    runner = DecodingRunner.from_file(decode_file)
+    selection = Selection.from_yaml(decode_file)
 
-    # to enable writing the cube, we need to set the degen counter
-    runner.degen = loaded_counter
+    runner_results = DecodingRunnerResults(selection=selection, degen=loaded_counter)
 
     if out_path is None:
-        _out_path = f"{runner.selection.selection_id}_cube.{file_format}"
+        _out_path = f"{selection.selection_id}_cube.{file_format}"
     else:
         _out_path = out_path
         if not _out_path.endswith(f".{file_format}"):
             _out_path += f".{file_format}"
 
-    runner.write_cube(
+    runner_results.write_cube(
         out_path=_out_path,
         file_format=file_format,
         include_library_id_col=include_library_id,

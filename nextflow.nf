@@ -77,7 +77,7 @@ process MakeCube {
 
     script:
     """
-    deli cube from-counters merged_counters.pkl ${params.decode_run} --out-path ${prefix}_cube.csv
+    deli cube from-counter merged_counters.pkl ${params.decode_run} --out-path ${prefix}_cube.csv
     """
 }
 
@@ -96,7 +96,7 @@ process MergeStats {
     script:
     """
     deli decode statistics merge *_decode_statistics.json --counter-file merged_counters.pkl --out-path ${prefix}_decode_statistics.json
-    deli decode report generate ${params.decode_run} ${prefix}_decode_statistics.json --out-dir ${prefix}_decode_report.html
+    deli decode report generate ${params.decode_run} ${prefix}_decode_statistics.json --out-path ${prefix}_decode_report.html
     """
 }
 

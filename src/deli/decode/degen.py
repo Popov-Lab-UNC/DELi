@@ -396,6 +396,10 @@ class DELibraryPoolCounter(abc.ABC):
 
     del_counter: dict
 
+    def __len__(self):
+        """Get total number of unique DELs in the counter"""
+        return sum([len(barcodes) for barcodes in self.del_counter.values()])
+
     @abc.abstractmethod
     def __add__(self, other):
         """
@@ -523,10 +527,6 @@ class DELibraryPoolIdUmiCounter(DELibraryPoolCounter):
             {k: defaultdict(DELIdUmiCounter, v) for k, v in state["del_counter"].items()},
         )
 
-    def __len__(self):
-        """Get total number of unique DELs in the counter"""
-        return sum([len(barcodes) for barcodes in self.del_counter.values()])
-
     def __add__(self, other):
         """
         Add two DELibraryPoolIdUmiCounter objects together
@@ -569,9 +569,9 @@ class DELibraryPoolIdUmiCounter(DELibraryPoolCounter):
                 if (_length_self == 0) and (_length_other == 0):
                     continue
                 _cached_lib = (
-                    self.del_counter[library_id].popitem()[0].library
+                    iter(self.del_counter[library_id].keys()).__next__().library
                     if _length_self > 0
-                    else other.del_counter[library_id].popitem()[0].library
+                    else iter(other.del_counter[library_id].keys()).__next__().library
                 )
                 for barcode in (
                     self.del_counter[library_id].keys() | other.del_counter[library_id].keys()
@@ -585,7 +585,7 @@ class DELibraryPoolIdUmiCounter(DELibraryPoolCounter):
                     ]
                     new_counter.del_counter[library_id][barcode] = (
                         self.del_counter[library_id][barcode]
-                        + self.del_counter[library_id][barcode]
+                        + other.del_counter[library_id][barcode]
                     )
 
             return new_counter
