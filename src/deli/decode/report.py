@@ -191,7 +191,7 @@ def build_decoding_report(
     _seq_count_data: dict = {
         **{
             "Total": (
-                "{:,}".format(selection.library_pool.pool_size),
+                "{:,}".format(selection.library_collection.collection_size),
                 "{:,}".format(stats.num_seqs_decoded),
                 "{:,}".format(stats.num_seqs_degen),
             )
@@ -202,7 +202,7 @@ def build_decoding_report(
                 "{:,}".format(stats.num_seqs_decoded_per_lib.get(lib.library_id, 0)),
                 "{:,}".format(stats.num_seqs_degen_per_lib.get(lib.library_id, 0)),
             )
-            for lib in selection.library_pool.libraries
+            for lib in selection.library_collection.libraries
         },
     }
 
@@ -219,7 +219,9 @@ def build_decoding_report(
         "additional_info": selection.selection_condition.additional_info
         if selection.selection_condition.additional_info
         else "NA",
-        "libs": ", ".join(sorted([lib.library_id for lib in selection.library_pool.libraries])),
+        "libs": ", ".join(
+            sorted([lib.library_id for lib in selection.library_collection.libraries])
+        ),
         "num_reads": stats.num_seqs_read,
         "num_decoded": stats.num_seqs_decoded,
         "num_degen": stats.num_seqs_degen,
