@@ -1,0 +1,55 @@
+general:
+  data: "./analysis/example_data/DEL003_cube_noid.csv"
+  lib_size: 58000
+  output_dir: "DEL3"
+
+# If indexes are not provided, raw_indexes will be used. If only indexes are provided, SD_min and NSC_values cannot be calculated
+# due to the necessity of raw reads for depth. You can still run the analysis, but the top of the report will display NA for these values.
+# Control columns are necessary for MLE and Z-scores calculations.
+# The id_col is used to specify the identifier column. If DEL_ID is not specified, the first column will be used by default.
+
+id_col: "DEL_ID"
+
+indexes:
+  Target1: ["corrected_PTMODD3index4", "corrected_PTMODD3index5", "corrected_PTMODD3index6"]
+  Target2: ["corrected_PTMODD3index1", "corrected_PTMODD3index2", "corrected_PTMODD3index3"]
+
+control_cols:
+  Target1: ["corrected_D3index7"]
+  Target2: ["corrected_D3index8"]
+
+raw_indexes:
+  Target1: ["raw_PTMODD3index4", "raw_PTMODD3index5", "raw_PTMODD3index6"]
+  Target2: ["raw_PTMODD3index1", "raw_PTMODD3index2", "raw_PTMODD3index3"]
+
+flags:
+  SD_min: True
+  NSC_values: True
+  MLE: True
+  Z_score: True
+  z_score_log_data: False
+  disynthon_data: true
+  polyO: true
+  trisynthon_overlap: True
+  disynthon_overlap: True
+  disynthon_threshold: 100
+  normalized_data: True
+  simple_spotfire_version: true
+  ml_fingerprints_to_RF_reg: true
+  ml_fingerprints_to_RF_clf: true
+  clf_thresh: 15
+  gnn_classifier: false
+  gnn_threshold: 10
+  gnn_arch: "GAT"
+  top_hits: 20
+  top_hits_metric: "MLE" #enter any metric calculated for enumerated library members
+  report: true
+
+  top_disynthons:
+    enabled: True
+    comparison: "exp2"       # Type of comparison: "control" or "exp2" or "none"
+    exp_name: "Target2"
+    exp2_name: "Target1"
+    control_name: "none"
+    top_count: 10               # Number of top disynthons to pull
+    comparison_metric: "avg"
