@@ -4,7 +4,7 @@ from .barcode import BarcodeSchema, BuildingBlockBarcodeSection
 from .building_block import BaseBuildingBlock, BuildingBlock, BuildingBlockSet, MaskedBuildingBlock
 from .compound import LowMemDELCompound
 from .enumerator import DELEnumerator
-from .library import DELibrary, DELibraryPool
+from .library import DELCollection, DELibrary
 from .selection import SectionCondition, Selection, SequencedSelection
 from .umi import Umi
 
@@ -13,7 +13,7 @@ __all__ = [
     "BarcodeSchema",
     "BuildingBlockBarcodeSection",
     "DELibrary",
-    "DELibraryPool",
+    "DELCollection",
     "DELEnumerator",
     "BaseBuildingBlock",
     "BuildingBlock",

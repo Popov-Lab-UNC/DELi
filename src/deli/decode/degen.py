@@ -391,8 +391,8 @@ class DELIdUmiCounter(DELCounter):
         return self.umis.get_raw_count()
 
 
-class DELibraryPoolCounter(abc.ABC):
-    """Base class for all DELibraryPool degen counters"""
+class DELCollectionCounter(abc.ABC):
+    """Base class for all DELCollection degen counters"""
 
     del_counter: dict
 
@@ -403,16 +403,16 @@ class DELibraryPoolCounter(abc.ABC):
     @abc.abstractmethod
     def __add__(self, other):
         """
-        Add two DELibraryPoolCounters together by merging their counters
+        Add two DELCollectionCounter together by merging their counters
 
         Parameters
         ----------
-        other: DELibraryPoolCounter
+        other: DELCollectionCounter
             the other counter to add
 
         Returns
         -------
-        DELibraryPoolCounter
+        DELCollectionCounter
         """
         raise NotImplementedError()
 
@@ -436,41 +436,10 @@ class DELibraryPoolCounter(abc.ABC):
         """
         raise NotImplementedError()
 
-    # def to_json_file(self, out_path: str | os.PathLike):
-    #     """
-    #     Convert the counter to a JSON file
-    #
-    #     Parameters
-    #     ----------
-    #     out_path: str | os.PathLike
-    #         the path to save the JSON file to
-    #     """
-    #
-    #     _data = {
-    #         library_id: [
-    #             barcode.library_id, [bb.bb_id for bb in barcode.building_blocks],
-    #         for barcode, counter in barcodes.items()
-    #         ]
-    #         for library_id, barcodes in self.del_counter.items()
-    #     }
-    #
-    #     return {
-    #         'del_counter': {
-    #             library_id: {
-    #                 str(barcode): {
-    #                     'umis': umis.get_degen_count(),
-    #                     'raw_count': umis.get_raw_count()
-    #                 }
-    #                 for barcode, umis in barcodes.items()
-    #             }
-    #             for library_id, barcodes in self.del_counter.items()
-    #         }
-    #     }
 
-
-class DELibraryPoolIdUmiCounter(DELibraryPoolCounter):
+class DELCollectionIdUmiCounter(DELCollectionCounter):
     """
-    Degen counter for library pools that have UMI tags
+    Degen counter for library collections that have UMI tags
 
     Handles Degen by DEL ID and UMI.
     Each observed DEL compound will have a count based
@@ -529,7 +498,7 @@ class DELibraryPoolIdUmiCounter(DELibraryPoolCounter):
 
     def __add__(self, other):
         """
-        Add two DELibraryPoolIdUmiCounter objects together
+        Add two DELCollectionIdUmiCounter objects together
 
         Notes
         -----
@@ -538,29 +507,29 @@ class DELibraryPoolIdUmiCounter(DELibraryPoolCounter):
 
         Parameters
         ----------
-        other: DELibraryPoolIdUmiCounter
+        other: DELCollectionIdUmiCounter
             the other counter to add
 
         Returns
         -------
-        DELibraryPoolIdUmiCounter
+        DELCollectionIdUmiCounter
             the new counter with the sum of the two
         """
-        if isinstance(other, DELibraryPoolIdUmiCounter):
+        if isinstance(other, DELCollectionIdUmiCounter):
             if self.umi_clustering != other.umi_clustering:
                 raise ValueError(
-                    f"cannot add DELibraryPoolIdUmiCounters with "
+                    f"cannot add DELCollectionIdUmiCounter with "
                     f"different `umi_clustering` values: "
                     f"{self.umi_clustering} and {other.umi_clustering}"
                 )
             if self.min_umi_cluster_dist != other.min_umi_cluster_dist:
                 raise ValueError(
-                    f"cannot add DELibraryPoolIdUmiCounters with different "
+                    f"cannot add DELCollectionIdUmiCounter with different "
                     f"`min_umi_cluster_dist` values: "
                     f"{self.min_umi_cluster_dist} and {other.min_umi_cluster_dist}"
                 )
 
-            new_counter = DELibraryPoolIdUmiCounter(
+            new_counter = DELCollectionIdUmiCounter(
                 umi_clustering=self.umi_clustering, min_umi_cluster_dist=self.min_umi_cluster_dist
             )
             for library_id in self.del_counter.keys() | other.del_counter.keys():
@@ -619,9 +588,9 @@ class DELibraryPoolIdUmiCounter(DELibraryPoolCounter):
             return self.del_counter[barcode.library.library_id][barcode].add_umi(barcode.umi)
 
 
-class DELibraryPoolIdCounter(DELibraryPoolCounter):
+class DELCollectionIdCounter(DELCollectionCounter):
     """
-    Degen counter for library pools without UMI tags
+    Degen counter for library collectionss without UMI tags
 
     Handles Degen by DEL ID
     Each observed DEL compound will have a count based
@@ -654,19 +623,19 @@ class DELibraryPoolIdCounter(DELibraryPoolCounter):
 
     def __add__(self, other):
         """
-        Add two DELibraryPoolIdCounters together by merging the counters
+        Add two DELCollectionIdCounter together by merging the counters
 
         Parameters
         ----------
-        other: DELibraryPoolIdCounter
+        other: DELCollectionIdCounter
             the other counter to add
 
         Returns
         -------
-        DELibraryPoolIdCounter
+        DELCollectionIdCounter
         """
-        if isinstance(other, DELibraryPoolIdCounter):
-            new_counter = DELibraryPoolIdCounter()
+        if isinstance(other, DELCollectionIdCounter):
+            new_counter = DELCollectionIdCounter()
             for lib_id in self.del_counter.keys() | other.del_counter.keys():
                 for barcode in self.del_counter[lib_id].keys() | other.del_counter[lib_id].keys():
                     new_counter.del_counter[lib_id][barcode] = (

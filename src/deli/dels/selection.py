@@ -8,7 +8,7 @@ import yaml
 
 from deli.dna import SequenceGlobReader, SequenceReader
 
-from .library import DELibrary, DELibraryPool
+from .library import DELCollection, DELibrary
 
 
 class SectionCondition:
@@ -73,11 +73,11 @@ class SectionCondition:
 
 
 class Selection:
-    """Represents a selection made with a DEL library pool"""
+    """Represents a selection made with a DEL library collection"""
 
     def __init__(
         self,
-        library_pool: DELibraryPool,
+        library_collection: DELCollection,
         date_ran: datetime | None = None,
         target_id: str | None = None,
         selection_condition: str | None = None,
@@ -89,8 +89,8 @@ class Selection:
 
         Parameters
         ----------
-        library_pool: DELibraryPool
-            the library pool used in the selection
+        library_collection: DELCollection
+            the library collection used in the selection
         date_ran: datetime | None
             the date the selection was run, defaults to now if None
         target_id: str | None
@@ -102,7 +102,7 @@ class Selection:
         additional_info: str | None
             any additional information about the selection, defaults to None if not provided
         """
-        self.library_pool = library_pool
+        self.library_collection = library_collection
         self.selection_id = selection_id if selection_id else "Unknown"
         self.date_ran = date_ran
 
@@ -128,7 +128,7 @@ class Selection:
             the Selection object created from the dictionary
         """
         return cls(
-            library_pool=data["library_pool"],
+            library_collection=data["library_collection"],
             date_ran=datetime.fromisoformat(data["date_ran"])
             if data.get("date_ran") is not None
             else None,
@@ -153,18 +153,20 @@ class Selection:
         Selection
         """
         data = yaml.safe_load(open(path, "r"))
-        data["library_pool"] = DELibraryPool([DELibrary.load(lib) for lib in data["libraries"]])
+        data["library_collection"] = DELCollection(
+            [DELibrary.load(lib) for lib in data["libraries"]]
+        )
 
         return cls.from_dict(data)
 
-    def to_dict(self, ignore_library_pool: bool = False) -> dict:
+    def to_dict(self, ignore_library_collection: bool = False) -> dict:
         """
         Convert the Selection object to a dictionary.
 
         Parameters
         ----------
-        ignore_library_pool: bool, default = False
-            whether to ignore the library pool in the output dictionary, defaults to False
+        ignore_library_collection: bool, default = False
+            whether to ignore the library collection in the output dictionary, defaults to False
 
         Returns
         -------
@@ -177,8 +179,8 @@ class Selection:
             "selection_id": self.selection_id,
             "additional_info": self.selection_condition.additional_info,
         }
-        if not ignore_library_pool:
-            _data["library_pool"] = self.library_pool
+        if not ignore_library_collection:
+            _data["library_collection"] = self.library_collection
         return _data
 
     def get_run_date_as_str(self) -> str:
@@ -194,11 +196,11 @@ class Selection:
 
 
 class SequencedSelection(Selection):
-    """Represents a selection made with a DEL library pool that has been sequenced"""
+    """Represents a selection made with a DEL collection that has been sequenced"""
 
     def __init__(
         self,
-        library_pool: DELibraryPool,
+        library_collection: DELCollection,
         sequence_files: list[str | os.PathLike],
         date_ran: datetime | None = None,
         target_id: str | None = None,
@@ -211,8 +213,8 @@ class SequencedSelection(Selection):
 
         Parameters
         ----------
-        library_pool: DELibraryPool
-            the library pool used in the selection
+        library_collection: DELCollection
+            the library collection used in the selection
         date_ran: datetime | None
             the date the selection was run, defaults to now if None
         target_id: str | None
@@ -225,7 +227,7 @@ class SequencedSelection(Selection):
             any additional information about the selection, defaults to None if not provided
         """
         super().__init__(
-            library_pool=library_pool,
+            library_collection=library_collection,
             date_ran=date_ran,
             target_id=target_id,
             selection_condition=selection_condition,
@@ -256,7 +258,7 @@ class SequencedSelection(Selection):
             the Selection object created from the dictionary
         """
         return cls(
-            library_pool=data["library_pool"],
+            library_collection=data["library_collection"],
             sequence_files=data.get("sequence_files", []),
             date_ran=datetime.fromisoformat(data["date_ran"]),
             target_id=data.get("target_id"),
@@ -265,20 +267,20 @@ class SequencedSelection(Selection):
             additional_info=data.get("additional_info"),
         )
 
-    def to_dict(self, ignore_library_pool: bool = False) -> dict:
+    def to_dict(self, ignore_library_collection: bool = False) -> dict:
         """
         Convert the Selection object to a dictionary.
 
         Parameters
         ----------
-        ignore_library_pool: bool, default = False
-            whether to ignore the library pool in the output dictionary, defaults to False
+        ignore_library_collection: bool, default = False
+            whether to ignore the library collection in the output dictionary, defaults to False
 
         Returns
         -------
         dict
         """
-        _data = super().to_dict(ignore_library_pool)
+        _data = super().to_dict(ignore_library_collection)
         _data["sequence_files"] = self.sequence_files
         return _data
 

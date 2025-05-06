@@ -13,7 +13,7 @@ from Bio.Align import PairwiseAligner
 from dnaio import SequenceRecord
 from numba import njit
 
-from deli.dels import BuildingBlock, DELibrary, DELibraryPool
+from deli.dels import BuildingBlock, DELCollection, DELibrary
 from deli.dna import Aligner, HybridSemiGlobalAligner, SemiGlobalAligner
 
 from .bb_calling import BuildingBlockSetTagCaller, FailedBuildingBlockCall, ValidBuildingBlockCall
@@ -335,9 +335,9 @@ class AlignmentFailed(FailedDecode):
     pass
 
 
-class DELPoolDecoder:
+class DELCollectionDecoder:
     """
-    A decoder used to decode barcodes from selection using a pool of libraries
+    A decoder used to decode barcodes from selection using a collection of libraries
 
     For most use cases, this is the main entry point for decoding.
     Use one of the LibraryDecoders if you only have one (1) DEL in your selection
@@ -346,7 +346,7 @@ class DELPoolDecoder:
 
     def __init__(
         self,
-        library_pool: DELibraryPool,
+        library_collection: DELCollection,
         library_error_tolerance: float = 0.1,
         min_library_overlap: int | None = None,
         revcomp: bool = False,
@@ -359,12 +359,12 @@ class DELPoolDecoder:
         decode_statistics: DecodeStatistics | None = None,
     ):
         """
-        Initialize the DELPoolDecoder
+        Initialize the DELCollectionDecoder
 
         Parameters
         ----------
-        library_pool: DELibraryPool
-            the library pool used for the selection to decode
+        library_collection: DELCollection
+            the library collection used for the selection to decode
         library_error_tolerance: float, default = 0.2
             the percent error to be tolerated in the library section
             this will be converted to number of errors based on tag size
@@ -398,7 +398,7 @@ class DELPoolDecoder:
             minimum length of a read to be considered for decoding
             if below the min, decoding will fail
             if `None` will default to smallest min match length of
-            any library in the pool considered for decoding
+            any library in the collection considered for decoding
         bb_calling_approach: Literal["alignment"], default = "alignment"
             the algorithm to use for bb_calling
             right now only "alignment" mode is supported
@@ -420,7 +420,7 @@ class DELPoolDecoder:
         self.library_caller: LibraryCaller
         if read_type == "single":
             self.library_caller = SingleReadLibraryCaller(
-                library_pool,
+                library_collection,
                 error_rate=library_error_tolerance,
                 min_overlap=min_library_overlap,
                 revcomp=revcomp,
@@ -432,7 +432,7 @@ class DELPoolDecoder:
                 stacklevel=1,
             )
             self.library_caller = SingleReadLibraryCaller(
-                library_pool,
+                library_collection,
                 error_rate=library_error_tolerance,
                 min_overlap=min_library_overlap,
                 revcomp=revcomp,
@@ -450,7 +450,7 @@ class DELPoolDecoder:
                     use_hamming=use_hamming,
                     alignment_algorithm=alignment_algorithm,
                 )
-                for library in library_pool.libraries
+                for library in library_collection.libraries
             }
         elif bb_calling_approach == "bio":
             self.library_decoders = {
@@ -459,7 +459,7 @@ class DELPoolDecoder:
                     decode_statistics=self.decode_statistics,
                     use_hamming=use_hamming,
                 )
-                for library in library_pool.libraries
+                for library in library_collection.libraries
             }
         else:
             raise ValueError(f"unrecognized bb_calling_approach " f"{bb_calling_approach}")
@@ -470,7 +470,7 @@ class DELPoolDecoder:
             self._min_read_length = min_read_length
         else:
             self._min_read_length = min(
-                [lib.barcode_schema.min_length for lib in library_pool.libraries]
+                [lib.barcode_schema.min_length for lib in library_collection.libraries]
             )
 
         self._max_read_length: int

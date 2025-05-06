@@ -151,7 +151,7 @@ class Reactant(abc.ABC):
 
 
 class StaticReactant(Reactant):
-    """A reactant that is the same for all DEL pools"""
+    """A reactant that is the same for all DEL collections"""
 
     def __init__(self, mol: Chem.Mol):
         """

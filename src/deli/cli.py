@@ -1,5 +1,6 @@
 """command line functions for deli"""
 
+import ast
 import configparser
 import datetime
 import enum
@@ -9,7 +10,11 @@ from collections import defaultdict
 from pathlib import Path
 
 import click
+import pandas as pd
+import yaml
 
+from deli.analysis.analysis_report_gen import generate_report
+from deli.analysis.cube_class import DELi_Cube
 from deli.configure import (
     fix_deli_data_directory,
     init_deli_config_dir,
@@ -21,19 +26,11 @@ from deli.decode import (
     DecodeStatistics,
     DecodingRunner,
     DecodingRunnerResults,
-    DELibraryPoolCounter,
+    DELCollectionCounter,
     build_decoding_report,
 )
 from deli.dels import Selection
 from deli.dels.enumerator import DELEnumerator
-
-import yaml
-import pandas as pd
-import ast
-from datetime import datetime
-from deli.analysis.cube_class import DELi_Cube
-from deli.analysis.analysis_report_gen import generate_report
-
 
 
 def _timestamp() -> str:
@@ -336,7 +333,7 @@ def merge_statistics_file(statistic_files, counter_file, out_path):
 
     # if a counter file is provided, use it to set the degen count
     if counter_file:
-        loaded_counter: DELibraryPoolCounter = pickle.load(open(counter_file, "rb"))
+        loaded_counter: DELCollectionCounter = pickle.load(open(counter_file, "rb"))
         _updated_num_seqs_degen_per_lib = {
             lib_id: sum([del_counter.get_degen_count() for del_counter in lib_counters.values()])
             for lib_id, lib_counters in loaded_counter.del_counter.items()
@@ -523,7 +520,7 @@ def cube_from_counter(
 
     Note: Enumerating the SMILES of the compounds can have a dramatic increase on runtime.
     """
-    loaded_counter: DELibraryPoolCounter = pickle.load(open(counter_file, "rb"))
+    loaded_counter: DELCollectionCounter = pickle.load(open(counter_file, "rb"))
     selection = Selection.from_yaml(decode_file)
 
     runner_results = DecodingRunnerResults(selection=selection, degen=loaded_counter)
@@ -560,6 +557,7 @@ def analyze(config):
     CONFIG is the path to the YAML configuration file.
     """
     print("Analysis started with config:", config)
+
     def create_output_dir(output_dir):
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
@@ -567,7 +565,7 @@ def analyze(config):
 
     def create_dated_output_dir(base_output_dir, name_suffix=""):
         output_dir = create_output_dir(base_output_dir)
-        date_str = datetime.now().strftime("%Y%m%d")
+        date_str = datetime.datetime.now().strftime("%Y%m%d")
         dated_output_dir = os.path.join(output_dir, f"{date_str}_{name_suffix}")
         if not os.path.exists(dated_output_dir):
             os.makedirs(dated_output_dir)
@@ -646,9 +644,7 @@ def analyze(config):
             control_name = flags["top_disynthons"].get("control_name", "None")
             top_count = int(flags["top_disynthons"].get("top_count", 10))
             comparison_metric = flags["top_disynthons"].get("comparison_metric", "avg")
-            top_disynthons_dir = create_output_dir(
-                os.path.join(output_dir, "top_disynthons")
-            )
+            top_disynthons_dir = create_output_dir(os.path.join(output_dir, "top_disynthons"))
             cube.get_top_disynthons(
                 disynthon_data=disynthon_data,
                 exp_name1=exp_name,
@@ -674,10 +670,8 @@ def analyze(config):
             cube.normalize()
         if flags.get("simple_spotfire_version", False):
             spotfire = cube.simple_spotfire_version()
-            today_date = datetime.now().strftime("%Y%m%d")
-            spotfire.to_csv(
-                os.path.join(output_dir, f"spotfire_{today_date}.csv"), index=False
-            )
+            today_date = datetime.datetime.now().strftime("%Y%m%d")
+            spotfire.to_csv(os.path.join(output_dir, f"spotfire_{today_date}.csv"), index=False)
         if flags.get("ml_fingerprints_to_RF_reg", False):
             ml_fingerprints_to_RF_dir = create_output_dir(
                 os.path.join(output_dir, "ml_fingerprints_to_RF")
@@ -708,9 +702,7 @@ def analyze(config):
         if flags.get("report", False):
             nsc_max_dict = nsc_max_dict if flags.get("SD_min", False) else None
             sd_min_dict = sd_min_dict if flags.get("SD_min", False) else None
-            sampling_depth_dict = (
-                sampling_depth_dict if flags.get("SD_min", False) else None
-            )
+            sampling_depth_dict = sampling_depth_dict if flags.get("SD_min", False) else None
             generate_report(
                 output_dir_base,
                 indexes,
@@ -719,10 +711,12 @@ def analyze(config):
                 sd_min_dict,
                 sampling_depth_dict,
             )
-            today_date = datetime.now().strftime("%Y%m%d")
+            today_date = datetime.datetime.now().strftime("%Y%m%d")
             cube.data.to_csv(
                 os.path.join(output_dir_base, f"cube_data_{today_date}.csv"),
                 index=False,
             )
+
+
 if __name__ == "__main__":
     cli()

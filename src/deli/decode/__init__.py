@@ -1,7 +1,7 @@
 """init for decoding module"""
 
 from .decoder import DecodedBarcode, DecodeStatistics, FailedDecode
-from .degen import DELibraryPoolCounter, DELibraryPoolIdCounter, DELibraryPoolIdUmiCounter
+from .degen import DELCollectionCounter, DELCollectionIdCounter, DELCollectionIdUmiCounter
 from .report import build_decoding_report
 from .runner import DecodingRunner, DecodingRunnerResults, DecodingSettings
 
@@ -12,9 +12,9 @@ __all__ = [
     "DecodeStatistics",
     "DecodingRunner",
     "DecodingSettings",
-    "DELibraryPoolCounter",
-    "DELibraryPoolIdCounter",
-    "DELibraryPoolIdUmiCounter",
+    "DELCollectionCounter",
+    "DELCollectionIdCounter",
+    "DELCollectionIdUmiCounter",
     "build_decoding_report",
     "DecodingRunnerResults",
 ]

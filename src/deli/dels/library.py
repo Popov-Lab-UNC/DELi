@@ -283,7 +283,7 @@ class DELibrary(DeliDataLoadable):
         return any([bb_set.has_smiles for bb_set in self.bb_sets])
 
 
-class DELibraryPool:
+class DELCollection:
     """base class for any class that holds a group of DEL libraries"""
 
     def __init__(self, libraries: List[DELibrary]):
@@ -298,7 +298,7 @@ class DELibraryPool:
         self.libraries = libraries
         self._library_map = {lib.library_id: lib for lib in self.libraries}
 
-        self.pool_size = sum([lib.library_size for lib in self.libraries])
+        self.collection_size = sum([lib.library_size for lib in self.libraries])
 
         ### VALIDATE ###
         _ids: list[str] = []
@@ -323,16 +323,16 @@ class DELibraryPool:
                 _tags.append(_library.library_tag)
 
     def __len__(self) -> int:
-        """Return the number of libraries in the library pool"""
+        """Return the number of libraries in the library collection"""
         return len(self.libraries)
 
     def __iter__(self) -> Iterator[DELibrary]:
-        """Iterate through all libraries in the library pool"""
+        """Iterate through all libraries in the library collection"""
         return iter(self.libraries)
 
     def get_library(self, library_id: str) -> DELibrary:
         """
-        return the library from the pool with the same ID
+        return the library from the collection with the same ID
 
         Parameters
         ----------
@@ -346,16 +346,18 @@ class DELibraryPool:
         Raises
         ------
         KeyError
-            if library_id not in the pool
+            if `library_id` not in the collection
         """
         try:
             return self._library_map[library_id]
         except KeyError as e:
-            raise KeyError(KeyError(f"cannot find library with id '{library_id}' in pool")) from e
+            raise KeyError(
+                KeyError(f"cannot find library with id '{library_id}' in collection")
+            ) from e
 
     def all_libs_have_enumerators(self) -> bool:
         """
-        Check if all libraries in the pool have valid DEL enumerators
+        Check if all libraries in the collection have valid DEL enumerators
 
         Returns
         -------
@@ -365,7 +367,7 @@ class DELibraryPool:
 
     def all_libs_have_building_block_smiles(self) -> bool:
         """
-        Check if all libraries in the pool have building block SMILES
+        Check if all libraries in the collection have building block SMILES
 
         Returns
         -------
@@ -375,7 +377,7 @@ class DELibraryPool:
 
     def max_cycle_size(self) -> int:
         """
-        Get the maximum cycle size of all libraries in the pool
+        Get the maximum cycle size of all libraries in the collection
 
         Returns
         -------

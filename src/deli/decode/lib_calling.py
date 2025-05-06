@@ -6,7 +6,7 @@ from typing import Optional, TypeAlias, Union
 from cutadapt.adapters import BackAdapter, FrontAdapter, MultipleAdapters, SingleMatch
 from dnaio import SequenceRecord
 
-from deli.dels import DELibrary, DELibraryPool
+from deli.dels import DELCollection, DELibrary
 
 from .calls import FailedCall, ValidCall
 from .demultiplex import Demultiplexer
@@ -142,12 +142,12 @@ class LibraryCaller(Demultiplexer, abc.ABC):
     Base class for all library callers
 
     Will build the required demultiplexing adapters from the
-    library pool, one for each DEL in it.
+    library collection, one for each DEL in it.
     """
 
     def __init__(
         self,
-        library_pool: DELibraryPool,
+        library_collection: DELCollection,
         error_rate: Union[float, int],
         min_overlap: Optional[int] = None,
     ):
@@ -156,8 +156,8 @@ class LibraryCaller(Demultiplexer, abc.ABC):
 
         Parameters
         ----------
-        library_pool: DELibraryPool
-            the library pool to demultiplex on
+        library_collection: DELCollection
+            the library collection to demultiplex on
         error_rate: Union[float, int]
             the max error rate for any match
             if int, treat as raw number of errors
@@ -169,7 +169,7 @@ class LibraryCaller(Demultiplexer, abc.ABC):
             cannot be larger than the smallest adapter size
             if `None`, will default to a full match
         """
-        self.library_pool = library_pool
+        self.library_collection = library_collection
         self.error_rate = error_rate
         self.min_overlap = min_overlap
 
@@ -192,7 +192,7 @@ class LibraryCaller(Demultiplexer, abc.ABC):
                     else len(lib.barcode_schema.library_section),
                     name=lib.library_id,
                 )
-                for lib in library_pool.libraries
+                for lib in library_collection.libraries
             ]
         )
 
@@ -216,7 +216,7 @@ class LibraryCaller(Demultiplexer, abc.ABC):
         tuple[slice, DELibrary]
             the trim slice and the called DEL
         """
-        called_lib = self.library_pool.get_library(match.adapter.name)
+        called_lib = self.library_collection.get_library(match.adapter.name)
         retain_region = slice(
             max(0, match.rstart - called_lib.barcode_schema.get_length_before_library()),
             min(len(sequence), match.rstop + called_lib.barcode_schema.get_length_after_library()),
@@ -242,7 +242,7 @@ class SingleReadLibraryCaller(LibraryCaller):
 
     def __init__(
         self,
-        library_pool: DELibraryPool,
+        library_collection: DELCollection,
         error_rate: Union[float, int] = 0.1,
         min_overlap: Optional[int] = None,
         revcomp: bool = False,
@@ -252,8 +252,8 @@ class SingleReadLibraryCaller(LibraryCaller):
 
         Parameters
         ----------
-        library_pool: DELibraryPool
-            the library pool to demultiplex on
+        library_collection: DELCollection
+            the library collection to demultiplex on
         error_rate: Union[float, int]
             the max error rate for any match
             if int, treat as raw number of errors
@@ -269,7 +269,7 @@ class SingleReadLibraryCaller(LibraryCaller):
             use only if you do not know which direction the
             reads are coming in as.
         """
-        super().__init__(library_pool, error_rate, min_overlap)
+        super().__init__(library_collection, error_rate, min_overlap)
         self.revcomp = revcomp
 
     def _pick_seq_and_match(
@@ -354,7 +354,7 @@ class SingleReadDuplexLibraryCaller(SingleReadLibraryCaller):
 
     def __init__(
         self,
-        library_pool: DELibraryPool,
+        library_collection: DELCollection,
         error_rate: Union[float, int] = 0.1,
         min_overlap: int = 3,
         revcomp: bool = False,
@@ -365,8 +365,8 @@ class SingleReadDuplexLibraryCaller(SingleReadLibraryCaller):
 
         Parameters
         ----------
-        library_pool: DELibraryPool
-            the library pool to demultiplex on
+        library_collection: DELCollection
+            the library collection to demultiplex on
         error_rate: Union[float, int]
             the max error rate for any match
             if int, treat as raw number of errors
@@ -388,7 +388,7 @@ class SingleReadDuplexLibraryCaller(SingleReadLibraryCaller):
             If false, will just treat return the fwd call as
             a single match if an ambiguous library call is found
         """
-        super().__init__(library_pool, error_rate, min_overlap, revcomp=revcomp)
+        super().__init__(library_collection, error_rate, min_overlap, revcomp=revcomp)
         self.fail_on_ambiguous = fail_on_ambiguous
 
     def call_library(self, sequence: SequenceRecord) -> LibraryCall:

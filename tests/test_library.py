@@ -8,7 +8,7 @@ import pytest
 from deli.configure import set_deli_data_dir
 from deli.dels import BuildingBlockBarcodeSection
 from deli.dels.building_block import BuildingBlockSet
-from deli.dels.library import DELibrary, DELibraryPool, LibraryBuildError
+from deli.dels.library import DELCollection, DELibrary, LibraryBuildError
 
 
 set_deli_data_dir(os.path.join(os.path.dirname(__file__), "test_data", "test_deli_data_dir"))
@@ -95,24 +95,24 @@ def test_iter_bb_barcode_sections_and_sets(del_library1: DELibrary):
 
 @pytest.mark.unit
 def test_create_library_pool(del_library1, del_library2):
-    """Test creating a DELibraryPool from multiple DELibraries"""
+    """Test creating a DELCollection from multiple DELibraries"""
     with pytest.raises(LibraryBuildError, match="multiple libraries share identical `library_id`"):
-        DELibraryPool([del_library1, del_library1])
+        DELCollection([del_library1, del_library1])
 
-    pool = DELibraryPool([del_library1, del_library2])
-    assert pool.pool_size == 1769472
+    pool = DELCollection([del_library1, del_library2])
+    assert pool.collection_size == 1769472
     assert len(pool.libraries) == 2
 
 
 @pytest.fixture
 def library_pool(del_library1, del_library2):
-    """Fixture to create a DELibraryPool from two DELibraries"""
-    return DELibraryPool([del_library1, del_library2])
+    """Fixture to create a DELCollection from two DELibraries"""
+    return DELCollection([del_library1, del_library2])
 
 
 @pytest.mark.unit
 def test_get_library_from_pool(library_pool):
-    """Test creating a DELibraryPool from multiple DELibraries"""
+    """Test creating a DELCollection from multiple DELibraries"""
     with pytest.raises(KeyError, match="cannot find library with id"):
         library_pool.get_library("FAKE_LIBRARY_ID")
     library = library_pool.get_library("DEL004")

@@ -13,10 +13,10 @@ import yaml
 from tqdm import tqdm
 
 from deli._logging import get_dummy_logger, get_logger
-from deli.dels import DELibrary, DELibraryPool, Selection, SequencedSelection
+from deli.dels import DELCollection, DELibrary, Selection, SequencedSelection
 
-from .decoder import DecodedBarcode, DecodeStatistics, DELPoolDecoder
-from .degen import DELibraryPoolCounter, DELibraryPoolIdCounter, DELibraryPoolIdUmiCounter
+from .decoder import DecodedBarcode, DecodeStatistics, DELCollectionDecoder
+from .degen import DELCollectionCounter, DELCollectionIdCounter, DELCollectionIdUmiCounter
 from .report import build_decoding_report
 
 
@@ -92,7 +92,7 @@ class DecodingSettings(dict):
             minimum length of a read to be considered for decoding
             if below the min, decoding will fail
             if `None` will default to smallest min match length of
-            any library in the pool considered for decoding
+            any library in the collection considered for decoding
         bb_calling_approach: Literal["alignment"], default = "alignment"
             the algorithm to use for bb_calling
             right now only "alignment" mode is supported
@@ -176,7 +176,7 @@ class DecodingRunnerResults:
         self,
         selection: Selection,
         decode_statistics: DecodeStatistics | None = None,
-        degen: DELibraryPoolCounter | None = None,
+        degen: DELCollectionCounter | None = None,
     ):
         """
         Initialize the decoding runner results
@@ -187,7 +187,7 @@ class DecodingRunnerResults:
             the selection that was decoded
         decode_statistics: DecodeStatistics | None, default = None
             the decode statistics for the run
-        degen: DELibraryPoolCounter | None, default = None
+        degen: DELCollectionCounter | None, default = None
             the degeneration counter for the run
         """
         self.selection = selection
@@ -309,10 +309,10 @@ class DecodingRunnerResults:
 
         # check for enumeration
         if enumerate_smiles:
-            if not self.selection.library_pool.all_libs_have_enumerators():
+            if not self.selection.library_collection.all_libs_have_enumerators():
                 _libraries_missing_enumerators = [
                     lib.library_id
-                    for lib in self.selection.library_pool.libraries
+                    for lib in self.selection.library_collection.libraries
                     if lib.enumerator is None
                 ]
                 warnings.warn(
@@ -326,10 +326,10 @@ class DecodingRunnerResults:
 
         # check for building block smiles
         if include_bb_smi_cols:
-            if not self.selection.library_pool.all_libs_have_building_block_smiles():
+            if not self.selection.library_collection.all_libs_have_building_block_smiles():
                 _libraries_missing_bb_smi = [
                     lib.library_id
-                    for lib in self.selection.library_pool.libraries
+                    for lib in self.selection.library_collection.libraries
                     if not lib.building_blocks_have_smi()
                 ]
                 warnings.warn(
@@ -343,7 +343,7 @@ class DecodingRunnerResults:
 
         # get max_cycle_size
         _max_cycle_size = (
-            self.selection.library_pool.max_cycle_size()
+            self.selection.library_collection.max_cycle_size()
             if (include_bb_id_cols or include_bb_smi_cols)
             else 0
         )
@@ -449,8 +449,8 @@ class DecodingRunner:
         )
 
         # initialize all the decoding object required
-        self.decoder = DELPoolDecoder(
-            library_pool=self.selection.library_pool,
+        self.decoder = DELCollectionDecoder(
+            library_collection=self.selection.library_collection,
             decode_statistics=DecodeStatistics(),
             library_error_tolerance=self.decode_settings.get("library_error_tolerance", 0.1),
             min_library_overlap=self.decode_settings.get("min_library_overlap", 10),
@@ -464,13 +464,13 @@ class DecodingRunner:
         )
 
         _has_umi = all(
-            [lib.barcode_schema.has_umi() for lib in self.selection.library_pool.libraries]
+            [lib.barcode_schema.has_umi() for lib in self.selection.library_collection.libraries]
         )
 
         # TODO right now all barcodes must have a UMI to enable, maybe should not be this
         #  will throw warning and ask user to raise issue to see if that ever happens
         if any(
-            [lib.barcode_schema.has_umi() for lib in self.selection.library_pool.libraries]
+            [lib.barcode_schema.has_umi() for lib in self.selection.library_collection.libraries]
         ) and (not _has_umi):
             warnings.warn(
                 "DELi does not support UMI degeneration for library collections with "
@@ -479,14 +479,14 @@ class DecodingRunner:
                 stacklevel=2,
             )
 
-        self.degen: DELibraryPoolCounter
+        self.degen: DELCollectionCounter
         if _has_umi:
-            self.degen = DELibraryPoolIdUmiCounter(
+            self.degen = DELCollectionIdUmiCounter(
                 umi_clustering=self.decode_settings.get("umi_clustering", False),
                 min_umi_cluster_dist=self.decode_settings.get("umi_min_distance", 2),
             )
         else:
-            self.degen = DELibraryPoolIdCounter()
+            self.degen = DELCollectionIdCounter()
 
     def run(
         self, save_failed_to: str | os.PathLike | None = None, use_tqdm: bool = False
@@ -596,7 +596,9 @@ class DecodingRunner:
             else "NA",
             "data_ran": self.selection.get_run_date_as_str(),
             "sequence_files": self.selection.sequence_files,
-            "libraries": [str(lib.loaded_from) for lib in self.selection.library_pool.libraries],
+            "libraries": [
+                str(lib.loaded_from) for lib in self.selection.library_collection.libraries
+            ],
             "decode_settings": self.decode_settings.__dict__,
         }
         yaml.safe_dump(data, open(out_path, "w"))
@@ -703,7 +705,7 @@ class DecodingRunner:
             raise DecodingRunParsingError(
                 f"{decode_file} decoding run config file does not contain a 'libraries' section"
             ) from e
-        _library_pool = DELibraryPool([DELibrary.load(lib_path) for lib_path in _libraries])
+        _library_collection = DELCollection([DELibrary.load(lib_path) for lib_path in _libraries])
 
         _selection_id = data.get("selection_id", None)
         _target_id = data.get("target_id", None)
@@ -720,7 +722,7 @@ class DecodingRunner:
 
         # make selection object
         _selection = SequencedSelection(
-            library_pool=_library_pool,
+            library_collection=_library_collection,
             sequence_files=_seq_files,
             date_ran=_date_ran_timestamp,
             target_id=_target_id,
