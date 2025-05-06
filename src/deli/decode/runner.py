@@ -5,6 +5,7 @@ import logging
 import os
 import random
 import warnings
+from itertools import zip_longest
 from os import PathLike
 from typing import Any, Literal, Self
 
@@ -12,7 +13,7 @@ import yaml
 from tqdm import tqdm
 
 from deli._logging import get_dummy_logger, get_logger
-from deli.dels import DELibrary, DELibraryPool, SequencedSelection
+from deli.dels import DELibrary, DELibraryPool, Selection, SequencedSelection
 
 from .decoder import DecodedBarcode, DecodeStatistics, DELPoolDecoder
 from .degen import DELibraryPoolCounter, DELibraryPoolIdCounter, DELibraryPoolIdUmiCounter
@@ -168,6 +169,232 @@ class DecodingSettings(dict):
                 raise RuntimeError(f"Failed to load decode settings from {path}") from e
 
 
+class DecodingRunnerResults:
+    """Hold the results of a decoding run"""
+
+    def __init__(
+        self,
+        selection: Selection,
+        decode_statistics: DecodeStatistics | None = None,
+        degen: DELibraryPoolCounter | None = None,
+    ):
+        """
+        Initialize the decoding runner results
+
+        Parameters
+        ----------
+        selection: Selection
+            the selection that was decoded
+        decode_statistics: DecodeStatistics | None, default = None
+            the decode statistics for the run
+        degen: DELibraryPoolCounter | None, default = None
+            the degeneration counter for the run
+        """
+        self.selection = selection
+        self.decode_statistics = decode_statistics
+        self.degen = degen
+
+    def write_decode_report(self, out_path: str | os.PathLike):
+        """
+        Write the decoding statistics for this run
+
+        Parameters
+        ----------
+        out_path: str | PathLike
+            path to save decoding statistics to
+        """
+        if self.decode_statistics is not None:
+            if os.path.dirname(out_path) != "":
+                os.makedirs(os.path.dirname(out_path), exist_ok=True)
+            build_decoding_report(
+                selection=self.selection, stats=self.decode_statistics, out_path=out_path
+            )
+        else:
+            raise RuntimeError("Cannot write decode report, no decode statistics found")
+
+    def write_decode_statistics(self, out_path: str | os.PathLike):
+        """
+        Write the decoding statistics for this run
+
+        Parameters
+        ----------
+        out_path: str | PathLike
+            path to save decoding statistics to
+        """
+        if self.decode_statistics is not None:
+            if os.path.dirname(out_path) != "":
+                os.makedirs(os.path.dirname(out_path), exist_ok=True)
+            self.decode_statistics.to_file(out_path)
+        else:
+            raise RuntimeError("Cannot write decode statistics, no decode statistics found")
+
+    def write_cube(
+        self,
+        out_path: str | os.PathLike,
+        include_library_id_col: bool = False,
+        include_bb_id_cols: bool = False,
+        include_bb_smi_cols: bool = False,
+        include_raw_count_col: bool = True,
+        enumerate_smiles: bool = False,
+        file_format: Literal["csv", "tsv"] = "csv",
+    ) -> None:
+        """
+        Write the resulting DEL counts to a human-readable separated value file
+
+        Will write a unique result file for each selection in the experiment.
+
+        Each row will be a unique DEL ID with at least 2 and at most 11 columns.
+        If including BB columns, the max cycle number is the number of columns included,
+        with DELs from libraries with smaller cycle counts set to 'null'.
+        Below are the columns in order of appearance:
+        - DEL_ID
+        - LIBRARY_ID (if `include_library_id_col` is True)
+        - <For [#] of bb cycles in the library>
+            - BB[#]_ID (if `include_bb_id_cols` is True)
+            - BB[#]_SMILES (if `include_bb_smi_cols` is True)
+        - ENUMERATED_SMILES
+        - RAW_COUNT (if `include_raw_count_col` is True)
+        - UMI_CORRECTED_COUNT (same as raw count if not using UMI degen)
+
+        If `enumerate_smiles` is True, the enumerated SMILES will be generated on the
+        fly using the reaction data provided in the library files.
+        If this is missing, the SMILES will be set to 'null'.
+        Also note that on the fly enumeration will have a dramatic impact on runtime.
+        For large DELs, it can be far more efficient to enumerate the SMILES
+        once, save in a database, and then map the enumerated SMILES to the DEL ID
+        in the CSV file with a join.
+
+        Notes
+        -----
+        If running decoding in parallel, a call to `to_csv` should be made after
+        all decoding is complete and the counters have been merged.
+        Merging raw csv files will result is data loss and incorrect counts,
+        especially if UMI degen is used.
+
+        Parameters
+        ----------
+        out_path: str | PathLike
+            path to save results to
+            will create the directory if it does not exist
+        file_format: Literal["csv", "tsv"] = "csv"
+            which file format to write to
+            either "csv" or "tsv"
+        include_library_id_col: bool, default = False
+            include the library ID in the output
+        include_bb_id_cols: bool, default = False
+            include the building block IDs in the output
+        include_bb_smi_cols: bool, default = False
+            include the building block SMILES in the output
+        include_raw_count_col: bool, default = True
+            include the raw count in the output
+        enumerate_smiles: bool, default = False
+            include the enumerated SMILES in the output
+            Note: this will have a dramatic impact on runtime
+
+        Warnings
+        --------
+        UserWarning
+            - raised when enumeration is requested but some libraries are
+            missing enumerators
+            - raised when building block smiles are requested but some libraries
+            are missing this info
+        """
+        delimiter: str
+        if file_format == "tsv":
+            delimiter = "\t"
+        elif file_format == "csv":
+            delimiter = ","
+        else:
+            raise ValueError(f"file format '{file_format}' not recognized")
+
+        # check for enumeration
+        if enumerate_smiles:
+            if not self.selection.library_pool.all_libs_have_enumerators():
+                _libraries_missing_enumerators = [
+                    lib.library_id
+                    for lib in self.selection.library_pool.libraries
+                    if lib.enumerator is None
+                ]
+                warnings.warn(
+                    f"Some libraries are missing enumerators: "
+                    f"{_libraries_missing_enumerators}. "
+                    "On the fly enumeration will be skipped for these libraries. "
+                    "Please check the library files to ensure they have the "
+                    "correct reaction data.",
+                    stacklevel=2,
+                )
+
+        # check for building block smiles
+        if include_bb_smi_cols:
+            if not self.selection.library_pool.all_libs_have_building_block_smiles():
+                _libraries_missing_bb_smi = [
+                    lib.library_id
+                    for lib in self.selection.library_pool.libraries
+                    if not lib.building_blocks_have_smi()
+                ]
+                warnings.warn(
+                    f"Some libraries are missing building block smiles: "
+                    f"{_libraries_missing_bb_smi}. "
+                    "Building block smiles will be skipped for these libraries. "
+                    "Please check the building block files to ensure they have "
+                    "the correct smiles.",
+                    stacklevel=2,
+                )
+
+        # get max_cycle_size
+        _max_cycle_size = (
+            self.selection.library_pool.max_cycle_size()
+            if (include_bb_id_cols or include_bb_smi_cols)
+            else 0
+        )
+
+        # set header
+        _header = "DEL_ID"
+        if include_library_id_col:
+            _header += f"{delimiter}LIBRARY_ID"
+        for i in range(_max_cycle_size):
+            if include_bb_id_cols:
+                _header += f"{delimiter}BB{i+1}_ID"
+            if include_bb_smi_cols:
+                _header += f"{delimiter}BB{i+1}_SMILES"
+        if enumerate_smiles:
+            _header += f"{delimiter}SMILES"
+        if include_raw_count_col:
+            _header += f"{delimiter}RAW_COUNT"
+        _header += f"{delimiter}UMI_CORRECTED_COUNT\n"
+
+        if self.degen is not None:
+            if os.path.dirname(out_path) != "":
+                os.makedirs(os.path.dirname(out_path), exist_ok=True)
+
+            # write the file
+            with open(out_path, "w") as f:
+                # write header
+                f.write(_header)
+                for library_count_set in self.degen.del_counter.values():
+                    for decode_barcode, counts in library_count_set.items():
+                        _row = f"{decode_barcode.id}"
+                        if include_library_id_col:
+                            _row += f"{delimiter}{decode_barcode.library.library_id}"
+                        for _, bb in zip_longest(
+                            range(_max_cycle_size), decode_barcode.building_blocks
+                        ):
+                            if include_bb_id_cols:
+                                _row += f"{delimiter}" f"{bb.bb_id if bb is not None else 'null'}"
+                            if include_bb_smi_cols:
+                                _row += (
+                                    f"{delimiter}"
+                                    f"{bb.smiles if (bb is not None and bb.smiles) else 'null'}"
+                                )
+                        if enumerate_smiles:
+                            _row += f"{delimiter}{decode_barcode.get_smiles(default='null')}"
+                        if include_raw_count_col:
+                            _row += f"{delimiter}{counts.get_raw_count()}"
+                        _row += f"{delimiter}{counts.get_degen_count()}\n"
+        else:
+            raise RuntimeError("Cannot write cube, no degeneration counter found")
+
+
 class DecodingRunner:
     """
     Main runner for decoding selections
@@ -261,7 +488,9 @@ class DecodingRunner:
         else:
             self.degen = DELibraryPoolIdCounter()
 
-    def run(self, save_failed_to: str | os.PathLike | None = None, use_tqdm: bool = False):
+    def run(
+        self, save_failed_to: str | os.PathLike | None = None, use_tqdm: bool = False
+    ) -> DecodingRunnerResults:
         """
         Run the decoder
 
@@ -276,6 +505,11 @@ class DecodingRunner:
             turn on a tqdm tracking bar
             only recommended if running a single
             runner
+
+        Returns
+        -------
+        DecodingRunnerResults
+            the results of the decode run
         """
         self.logger.info(f"Running decoding for selection: {self.selection.selection_id}")
 
@@ -284,7 +518,7 @@ class DecodingRunner:
             f"Saving failed reads to {save_failed_to} for selection {self.selection.selection_id}"
         )
         _failed_file = (
-            os.path.join(save_failed_to, f"{self.selection.selection_id}_decode_failed.csv")
+            os.path.join(save_failed_to, f"{self.selection.selection_id}_decode_failed.tsv")
             if save_failed_to is not None
             else None
         )
@@ -292,7 +526,7 @@ class DecodingRunner:
 
         # write header to the failed reads CSV
         if fail_csv_file is not None:
-            fail_csv_file.write("read_id,sequence,quality,reason_failed,lib_call\n")
+            fail_csv_file.write("read_id\tsequence\tquality\treason_failed\tlib_call\n")
 
         # look through all sequences in the selection
         for i, seq_record in enumerate(
@@ -306,7 +540,6 @@ class DecodingRunner:
 
             # decode the read
             decoded_barcode = self.decoder.decode_read(seq_record)
-
             # skip failed reads
             if isinstance(decoded_barcode, DecodedBarcode):
                 self.decoder.decode_statistics.num_seqs_decoded_per_lib[
@@ -320,9 +553,9 @@ class DecodingRunner:
             elif fail_csv_file is not None:
                 # if we are saving failed reads, save the read
                 fail_csv_file.write(
-                    f"{seq_record.id},"
-                    f"{seq_record.sequence},"
-                    f"{seq_record.qualities},"
+                    f"{seq_record.id}\t"
+                    f"{seq_record.sequence}\t"
+                    f"{seq_record.qualities}\t"
                     f"{decoded_barcode.__class__.__name__}\n"
                 )
 
@@ -339,6 +572,11 @@ class DecodingRunner:
             )
 
         self.logger.info(f"Completed decoding for selection: {self.selection.selection_id}")
+        return DecodingRunnerResults(
+            selection=self.selection,
+            decode_statistics=self.decoder.decode_statistics,
+            degen=self.degen,
+        )
 
     def to_file(self, out_path: str | PathLike):
         """
@@ -509,99 +747,4 @@ class DecodingRunner:
             decode_settings=_decode_setting_obj,
             disable_logging=disable_logging,
             debug=debug,
-        )
-
-    def write_decode_report(self, out_dir: str | os.PathLike, prefix: str | None = None):
-        """
-        Write the decoding report for this run
-
-        Notes
-        -----
-        Will write a unique report for each selection in the experiment.
-        All files will be `html` and be named "{?prefix}_<selection_id>_decode_report.html"
-
-
-        Parameters
-        ----------
-        out_dir: str | PathLike
-            path to directory to save results to
-            will create the directory if it does not exist
-        prefix: str, default = None
-            prefix for output files,
-            if None will default to the selection ID
-        """
-        if prefix is None:
-            _prefix = self.selection.selection_id
-        else:
-            _prefix = prefix
-
-        os.makedirs(out_dir, exist_ok=True)
-        _filename = f"{_prefix}_decode_report.html"
-        _out_path = os.path.join(out_dir, _filename)
-        build_decoding_report(self.selection, self.decoder.decode_statistics, _out_path)
-        self.logger.debug(
-            f"Wrote decode report for selection " f"{self.selection.selection_id} to {_out_path}"
-        )
-
-    def write_decode_statistics(self, out_dir: str | os.PathLike, prefix: str | None = None):
-        """
-        Write the decoding statistics for this run
-
-        Notes
-        -----
-        Will write a unique statistics file for each selection in the experiment.
-        All files will be `json` and be named "{?prefix}_<selection_id>_decode_statistics.json"
-
-        Parameters
-        ----------
-        out_dir: str | PathLike
-            path to directory to save results to
-            will create the directory if it does not exist
-        prefix: str, default = None
-            prefix for output files,
-            if None will default to the selection ID
-        """
-        if prefix is None:
-            _prefix = self.selection.selection_id
-        else:
-            _prefix = prefix
-
-        os.makedirs(out_dir, exist_ok=True)
-        _filename = f"{_prefix}_decode_statistics.json"
-        _out_path = os.path.join(out_dir, _filename)
-        self.decoder.decode_statistics.to_file(_out_path)
-        self.logger.debug(
-            f"Wrote decode statistics for selection "
-            f"{self.selection.selection_id} to {_out_path}"
-        )
-
-    def write_cube(self, out_dir: str | os.PathLike, prefix: str | None = None):
-        """
-        Write the decoding results in a cube format for this run
-
-        Notes
-        -----
-        Will write a unique result file for each selection in the experiment.
-        All files will be `csv` and be named "{?prefix}_<selection_id>_cube.csv"
-
-        Parameters
-        ----------
-        out_dir: str | PathLike
-            path to directory to save results to
-            will create the directory if it does not exist
-        prefix: str, default = None
-            prefix for output files,
-            if None will default to the selection ID
-        """
-        if prefix is None:
-            _prefix = self.selection.selection_id
-        else:
-            _prefix = prefix
-
-        os.makedirs(out_dir, exist_ok=True)
-        _filename = f"{_prefix}_cube.csv"
-        _out_path = os.path.join(out_dir, _filename)
-        self.degen.to_file(_out_path)
-        self.logger.debug(
-            f"Wrote decode results for selection " f"{self.selection.selection_id} to {_out_path}"
         )

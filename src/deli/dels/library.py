@@ -271,6 +271,17 @@ class DELibrary(DeliDataLoadable):
                 f"cannot enumerate library {self.library_id} without reaction information"
             )
 
+    def building_blocks_have_smi(self) -> bool:
+        """
+        Check if any building block sets in the library are missing SMILES
+
+        Returns
+        -------
+        bool
+            True if all building block sets have SMILES, False otherwise
+        """
+        return any([bb_set.has_smiles for bb_set in self.bb_sets])
+
 
 class DELibraryPool:
     """base class for any class that holds a group of DEL libraries"""
@@ -341,3 +352,34 @@ class DELibraryPool:
             return self._library_map[library_id]
         except KeyError as e:
             raise KeyError(KeyError(f"cannot find library with id '{library_id}' in pool")) from e
+
+    def all_libs_have_enumerators(self) -> bool:
+        """
+        Check if all libraries in the pool have valid DEL enumerators
+
+        Returns
+        -------
+        bool
+        """
+        return all([lib.enumerator is not None for lib in self.libraries])
+
+    def all_libs_have_building_block_smiles(self) -> bool:
+        """
+        Check if all libraries in the pool have building block SMILES
+
+        Returns
+        -------
+        bool
+        """
+        return all([lib.building_blocks_have_smi() for lib in self.libraries])
+
+    def max_cycle_size(self) -> int:
+        """
+        Get the maximum cycle size of all libraries in the pool
+
+        Returns
+        -------
+        int
+            The maximum cycle size
+        """
+        return max([lib.num_cycles for lib in self.libraries])
