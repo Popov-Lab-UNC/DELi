@@ -69,7 +69,7 @@ def generate_report(
         for exp_name, value in sampling_depth_dict.items()
     ]
 
-    with resources.path("templates", "decode_report.html") as template_path:
+    with resources.path("templates", "report_test_template.html") as template_path:
         template = jinja2.Template(open(template_path).read())
 
         rendered_html = template.render(

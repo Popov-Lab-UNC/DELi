@@ -415,19 +415,31 @@ class DeliDataLoadable(abc.ABC):
         raise NotImplementedError()
 
 
+class DELiConfigError(Exception):
+    """raised when a DELi config is invalid or missing"""
+
+    pass
+
+
 # load the DELi config
 _deli_config_dir = os.environ.get("DELI_CONFIG", None)
-if _deli_config_dir is not None and _deli_config_dir != "":
+if (_deli_config_dir is not None) and (_deli_config_dir != ""):
     DELI_CONFIG = _DeliConfig.load_config(_deli_config_dir, use_env=True)
 elif os.path.exists(os.path.join(os.path.expanduser("~"), ".deli", ".deli")):
     DELI_CONFIG = _DeliConfig.load_config(
         Path(os.path.join(os.path.expanduser("~"), ".deli", ".deli")), use_env=True
     )
 else:
-    _deli_data_dir = os.environ.get("deli_data_dir", None)
-    deli_data_dir: Optional[str]
-    if isinstance(_deli_data_dir, str) and _deli_data_dir != "":
-        deli_data_dir = os.fspath(os.path.expanduser(_deli_data_dir))
-    else:
-        deli_data_dir = None
-    DELI_CONFIG = _DeliConfig(deli_data_dir=deli_data_dir)
+    raise DELiConfigError(
+        f"missing .deli config is user directory: "
+        f"{os.path.join(os.path.expanduser('~'), '.deli', '.deli')}; "
+        f"use 'deli config init' to create a new config file before using "
+        f"DELi"
+    )
+
+
+deli_data_dir: Optional[str]
+_deli_data_dir = os.environ.get("deli_data_dir", None)
+if (isinstance(_deli_data_dir, str)) and (_deli_data_dir != ""):
+    deli_data_dir = os.fspath(os.path.expanduser(_deli_data_dir))
+    set_deli_data_dir(deli_data_dir)
