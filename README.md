@@ -5,18 +5,18 @@
 > **Disclaimer:** DELi is currently under active development. Features and documentation WILL change. Use with caution.
 
 DELi (DNA-Encoded-Library informatics) is the software suite used by the CICBDD to do their in-house DEL analysis.
-It incorporates the whole pipeline post base-calling/sequencing including
+It incorporates the whole pipeline post base-calling/sequencing including:
 - Barcode/DEL ID calling and cube file generation
-- Mapping DEL IDs to enumerated chemical structures 
+- Enumeration of chemical structures from building blocks
 - Disython and Monosynthon analysis
 - Binary classification of enriched DELs (TODO)
-- Generation of machine learning datasets and baseline models from DEL data (TODO)
-- various digestible reports to understand the DEL results (TODO)
+- Generation of machine learning datasets and baseline models from DEL data
+- Various digestible reports to understand the DEL results
 
 ## Why not a compiled language
-DELi is written in python for 2 reason:
-1. We wrote the first versions of it in python (we are grad students not software devs)
-2. Python is the langauge most scientist in our feild know, so it makes contributions from other DEL experts easier
+DELi is written in Python for 2 reason:
+1. We wrote the first versions of it in Python (we are grad students not software devs)
+2. Python is the langauge most scientist in our field know, so it makes contributions from other DEL experts easier
 
 It is true that DELi would likly be faster as a compiled C++ or Rust program, but we utilize Numba to help 
 keep things fast enough to be usable for most academic settings. DELi can handle calling around 10 million 
@@ -24,7 +24,7 @@ reads in 1-2 hours on a (built in 2022) 32 core machine. If you have billions of
 more cores to have good runtimes
 
 We are interested in writing the calling code of DELi into a faster language, probably Rust cause it sounds
-like a fun language to learn. But we (the orginal authors) are too bust trying to get PhDs to spend enough 
+like a fun language to learn. But we (the orginal authors) are too busy trying to get PhDs to spend enough 
 time to write something good. If your are interested in do it for us, please reach out.
 
 ## Installing DELi
@@ -42,7 +42,7 @@ pip install -r requirements.txt
 NOTE: DELi is built to run on linux or windows,
 it has not been tested on MacOS, but in theory should be work there as well
 
-DELi is built will multiprocessing as the matching and barcode calling is a CPU hungry process.
+DELi is built with multiprocessing, as the matching and barcode calling is a CPU hungry process.
 It is recommended that you install DELi on a computer with at least 20 cores.
 Currently, the Popov lab uses a machine with a 32 core Threadripper (`glassfrog.dhcp.unc.edu`)
 
