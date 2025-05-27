@@ -19,11 +19,34 @@ NUC_2_INT_DEFAULT: dict[str, int] = {"A": 0, "T": 1, "C": 2, "G": 3}
 
 DELI_DATA_SUB_DIRS = ["hamming", "libraries", "building_blocks"]
 
+DELI_CONFIG = None
 
 def set_deli_data_dir(data_dir: Union[str, Path]) -> None:
     """Sets the deli data directory path"""
-    DELI_CONFIG.deli_data_dir = Path(data_dir) if isinstance(data_dir, str) else data_dir
+    get_deli_config().deli_data_dir = Path(data_dir) if isinstance(data_dir, str) else data_dir
 
+def get_deli_config():
+    """Get the DELi config, loading it lazily if not already loaded"""
+    global DELI_CONFIG
+    if DELI_CONFIG is None:
+        _deli_config_dir = os.environ.get("DELI_CONFIG", None)
+        if (_deli_config_dir is not None) and (_deli_config_dir != ""):
+            DELI_CONFIG = _DeliConfig.load_config(_deli_config_dir, use_env=True)
+        elif os.path.exists(os.path.join(os.path.expanduser("~"), ".deli", ".deli")):
+            DELI_CONFIG = _DeliConfig.load_config(
+                Path(os.path.join(os.path.expanduser("~"), ".deli", ".deli")), use_env=True
+            )
+        else:
+            raise DELiConfigError(
+                f"missing .deli config is user directory: "
+                f"{os.path.join(os.path.expanduser('~'), '.deli', '.deli')}; "
+                f"use 'deli config init' to create a new config file before using "
+                f"DELi"
+            )
+        _deli_data_dir = os.environ.get("deli_data_dir", None)
+        if (isinstance(_deli_data_dir, str)) and (_deli_data_dir != ""):
+            DELI_CONFIG.deli_data_dir = os.fspath(os.path.expanduser(_deli_data_dir))
+    return DELI_CONFIG
 
 def load_deli_config(path: Union[str, Path]) -> None:
     """
@@ -347,7 +370,7 @@ def accept_deli_data_name(
         if os.path.exists(path):
             return Path(path)
 
-        _sub_dir_path = DELI_CONFIG.get_data_dir_path() / sub_dir
+        _sub_dir_path = get_deli_config().get_data_dir_path() / sub_dir
         if not os.path.exists(_sub_dir_path):
             raise DeliDataNotFound(
                 f"cannot find DELi data subdirectory at `{_sub_dir_path}`; "
@@ -355,7 +378,7 @@ def accept_deli_data_name(
             )
 
         _file_name = os.path.basename(path).split(".")[0] + "." + extension
-        file_path = DELI_CONFIG.get_data_dir_path() / sub_dir / _file_name
+        file_path = get_deli_config().get_data_dir_path() / sub_dir / _file_name
 
         if not os.path.exists(file_path):
             raise DeliDataNotFound(f"cannot find file '{path}.{extension}' in {_sub_dir_path}")
@@ -419,27 +442,3 @@ class DELiConfigError(Exception):
     """raised when a DELi config is invalid or missing"""
 
     pass
-
-
-# load the DELi config
-_deli_config_dir = os.environ.get("DELI_CONFIG", None)
-if (_deli_config_dir is not None) and (_deli_config_dir != ""):
-    DELI_CONFIG = _DeliConfig.load_config(_deli_config_dir, use_env=True)
-elif os.path.exists(os.path.join(os.path.expanduser("~"), ".deli", ".deli")):
-    DELI_CONFIG = _DeliConfig.load_config(
-        Path(os.path.join(os.path.expanduser("~"), ".deli", ".deli")), use_env=True
-    )
-else:
-    raise DELiConfigError(
-        f"missing .deli config is user directory: "
-        f"{os.path.join(os.path.expanduser('~'), '.deli', '.deli')}; "
-        f"use 'deli config init' to create a new config file before using "
-        f"DELi"
-    )
-
-
-deli_data_dir: Optional[str]
-_deli_data_dir = os.environ.get("deli_data_dir", None)
-if (isinstance(_deli_data_dir, str)) and (_deli_data_dir != ""):
-    deli_data_dir = os.fspath(os.path.expanduser(_deli_data_dir))
-    set_deli_data_dir(deli_data_dir)

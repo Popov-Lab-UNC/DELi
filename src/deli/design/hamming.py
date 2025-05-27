@@ -3,7 +3,7 @@
 import math
 from typing import List, Optional, Self
 
-from deli.configure import DELI_CONFIG, DeliDataLoadable, accept_deli_data_name
+from deli.configure import get_deli_config, DeliDataLoadable, accept_deli_data_name
 
 
 class DecodeError(Exception):
@@ -17,7 +17,7 @@ class BaseQuaternaryHamming:
 
     def __init__(self):
         """Initialize a BaseQuaternaryHamming"""
-        self.nuc_2_int_mapping = DELI_CONFIG.nuc_2_int
+        self.nuc_2_int_mapping = get_deli_config().nuc_2_int
         self.int_2_nuc_mapping = {val: key for key, val in self.nuc_2_int_mapping.items()}
 
     @staticmethod
@@ -68,7 +68,7 @@ class QuaternaryHammingDecoder(BaseQuaternaryHamming, DeliDataLoadable):
 
         self._parity = math.ceil(math.log2(self.hamming_size))
 
-        self.nuc_2_int_mapping = DELI_CONFIG.nuc_2_int
+        self.nuc_2_int_mapping = get_deli_config().nuc_2_int
         self.int_2_nuc_mapping = {val: key for key, val in self.nuc_2_int_mapping.items()}
 
         self._require_sort = sorted(self.parity_map) != self.parity_map
