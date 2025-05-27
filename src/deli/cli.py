@@ -730,7 +730,3 @@ def analyze(config):
                 os.path.join(output_dir_base, f"cube_data_{today_date}.csv"),
                 index=False,
             )
-
-
-if __name__ == "__main__":
-    cli()
