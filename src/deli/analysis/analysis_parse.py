@@ -3,7 +3,7 @@ import yaml
 import pandas as pd
 import os
 from datetime import datetime
-from cube_class import DELi_Cube
+from .cube_factory import create_deli_cube
 import analysis_report_gen as report
 import ast
 
@@ -79,7 +79,7 @@ def main():
     if not indexes:
         indexes = raw_indexes
 
-    cube = DELi_Cube(df, id_col, indexes, control_cols, int(config['general'].get('lib_size', 0)), raw_indexes)
+    cube = create_deli_cube(df, id_col, indexes, control_cols, int(config['general'].get('lib_size', 0)), raw_indexes)
 
     print(cube.data.head())
     if 'flags' in config:
