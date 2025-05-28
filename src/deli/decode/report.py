@@ -234,7 +234,7 @@ def build_decoding_report(
 
     # write the report as a rendered jinja2 template
     # the template is stored as a resource in the package under templates
-    with resources.path("templates", "decode_report.html") as template_path:
+    with resources.path("deli.templates", "decode_report.html") as template_path:
         template = jinja2.Template(open(template_path).read())
         rendered_content = template.render(jinja_data)
         with open(out_path, "w", encoding="utf-8") as f:
