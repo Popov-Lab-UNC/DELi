@@ -11,8 +11,7 @@ from pathlib import Path
 import click
 
 from deli.configure import (
-    fix_deli_data_directory,
-    init_deli_config_dir,
+    init_deli_config,
     init_deli_data_directory,
     set_deli_data_dir,
     validate_deli_data_dir,
@@ -55,27 +54,16 @@ def config():
 
 
 @config.command(name="init")
-def init_config():
+@click.argument("path", type=click.Path(exists=False), required=False, default=None)
+@click.option("--overwrite", "-o", is_flag=True, help="Overwrite any existing config directory")
+def init_config(path, overwrite):
     """
     Initialize the configuration directory
 
     PATH is the path to the deli config directory to initialize.
     If not provided, defaults to ~/.deli/.deli
     """
-    try:
-        init_deli_config_dir(
-            None,
-            fail_on_exist=True,
-            include_deli_data_dir=False,
-            create_default_hamming_files=True,
-            use_extra_parity=True,
-        )
-    except FileExistsError:
-        print(
-            f"DELi config directory already exists at "
-            f"{os.path.join(os.path.expanduser('~'), '.deli')}, "
-            f"skipping initialization."
-        )
+    init_deli_config(path, fail_on_exist=not overwrite)
 
 
 @cli.group()
@@ -91,40 +79,17 @@ def data():
     required=False,
     default="./deli_data",
 )
-def init_deli_data_dir(path):
+@click.option("--fix-missing", "-f", help="Fix a deli data directory missing sub-directories")
+@click.option("--overwrite", "-o", is_flag=True, help="Overwrite any existing data directories")
+def init_deli_data_dir(path, fix_missing, overwrite):
     """
     Initialize the configuration directory
 
     PATH is the path to the deli data directory to initialize.
-    If not provided, defaults to CWD './deli_data'.
     """
-    init_deli_data_directory(path, fail_on_exist=True)
-
-
-@data.command(name="fix")
-@click.argument(
-    "path",
-    type=click.Path(exists=True),
-    required=False,
-    default="./",
-)
-@click.option(
-    "--overwrite-hamming",
-    is_flag=True,
-    help="overwrite/fix the hamming files in the data directory",
-)
-def fix_deli_data_dir(path, overwrite_hamming):
-    """
-    Fix a deli data directory that has missing subfolders or files
-
-    PATH is the path to the deli data directory to fix.
-    """
-    path = Path(path)
-    if not path.exists():
-        raise click.ClickException(f"Path {path} does not exist")
-    if not path.is_dir():
-        raise click.ClickException(f"Path {path} is not a directory")
-    fix_deli_data_directory(path, overwrite_hamming=overwrite_hamming)
+    init_deli_data_directory(
+        path, fail_on_exist=not (fix_missing or overwrite), overwrite=overwrite
+    )
 
 
 @data.command(name="set")
@@ -145,14 +110,14 @@ def set_deli_data_dir_command(path, update_config):
 
     # update the config with the new data directory if requested
     if update_config:
-        if os.path.exists(os.path.join(os.path.expanduser("~"), ".deli", ".deli")):
-            deli_config_path = os.path.join(os.path.expanduser("~"), ".deli", ".deli")
+        _config_path = Path.home() / ".deli"
+        if _config_path.exists():
             _config = configparser.RawConfigParser()
-            _config.read(os.path.normpath(deli_config_path))
-            _config["SETTINGS"]["deli_data_dir"] = str(path)
-            _config.write(open(deli_config_path, "w"), True)
+            _config.read(os.path.normpath(_config_path))
+            _config["deli.data"]["deli_data_dir"] = str(path.resolve())
+            _config.write(open(_config_path, "w"), True)
         else:
-            raise FileNotFoundError("cannot find DELi config file for user")
+            raise FileNotFoundError("cannot find DELi config file at {}")
 
 
 @cli.group()

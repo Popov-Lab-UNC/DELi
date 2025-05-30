@@ -5,6 +5,7 @@ import configparser
 import functools
 import inspect
 import os
+import shutil
 from pathlib import Path
 from typing import Any, Callable, Literal, Optional, ParamSpec, Self, TypeVar, Union
 
@@ -378,9 +379,14 @@ def validate_deli_data_dir(deli_data_dir_: Path) -> bool:
     return True
 
 
-def init_deli_data_directory(path: Path, fail_on_exist: bool = True):
+def init_deli_data_directory(path: Path, fail_on_exist: bool = True, overwrite: bool = False):
     """
     Create a new DELi Data Directory with all the necessary sub folders
+
+    Notes
+    -----
+    If `fail_on_exist` is True, will raise an exception if the directory already exists
+    even if `overwrite` is set to True.
 
     Parameters
     ----------
@@ -389,6 +395,8 @@ def init_deli_data_directory(path: Path, fail_on_exist: bool = True):
     fail_on_exist: bool, default = True
         if True, will raise an exception if the directory path already exists
         if False, will try and create the sub-dirs in the existing directory
+    overwrite: bool, default = False
+        if a (sub) directory already exists, delete it and create a new directory
     """
     path = path.resolve()
     if path.exists():
@@ -402,7 +410,10 @@ def init_deli_data_directory(path: Path, fail_on_exist: bool = True):
         os.makedirs(path)
 
     for sub_dir in DELI_DATA_SUB_DIRS:
-        os.makedirs(path / sub_dir)
+        _sub_path = path / sub_dir
+        if _sub_path.exists() and overwrite:
+            shutil.rmtree(_sub_path)
+        os.makedirs(path / sub_dir, exist_ok=True)
 
 
 def init_deli_config(
