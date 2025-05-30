@@ -304,7 +304,7 @@ def validate_deli_data_dir(deli_data_dir_: Path) -> bool:
         raise NotADirectoryError(f"'{deli_data_dir_}' is not a directory")
 
     sub_dirs = {p.stem for p in deli_data_dir_.iterdir()}
-    missing_sub_dirs = set(DELI_DATA_SUB_DIRS) - set(sub_dirs)
+    missing_sub_dirs = set(DELI_DATA_SUB_DIRS) - sub_dirs
     if len(missing_sub_dirs) > 0:
         raise DeliDataDirError(
             f"DELi data directory '{deli_data_dir_}' is invalid; "
