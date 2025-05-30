@@ -69,7 +69,7 @@ def generate_report(
         for exp_name, value in sampling_depth_dict.items()
     ]
 
-    with resources.path("deli.templates", "report_test_template.html") as template_path:
+    with resources.path("deli.templates", "analysis_report.html") as template_path:
         template = jinja2.Template(open(template_path).read())
 
         rendered_html = template.render(
@@ -80,7 +80,7 @@ def generate_report(
         )
 
         # Save the report as an HTML file
-        output_file = os.path.join(base_dir, f"{today_date}_report_test_report.html")
+        output_file = os.path.join(base_dir, f"{today_date}_analysis_report.html")
         with open(output_file, "w") as f:
             f.write(rendered_html)
 
