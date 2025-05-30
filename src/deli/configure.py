@@ -13,17 +13,38 @@ from typing import Any, Callable, Literal, Optional, ParamSpec, Self, TypeVar, U
 P = ParamSpec("P")
 R = TypeVar("R")
 
-BB_MASK_TOKEN_DEFAULT: str = "###"
-NUC_2_INT_DEFAULT: dict[str, int] = {"A": 0, "T": 1, "C": 2, "G": 3}
+# DEFAULT SETTINGS
+_BB_MASK_TOKEN_DEFAULT = "###"
+_NUC_2_INT_DEFAULT = "A:0,T:1,C:2,G:3"
 
+# DEFAULT HAMMING CODE ORDERS
+_hamming_order_8_4 = "p0,p1,p2,d3,p4,d5,d6,d7"
+_custom_order_8_4 = "p0,p1,p2,d3,p4,d5,d6,d7"
+
+_hamming_order_16_5 = "p0,p1,p2,d3,p4,d5,d6,d7,p8,d9,d10,d11,d12,d13,d14,d15"
+_custom_order_16_5 = "p0,p1,p2,d3,p4,d5,d6,d7,p8,d9,d10,d11,d12,d13,d14,d15"
+
+_hamming_order_7_3 = "p1,p2,d3,p4,d5,d6,d7"
+_custom_order_7_3 = "p1,p2,d3,p4,d5,d6,d7"
+
+_hamming_order_15_4 = "p1,p2,d3,p4,d5,d6,d7,p8,d9,d10,d11,d12,d13,d14,d15"
+_custom_order_15_4 = "p1,p2,d3,p4,d5,d6,d7,p8,d9,d10,d11,d12,d13,d14,d15"
 
 DELI_DATA_SUB_DIRS = ["hamming", "libraries", "building_blocks"]
 
 DELI_CONFIG = None
 
+
+class DELiConfigError(Exception):
+    """raised when a DELi config is invalid or missing"""
+
+    pass
+
+
 def set_deli_data_dir(data_dir: Union[str, Path]) -> None:
     """Sets the deli data directory path"""
     get_deli_config().deli_data_dir = Path(data_dir) if isinstance(data_dir, str) else data_dir
+
 
 def get_deli_config():
     """Get the DELi config, loading it lazily if not already loaded"""
@@ -32,21 +53,23 @@ def get_deli_config():
         _deli_config_dir = os.environ.get("DELI_CONFIG", None)
         if (_deli_config_dir is not None) and (_deli_config_dir != ""):
             DELI_CONFIG = _DeliConfig.load_config(_deli_config_dir, use_env=True)
-        elif os.path.exists(os.path.join(os.path.expanduser("~"), ".deli", ".deli")):
-            DELI_CONFIG = _DeliConfig.load_config(
-                Path(os.path.join(os.path.expanduser("~"), ".deli", ".deli")), use_env=True
-            )
+        elif (Path.home() / ".deli").exists():
+            DELI_CONFIG = _DeliConfig.load_config(Path.home() / ".deli", use_env=True)
         else:
             raise DELiConfigError(
-                f"missing .deli config is user directory: "
-                f"{os.path.join(os.path.expanduser('~'), '.deli', '.deli')}; "
-                f"use 'deli config init' to create a new config file before using "
-                f"DELi"
+                "cannot find DELi config file; "
+                "Set the DELI_CONFIG environment variable to the path of the config file, "
+                "or use `deli config init` to create a default config in your home directory"
             )
-        _deli_data_dir = os.environ.get("deli_data_dir", None)
+
+        # take the data_dir from the environment variable if it exists
+        _deli_data_dir = os.environ.get("DELI_DATA_DIR", None)
         if (isinstance(_deli_data_dir, str)) and (_deli_data_dir != ""):
-            DELI_CONFIG.deli_data_dir = os.fspath(os.path.expanduser(_deli_data_dir))
+            _deli_data_dir_path = Path(_deli_data_dir).resolve()
+            DELI_CONFIG.deli_data_dir = _deli_data_dir_path
+
     return DELI_CONFIG
+
 
 def load_deli_config(path: Union[str, Path]) -> None:
     """
@@ -74,95 +97,196 @@ class _DeliConfig:
     """
     Struct to hold info on DELi settings
 
-    Attributes
+    Parameters
     ----------
-    deli_data_dir : str
+    deli_data_dir: Path | None
         where the DELi data directory is located
-        default location is `~/.deli/data`
-        should follow format specific in 'Storing DEL info'
     bb_mask: str
-        the 3 char long token to replace any masked building blocks
+        the 3-char long token to replace any masked building blocks
         masked building blocks result from synthon-based analysis
     nuc_2_int: dict[str, int]
-        the nucleotide to integer mapping
+        the nucleotide-to-integer mapping
     """
 
-    def __init__(self, **kwargs):
+    def __init__(
+        self, bb_mask: str, nuc_2_int: dict[str, int], deli_data_dir: Optional[Path] = None
+    ):
         # process deli data director
-        self.deli_data_dir: Path | None
-        if kwargs.get("deli_data_dir", None) is None:
-            self.deli_data_dir = None
-        else:
-            self.deli_data_dir = Path(os.fspath(os.path.expanduser(kwargs.get("deli_data_dir"))))
-            validate_deli_data_dir(self.deli_data_dir)
+        self._deli_data_dir: Path | None = None
+        if deli_data_dir is not None:
+            self.deli_data_dir = deli_data_dir
+        self._bb_mask: str = bb_mask
+        self._nuc_2_int: dict[str, int] = nuc_2_int
 
-        self.bb_mask: str = (
-            str(kwargs["BB_MASK"]) if kwargs.get("BB_MASK") is not None else BB_MASK_TOKEN_DEFAULT
-        )
-        self.nuc_2_int: dict[str, int] = (
-            kwargs["NUC_2_INT"]
-            if (kwargs.get("NUC_2_INT", None) is not None)
-            else NUC_2_INT_DEFAULT
-        )
-
-    def get_data_dir_path(self) -> Path:
-        """
-        Get the path to the DELi data directory
-
-        Returns
-        -------
-        Path
-            the path to the DELi data directory
-
-        Raises
-        ------
-        RuntimeError
-            if the deli_data_dir is not set
-        """
-        if self.deli_data_dir is None:
+    @property
+    def deli_data_dir(self) -> Path:
+        if self._deli_data_dir is None:
             raise RuntimeError("DELi data directory is not set")
         else:
-            return self.deli_data_dir
+            return self._deli_data_dir
+
+    @deli_data_dir.setter
+    def deli_data_dir(self, value) -> None:
+        if not isinstance(value, Path):
+            try:
+                _path = Path(value).resolve()
+            except TypeError as e:
+                raise TypeError(
+                    f"'deli_data_directory' must be a str, bytes or "
+                    f"os.PathLike object, not {type(value)}"
+                ) from e
+        else:
+            _path = value.resolve()
+
+        # validate the deli data directory
+        validate_deli_data_dir(_path)
+        self._deli_data_dir = _path
+
+    @deli_data_dir.deleter
+    def deli_data_dir(self) -> None:
+        self._deli_data_dir = None
+
+    @property
+    def bb_mask(self) -> str:
+        return self._bb_mask
+
+    @bb_mask.setter
+    def bb_mask(self, value) -> None:
+        if len(value) == 3 and isinstance(value, str):
+            self._bb_mask = value
+        else:
+            if len(value) != 3:
+                raise DELiConfigError(
+                    f"'bb_mask' must be a string of 3 characters, not {len(value)}: '{value}'"
+                )
+            if not isinstance(value, str):
+                raise DELiConfigError(f"'bb_mask' must be a 'string', not '{type(value)}'")
+
+    @bb_mask.deleter
+    def bb_mask(self) -> None:
+        raise RuntimeError("Cannot delete 'bb_mask'")
+
+    @property
+    def nuc_2_int(self) -> dict[str, int]:
+        return self._nuc_2_int
+
+    @nuc_2_int.setter
+    def nuc_2_int(self, value):
+        if not isinstance(value, dict):
+            try:
+                _dict = dict(value)
+            except TypeError as e:
+                raise TypeError(
+                    f"'nuc_2_int' must be a type 'dict' or castable "
+                    f"to a dict, found type '{type(value)}'"
+                ) from e
+        else:
+            _dict = value
+
+        # check that the keys are the nucleotides A, T, G, C
+        if {"A", "T", "G", "C"} != set(_dict.keys()):
+            raise DELiConfigError(
+                f"'nuc_2_int' must contain the only the nucleotides 'A', 'T', 'G', 'C'; "
+                f"found nucleotides '{set(_dict.keys())}'"
+            )
+
+        # check that all values are cast/castable to int
+        for key, val in _dict.items():
+            try:
+                _dict[key] = int(val)
+            except ValueError as e:
+                raise ValueError(
+                    f"nucleotide '{key}' in 'nuc_2_int' must be mapped to an integer, "
+                    f"found value '{val}' of type '{type(val)}'"
+                ) from e
+
+        # check that only 0, 1, 2, 3 are used as values
+        if {0, 1, 2, 3} != set(_dict.values()):
+            raise DELiConfigError(
+                f"'nuc_2_int' must map nucleotides to values 0, 1, 2, 3; "
+                f"found values '{set(_dict.values())}'"
+            )
+        self._nuc_2_int = _dict
+
+    @nuc_2_int.deleter
+    def nuc_2_int(self):
+        raise RuntimeError("Cannot delete 'nuc_2_int'")
 
     @classmethod
     def load_config(cls, path: Union[str, Path], use_env: bool = False) -> Self:
         """Helper func to load in config data"""
         config = configparser.RawConfigParser()
-        config.read(os.path.normpath(path))
+        try:
+            if config.read(os.path.normpath(path)) is None:
+                raise FileNotFoundError(
+                    f"cannot find deli config file at '{os.path.normpath(path)}'"
+                )
+        except configparser.Error as e:
+            raise DELiConfigError(
+                f"error reading config file at '{os.path.normpath(path)}';\n"
+                f"you can use `deli config init --overwrite` to generate a new valid "
+                f"config file with default settings"
+            ) from e
 
-        settings = dict(config.items("SETTINGS"))
-        if len(settings) == 0:
-            raise FileNotFoundError(f"cannot find config file at '{os.path.normpath(path)}'")
+        try:
+            _bb_mask = config.get("deli.buildingblocks", "BB_MASK")
+        except configparser.NoOptionError as e:
+            raise DELiConfigError(
+                f"missing 'BB_MASK' option in 'deli.buildingblocks' "
+                f"config file at '{os.path.normpath(path)}';\n"
+                f"you can use `deli config init --overwrite` to generate a new valid "
+                f"config file with default settings"
+            ) from e
+        except configparser.NoSectionError as e:
+            raise DELiConfigError(
+                f"missing 'deli.buildingblocks' section in "
+                f"config file at '{os.path.normpath(path)}';\n"
+                f"you can use `deli config init --overwrite` to generate a new valid "
+                f"config file with default settings"
+            ) from e
 
-        nuc_2_int = (
-            {
+        try:
+            _nuc_2_int = {
                 pair.split(":")[0].strip(): int(pair.split(":")[1].strip())
-                for pair in settings["NUC_2_INT"].strip().split(",")
+                for pair in config.get("deli.hamming", "nuc_2_int").strip().split(",")
             }
-            if settings.get("NUC_2_INT", None) is not None
-            else NUC_2_INT_DEFAULT
-        )
+        except configparser.NoOptionError as e:
+            raise DELiConfigError(
+                f"missing 'nuc_2_int' option in 'deli.hamming' "
+                f"config file at '{os.path.normpath(path)}';\n"
+                f"you can use `deli config init --overwrite` to generate a new valid "
+                f"config file with default settings"
+            ) from e
+        except configparser.NoSectionError as e:
+            raise DELiConfigError(
+                f"missing 'deli.hamming' section in config file at '{os.path.normpath(path)}';\n"
+                f"you can use `deli config init --overwrite` to generate a new valid "
+                f"config file with default settings"
+            ) from e
 
-        __deli_data_dir: Optional[str] = settings.get("deli_data_dir")
-        if use_env:
-            deli_data_dir_env = os.environ.get("deli_data_dir", None)
-            if isinstance(deli_data_dir_env, str):
-                __deli_data_dir = deli_data_dir_env
+        try:
+            _deli_data_dir = Path(config.get("deli.data", "deli_data_dir"))
+        except (configparser.NoOptionError, configparser.NoSectionError):
+            _deli_data_dir = None
+        except TypeError as e:
+            raise DELiConfigError(
+                f"failed to parse path {config.get('deli.data', 'deli_data_dir')}"
+            ) from e
 
         return cls(
-            deli_data_dir=__deli_data_dir,
-            bb_mask=settings.get("BB_MASK"),
-            nuc_2_int=nuc_2_int,
+            deli_data_dir=_deli_data_dir,
+            bb_mask=_bb_mask,
+            nuc_2_int=_nuc_2_int,
         )
 
 
-def validate_deli_data_dir(deli_data_dir_: Union[str, Path]) -> bool:
+def validate_deli_data_dir(deli_data_dir_: Path) -> bool:
     """
     Validate that the given DELi data directory exists and has all the required sub-directories
 
     Parameters
     ----------
-    deli_data_dir_: Union[str, Path]
+    deli_data_dir_: Path
         path to the DELi data directory to validate
 
     Returns
@@ -170,13 +294,16 @@ def validate_deli_data_dir(deli_data_dir_: Union[str, Path]) -> bool:
     bool
         True if the directory is valid, raises DeliDataDirError otherwise
     """
-    if not os.path.exists(deli_data_dir_):
-        raise DeliDataDirError(
-            f"DELi data directory '{deli_data_dir_}' does not exist; "
-            f"create it using 'deli data init {deli_data_dir_}'"
+    if not deli_data_dir_.exists():
+        raise FileNotFoundError(
+            f"directory at '{deli_data_dir_}' does not exist; "
+            f"you can create a new DELi data directory using 'deli data init {deli_data_dir_}'"
         )
 
-    sub_dirs = os.listdir(deli_data_dir_)
+    if not deli_data_dir_.is_dir():
+        raise NotADirectoryError(f"'{deli_data_dir_}' is not a directory")
+
+    sub_dirs = {p.stem for p in deli_data_dir_.iterdir()}
     missing_sub_dirs = set(DELI_DATA_SUB_DIRS) - set(sub_dirs)
     if len(missing_sub_dirs) > 0:
         raise DeliDataDirError(
@@ -273,12 +400,9 @@ def fix_deli_data_directory(path: Union[str, os.PathLike], overwrite_hamming: bo
         )
 
 
-def init_deli_config_dir(
-    path: Optional[Union[str, os.PathLike]] = None,
+def init_deli_config(
+    path: Optional[Path] = None,
     fail_on_exist: bool = True,
-    include_deli_data_dir: bool = True,
-    create_default_hamming_files: bool = True,
-    use_extra_parity: bool = True,
 ):
     """
     Create a default Deli config directory
@@ -291,40 +415,41 @@ def init_deli_config_dir(
     fail_on_exist: bool, default = True
         if True, will raise an exception if the directory path already exists
         if False, will try and create the sub-dirs in the existing directory
-    include_deli_data_dir: bool, default = True
-        if True create a deli data directory within the deli config dir
-        will be named 'deli_data'
-    create_default_hamming_files: bool, default = True
-        if True, will create the default hamming files in the new directory
-        if False, will not create default hamming files
-    use_extra_parity: bool, default = True
-        if True, will create extra parity bit hamming files
-        if False, will not create parity bit hamming files
-        only relevant if create_default_hamming_files is True
     """
-    if path is not None:
-        _path = Path(path)
+    if path is None:
+        _path = Path.home() / ".deli"
     else:
-        _path = Path(os.path.join(os.path.expanduser("~"), ".deli"))
+        _path = path
 
-    os.makedirs(_path, exist_ok=not fail_on_exist)
+    if _path.exists() and fail_on_exist:
+        raise FileExistsError(
+            f"'{_path}' already exists; "
+            f"set 'fail_on_exist' to False to overwrite OR use `deli config init --overwrite`"
+        )
 
     _config = (
-        f"[SETTINGS]\n"
-        f"BB_MASK = {BB_MASK_TOKEN_DEFAULT}\n"
-        f"NUC_2_INT = "
-        + ",".join([f"{key}:{val}" for key, val in NUC_2_INT_DEFAULT.items()])
-        + "\n"
+        f"[DEFAULT]\n\n"
+        f"[deli.data]\n"
+        f"deli_data_dir = \n\n"
+        f"[deli.hamming]\n"
+        f"nuc_2_int = {_NUC_2_INT_DEFAULT}\n\n"
+        f"[deli.hamming.8_4]\n"
+        f"hamming_order = {_hamming_order_8_4}\n"
+        f"custom_order = {_custom_order_8_4}\n\n"
+        f"[deli.hamming.16_5]\n"
+        f"hamming_order = {_hamming_order_16_5}\n"
+        f"custom_order = {_custom_order_16_5}\n\n"
+        f"[deli.hamming.7_3]\n"
+        f"hamming_order = {_hamming_order_7_3}\n"
+        f"custom_order = {_custom_order_7_3}\n\n"
+        f"[deli.hamming.15_4]\n"
+        f"hamming_order = {_hamming_order_15_4}\n"
+        f"custom_order = {_custom_order_15_4}\n\n"
+        f"[deli.buildingblocks]\n"
+        f"BB_MASK = {_BB_MASK_TOKEN_DEFAULT}\n"
     )
     with open(_path / ".deli", "w") as f:
         f.write(_config)
-
-    if include_deli_data_dir:
-        init_deli_data_directory(
-            path=_path / "deli_data",
-            create_default_hamming_files=create_default_hamming_files,
-            use_extra_parity=use_extra_parity,
-        )
 
 
 def accept_deli_data_name(
@@ -370,7 +495,7 @@ def accept_deli_data_name(
         if os.path.exists(path):
             return Path(path)
 
-        _sub_dir_path = get_deli_config().get_data_dir_path() / sub_dir
+        _sub_dir_path = get_deli_config().deli_data_dir / sub_dir
         if not os.path.exists(_sub_dir_path):
             raise DeliDataNotFound(
                 f"cannot find DELi data subdirectory at `{_sub_dir_path}`; "
@@ -378,7 +503,7 @@ def accept_deli_data_name(
             )
 
         _file_name = os.path.basename(path).split(".")[0] + "." + extension
-        file_path = get_deli_config().get_data_dir_path() / sub_dir / _file_name
+        file_path = get_deli_config().deli_data_dir / sub_dir / _file_name
 
         if not os.path.exists(file_path):
             raise DeliDataNotFound(f"cannot find file '{path}.{extension}' in {_sub_dir_path}")
@@ -436,9 +561,3 @@ class DeliDataLoadable(abc.ABC):
     def load(cls, name_or_path: str):
         """Load the file into the object"""
         raise NotImplementedError()
-
-
-class DELiConfigError(Exception):
-    """raised when a DELi config is invalid or missing"""
-
-    pass
