@@ -4,7 +4,6 @@ import abc
 import configparser
 import functools
 import inspect
-import math
 import os
 from pathlib import Path
 from typing import Any, Callable, Literal, Optional, ParamSpec, Self, TypeVar, Union
@@ -30,7 +29,7 @@ _custom_order_7_3 = "p1,p2,d3,p4,d5,d6,d7"
 _hamming_order_15_4 = "p1,p2,d3,p4,d5,d6,d7,p8,d9,d10,d11,d12,d13,d14,d15"
 _custom_order_15_4 = "p1,p2,d3,p4,d5,d6,d7,p8,d9,d10,d11,d12,d13,d14,d15"
 
-DELI_DATA_SUB_DIRS = ["hamming", "libraries", "building_blocks"]
+DELI_DATA_SUB_DIRS = ["libraries", "building_blocks"]
 
 DELI_CONFIG = None
 
@@ -52,9 +51,9 @@ def get_deli_config():
     if DELI_CONFIG is None:
         _deli_config_dir = os.environ.get("DELI_CONFIG", None)
         if (_deli_config_dir is not None) and (_deli_config_dir != ""):
-            DELI_CONFIG = _DeliConfig.load_config(_deli_config_dir, use_env=True)
+            DELI_CONFIG = _DeliConfig.load_config(_deli_config_dir)
         elif (Path.home() / ".deli").exists():
-            DELI_CONFIG = _DeliConfig.load_config(Path.home() / ".deli", use_env=True)
+            DELI_CONFIG = _DeliConfig.load_config(Path.home() / ".deli")
         else:
             raise DELiConfigError(
                 "cannot find DELi config file; "
@@ -109,7 +108,11 @@ class _DeliConfig:
     """
 
     def __init__(
-        self, bb_mask: str, nuc_2_int: dict[str, int], deli_data_dir: Optional[Path] = None
+        self,
+        bb_mask: str,
+        nuc_2_int: dict[str, int],
+        deli_data_dir: Optional[Path] = None,
+        hamming_codes: Optional[dict[str, tuple[str, str]]] = None,
     ):
         # process deli data director
         self._deli_data_dir: Path | None = None
@@ -117,6 +120,12 @@ class _DeliConfig:
             self.deli_data_dir = deli_data_dir
         self._bb_mask: str = bb_mask
         self._nuc_2_int: dict[str, int] = nuc_2_int
+
+        self.hamming_codes: dict[str, tuple[str, str]]
+        if hamming_codes is not None:
+            self.hamming_codes = hamming_codes
+        else:
+            self.hamming_codes = {}
 
     @property
     def deli_data_dir(self) -> Path:
@@ -213,7 +222,7 @@ class _DeliConfig:
         raise RuntimeError("Cannot delete 'nuc_2_int'")
 
     @classmethod
-    def load_config(cls, path: Union[str, Path], use_env: bool = False) -> Self:
+    def load_config(cls, path: Union[str, Path]) -> Self:
         """Helper func to load in config data"""
         config = configparser.RawConfigParser()
         try:
@@ -273,11 +282,66 @@ class _DeliConfig:
                 f"failed to parse path {config.get('deli.data', 'deli_data_dir')}"
             ) from e
 
+        # extract all hamming codes from the config
+        _codes: dict[str, tuple[str, str]] = {}
+        for section in config.sections():
+            if section.startswith("deli.hamming."):
+                name = section.split(".")[-1]
+                try:
+                    hamming_order = config.get(section, "hamming_order")
+                    custom_order = config.get(section, "custom_order")
+
+                    _true_order_nums = [int(_[1:]) for _ in hamming_order.split(",")]
+                    if (_true_order_nums != sorted(_true_order_nums)) or (
+                        _true_order_nums[0] not in {0, 1}
+                    ):
+                        raise DELiConfigError(
+                            f"invalid hamming order '{hamming_order}' in section '{section}'; "
+                            f"see DELi hamming docs for details about how to define "
+                            f"hamming code order"
+                        )
+                    _real_order_nums = [int(_[1:]) for _ in custom_order.split(",")]
+                    if len(_real_order_nums) != len(_true_order_nums):
+                        raise DELiConfigError(
+                            f"hamming section '{section}' has a parity "
+                            f"length mismatch; see DELi hamming docs for details"
+                        )
+                    _codes[name] = (hamming_order, custom_order)
+                except configparser.NoOptionError as e:
+                    raise DELiConfigError(
+                        f"missing 'hamming_order' or 'custom_order' option in "
+                        f"hamming section '{section}'"
+                    ) from e
+
         return cls(
             deli_data_dir=_deli_data_dir,
             bb_mask=_bb_mask,
             nuc_2_int=_nuc_2_int,
+            hamming_codes=_codes,
         )
+
+    def get_hamming_code(self, name: str) -> tuple[str, str]:
+        """
+        Get the hamming code order and custom order for a given name
+
+        Parameters
+        ----------
+        name: str
+            name of the hamming code to load, e.g. "8_4"
+
+        Returns
+        -------
+        tuple[str, str]
+            (hamming_order, custom_order)
+        """
+        try:
+            return self.hamming_codes[name]
+        except KeyError as e:
+            raise DELiConfigError(
+                f"unrecognized hamming code '{name}'; "
+                f"available codes are {list(self.hamming_codes.keys())}; "
+                f"new codes can be added to the deli config file; see 'Hamming' docs for details"
+            ) from e
 
 
 def validate_deli_data_dir(deli_data_dir_: Path) -> bool:
@@ -309,95 +373,36 @@ def validate_deli_data_dir(deli_data_dir_: Path) -> bool:
         raise DeliDataDirError(
             f"DELi data directory '{deli_data_dir_}' is invalid; "
             f"missing sub-directories {list(missing_sub_dirs)}"
-            f"use 'deli data fix {deli_data_dir_}'"
+            f"use 'deli data init --fix-missing {deli_data_dir_}' to add missing sub-directories"
         )
     return True
 
 
-def init_deli_data_directory(
-    path: Union[str, os.PathLike],
-    fail_on_exist: bool = True,
-    create_default_hamming_files: bool = True,
-    use_extra_parity: bool = True,
-):
+def init_deli_data_directory(path: Path, fail_on_exist: bool = True):
     """
-    Create a new Deli Data Directory with all the necessary sub folders
+    Create a new DELi Data Directory with all the necessary sub folders
 
     Parameters
     ----------
-    path: Union[str, os.PathLike]
+    path: Path
         path to create deli data dir at
     fail_on_exist: bool, default = True
         if True, will raise an exception if the directory path already exists
         if False, will try and create the sub-dirs in the existing directory
-    create_default_hamming_files: bool, default = True
-        if True, will create the default hamming files in the new directory
-        if False, will not create default hamming files
-    use_extra_parity: bool, default = True
-        if True, will create extra parity bit hamming files
-        if False, will not create parity bit hamming files
-        only relevant if create_default_hamming_files is True
     """
-    _path = Path(path)
-    os.makedirs(_path, exist_ok=not fail_on_exist)
-    for sub_dir in DELI_DATA_SUB_DIRS:
-        os.makedirs(_path / sub_dir, exist_ok=not fail_on_exist)
-
-    # create hamming files
-    if create_default_hamming_files:
-        for i in range(5, 16):
-            file_path = _path / "hamming" / f"hamming3_{i}.txt"
-
-            hamming_order = []
-            for j in range(1, i + 1):
-                hamming_order.append(f"p{j}" if math.log2(j).is_integer() else f"d{j}")
-            extra_hamming_order = ["p0"] + hamming_order[:-1]
-
-            with open(file_path, "w") as f:
-                f.write(f"hamming_order: {','.join(hamming_order)}\n")
-                f.write(f"custom_order: {','.join(hamming_order)}\n")
-
-            if use_extra_parity:
-                extra_parity_file_path = _path / "hamming" / f"hamming4_{i}.txt"
-                with open(extra_parity_file_path, "w") as f:
-                    f.write(f"hamming_order: {','.join(extra_hamming_order)}\n")
-                    f.write(f"custom_order: {','.join(extra_hamming_order)}\n")
-
-
-def fix_deli_data_directory(path: Union[str, os.PathLike], overwrite_hamming: bool = False):
-    """
-    Fix a Deli Data Directory by creating any missing subfolders
-
-    Parameters
-    ----------
-    path: Union[str, os.PathLike]
-        path to the deli data dir to fix
-    overwrite_hamming: bool, default = False
-        if True, will overwrite any existing hamming files with the default ones
-        if False, will not overwrite existing hamming files
-        only relevant if the hamming sub-dir already exists
-    """
-    _path = Path(path)
-    if not os.path.exists(_path):
-        raise DeliDataDirError(
-            f"DELi data directory '{_path}' does not exist;"
-            f" create it using 'deli data init {path}'"
-        )
-
-    if (not os.path.exists(_path / "hamming")) or overwrite_hamming:
-        init_deli_data_directory(
-            path=_path,
-            fail_on_exist=False,
-            create_default_hamming_files=True,
-            use_extra_parity=True,
-        )
+    path = path.resolve()
+    if path.exists():
+        if fail_on_exist:
+            raise FileExistsError(
+                f"'{path}' already exists; set 'fail_on_exist' to False to overwrite"
+            )
+        elif not path.is_dir():
+            raise NotADirectoryError(f"'{path}' is not a directory")
     else:
-        init_deli_data_directory(
-            path=_path,
-            fail_on_exist=False,
-            create_default_hamming_files=False,
-            use_extra_parity=False,
-        )
+        os.makedirs(path)
+
+    for sub_dir in DELI_DATA_SUB_DIRS:
+        os.makedirs(path / sub_dir)
 
 
 def init_deli_config(
@@ -450,6 +455,40 @@ def init_deli_config(
     )
     with open(_path / ".deli", "w") as f:
         f.write(_config)
+
+
+def _build_default_hamming_code_strings(
+    include_extra_parity: bool = False,
+) -> dict[str, tuple[str, str]]:
+    """
+    Build the hamming code and custom order strings for various length tags
+
+    Only builds codes of length 7 to 16
+
+    Parameters
+    ----------
+    include_extra_parity: bool, default = False
+        use an additional parity bit in the hamming code
+
+    Returns
+    -------
+    dict[str, tuple[str, str]]
+        a dictionary mapping hamming code names to tuples of (hamming_order, custom_order)
+    """
+    from math import log2
+
+    _codes = {"7_3": ("p1,p2,d3,p4,d5,d6,d7", "p1,p2,d3,p4,d5,d6,d7")}
+    if include_extra_parity:
+        _codes["8_4"] = ("p0,p1,p2,d3,p4,d5,d6,d7", "p0,p1,p2,d3,p4,d5,d6,d7")
+
+    for i in range(9, 16):
+        _hamming_code_str = ",".join(
+            [f"p{j}" if log2(j).is_integer() else f"d{j}" for j in range(1, i + 1)]
+        )
+        _codes[f"{i}_4"] = (_hamming_code_str, _hamming_code_str)
+        if include_extra_parity:
+            _codes[f"{i+1}_5"] = ("p0," + _hamming_code_str, "p0," + _hamming_code_str)
+    return _codes
 
 
 def accept_deli_data_name(
