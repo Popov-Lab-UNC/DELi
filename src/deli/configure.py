@@ -275,13 +275,13 @@ class _DeliConfig:
             ) from e
 
         try:
-            _deli_data_dir = Path(config.get("deli.data", "deli_data_dir"))
+            _deli_data_dir = config.get("deli.data", "deli_data_dir")
+            if _deli_data_dir == "":
+                _deli_data_dir_path = None
+            else:
+                _deli_data_dir_path = Path(config.get("deli.data", "deli_data_dir"))
         except (configparser.NoOptionError, configparser.NoSectionError):
-            _deli_data_dir = None
-        except TypeError as e:
-            raise DELiConfigError(
-                f"failed to parse path {config.get('deli.data', 'deli_data_dir')}"
-            ) from e
+            _deli_data_dir_path = None
 
         # extract all hamming codes from the config
         _codes: dict[str, tuple[str, str]] = {}
@@ -315,7 +315,7 @@ class _DeliConfig:
                     ) from e
 
         return cls(
-            deli_data_dir=_deli_data_dir,
+            deli_data_dir=_deli_data_dir_path,
             bb_mask=_bb_mask,
             nuc_2_int=_nuc_2_int,
             hamming_codes=_codes,
@@ -464,7 +464,7 @@ def init_deli_config(
         f"[deli.buildingblocks]\n"
         f"BB_MASK = {_BB_MASK_TOKEN_DEFAULT}\n"
     )
-    with open(_path / ".deli", "w") as f:
+    with open(_path, "w") as f:
         f.write(_config)
 
 
