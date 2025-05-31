@@ -4,12 +4,8 @@ import os
 
 import pytest
 
-from deli.configure import set_deli_data_dir
 from deli.dels import DELEnumerator, DELibrary
 from deli.dels.enumerator import FAILED_ENUMERATION_STR
-
-
-set_deli_data_dir(os.path.join(os.path.dirname(__file__), "test_data", "test_deli_data_dir"))
 
 
 @pytest.mark.unit

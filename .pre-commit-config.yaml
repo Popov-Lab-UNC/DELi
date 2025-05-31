@@ -28,7 +28,7 @@ repos:
     hooks:
       - id: pytest-unit
         name: pytest-unit
-        entry: cd backend && python -m pytest
+        entry: poetry run pytest
         stages: [push]
         language: system
         types: [python]

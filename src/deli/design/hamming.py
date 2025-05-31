@@ -3,7 +3,7 @@
 import math
 from typing import List, Optional, Self
 
-from deli.configure import DELI_CONFIG, DeliDataLoadable, accept_deli_data_name
+from deli.configure import get_deli_config
 
 
 class DecodeError(Exception):
@@ -17,7 +17,7 @@ class BaseQuaternaryHamming:
 
     def __init__(self):
         """Initialize a BaseQuaternaryHamming"""
-        self.nuc_2_int_mapping = DELI_CONFIG.nuc_2_int
+        self.nuc_2_int_mapping = get_deli_config().nuc_2_int
         self.int_2_nuc_mapping = {val: key for key, val in self.nuc_2_int_mapping.items()}
 
     @staticmethod
@@ -44,7 +44,7 @@ class BaseQuaternaryHamming:
         bases[pos_corr] = (bases[pos_corr] - (4 - max(parity_list))) % 4
 
 
-class QuaternaryHammingDecoder(BaseQuaternaryHamming, DeliDataLoadable):
+class QuaternaryHammingDecoder(BaseQuaternaryHamming):
     """Generates and decodes quaternary hamming codes"""
 
     def __init__(self, parity_map: List[int], has_extra_parity: bool):
@@ -68,7 +68,7 @@ class QuaternaryHammingDecoder(BaseQuaternaryHamming, DeliDataLoadable):
 
         self._parity = math.ceil(math.log2(self.hamming_size))
 
-        self.nuc_2_int_mapping = DELI_CONFIG.nuc_2_int
+        self.nuc_2_int_mapping = get_deli_config().nuc_2_int
         self.int_2_nuc_mapping = {val: key for key, val in self.nuc_2_int_mapping.items()}
 
         self._require_sort = sorted(self.parity_map) != self.parity_map
@@ -81,69 +81,36 @@ class QuaternaryHammingDecoder(BaseQuaternaryHamming, DeliDataLoadable):
             return False
 
     @classmethod
-    @accept_deli_data_name("hamming", "txt")
-    def load(cls, path) -> Self:
+    def load(cls, name) -> Self:
         """
         Load a hamming code into a decoder
 
-        Notes
-        -----
-        Can be the name of a hamming config in the
-        DELI data dir subfolder 'hamming'
+        NOTE: to load, need a deli.hamming.<name> section
+        in the ".deli" config file with both a hamming and custom order field.
+        See docs for more details
 
         Parameters
         ----------
-        path: str
-            path or name of file (if in DELI data dir)
+        name: str
+            name of the hamming code to load, e.g. "8_4"
 
         Returns
         -------
-        Self
+        QuaternaryHammingDecoder
         """
-        _true_order: Optional[str] = None
-        _real_order: Optional[str] = None
-        with open(path, "r", encoding="utf-8") as f:
-            for line in f:
-                if line.startswith("#"):
-                    continue
-                elif line.startswith("hamming_order:"):
-                    _true_order = line.split(":")[-1].strip()
-                elif line.startswith("custom_order:"):
-                    _real_order = line.split(":")[-1].strip()
-
-        if _true_order is None:
-            raise RuntimeError(
-                f"hamming file '{path}' missing the 'hamming_order' field; "
-                f"see DELi hamming docs for details"
-            )
-
-        if _real_order is None:
-            raise RuntimeError(
-                f"hamming file '{path}' missing the 'custom_order' field; "
-                f"see DELi hamming docs for details"
-            )
+        _config = get_deli_config()
+        _true_order, _custom_order = _config.get_hamming_order(name)
 
         _true_order_nums = [int(_[1:]) for _ in _true_order.split(",")]
-        if _true_order_nums != sorted(_true_order_nums):
-            raise RuntimeError(
-                f"hamming file '{path}' has an improper "
-                f"'true parity order'; see DELi hamming docs for details"
-            )
-
-        _real_order_nums = [int(_[1:]) for _ in _real_order.split(",")]
-        if len(_real_order_nums) != len(_true_order_nums):
-            raise RuntimeError(
-                f"hamming file '{path}' has a parity "
-                f"length mismatch; see DELi hamming docs for details"
-            )
+        _custom_order_nums = [int(_[1:]) for _ in _custom_order.split(",")]
 
         if 0 in _true_order_nums:
             _has_extra_parity = True
         else:
             _has_extra_parity = False
-            _real_order_nums = [_ - 1 for _ in _true_order_nums]
+            _custom_order_nums = [_ - 1 for _ in _true_order_nums]
 
-        return cls(parity_map=_real_order_nums, has_extra_parity=_has_extra_parity)
+        return cls(parity_map=_custom_order_nums, has_extra_parity=_has_extra_parity)
 
     def decode_sequence(self, sequence: str) -> Optional[str]:
         """
