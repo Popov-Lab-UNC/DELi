@@ -41,7 +41,7 @@ class DELiConfigError(Exception):
     pass
 
 
-def set_deli_data_dir(data_dir: Union[str, Path]) -> None:
+def set_deli_data_dir(data_dir: Union[str, Path, None]) -> None:
     """Sets the deli data directory path"""
     get_deli_config().deli_data_dir = Path(data_dir) if isinstance(data_dir, str) else data_dir
 
