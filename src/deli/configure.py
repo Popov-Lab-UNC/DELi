@@ -139,20 +139,21 @@ class _DeliConfig:
     def deli_data_dir(self, value) -> None:
         if value is None:
             self._deli_data_dir = None
-        elif not isinstance(value, Path):
-            try:
-                _path = Path(value).resolve()
-            except TypeError as e:
-                raise TypeError(
-                    f"'deli_data_directory' must be a str, bytes or "
-                    f"os.PathLike object, not {type(value)}"
-                ) from e
         else:
-            _path = value.resolve()
+            if not isinstance(value, Path):
+                try:
+                    _path = Path(value).resolve()
+                except TypeError as e:
+                    raise TypeError(
+                        f"'deli_data_directory' must be a str, bytes or "
+                        f"os.PathLike object, not {type(value)}"
+                    ) from e
+            else:
+                _path = value.resolve()
 
-        # validate the deli data directory
-        validate_deli_data_dir(_path)
-        self._deli_data_dir = _path
+            # validate the deli data directory
+            validate_deli_data_dir(_path)
+            self._deli_data_dir = _path
 
     @deli_data_dir.deleter
     def deli_data_dir(self) -> None:
