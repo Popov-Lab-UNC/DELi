@@ -131,13 +131,15 @@ class _DeliConfig:
     @property
     def deli_data_dir(self) -> Path:
         if self._deli_data_dir is None:
-            raise RuntimeError("DELi data directory is not set")
+            raise DeliDataDirError("DELi data directory is not set")
         else:
             return self._deli_data_dir
 
     @deli_data_dir.setter
     def deli_data_dir(self, value) -> None:
-        if not isinstance(value, Path):
+        if value is None:
+            self._deli_data_dir = None
+        elif not isinstance(value, Path):
             try:
                 _path = Path(value).resolve()
             except TypeError as e:
