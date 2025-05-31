@@ -22,7 +22,7 @@ packages = [
     { include = "deli/py.typed", from = "src"},
 ]
 include = [
-    {path = "templates/*", format = ["sdist", "wheel"] }
+    {path = "src/deli/templates/*", format = ["sdist", "wheel"] }
 ]
 
 [tool.poetry.scripts]
