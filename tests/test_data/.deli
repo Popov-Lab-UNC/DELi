@@ -1,7 +1,7 @@
 [DEFAULT]
 
 [deli.data]
-deli_data_dir = C:/Users/James/Projects/Programing/deli2/data
+deli_data_dir =
 
 [deli.hamming]
 nuc_2_int = A:0,T:1,C:2,G:3
