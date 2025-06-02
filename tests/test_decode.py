@@ -5,12 +5,9 @@ import shutil
 
 import pytest
 
-from deli.configure import set_deli_data_dir
 from deli.decode import DecodingRunner, DecodingRunnerResults
 from deli.decode.runner import DecodingRunParsingError
 
-
-set_deli_data_dir(os.path.join(os.path.dirname(__file__), "test_data", "test_deli_data_dir"))
 
 DECODE_FILE = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "test_data", "example_decode.yaml")

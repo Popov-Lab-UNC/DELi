@@ -6,15 +6,18 @@
         },
         "bb1": {
             "tag": "NNNNNNNN",
-            "overhang": "ACG"
+            "overhang": "ACG",
+            "hamming": "8_4"
         },
         "bb2": {
             "tag": "NNNNNNNN",
-            "overhang": "GAT"
+            "overhang": "GAT",
+            "hamming": "8_4"
         },
         "bb3": {
             "tag": "NNNNNNNN",
-            "overhang": "TGC"
+            "overhang": "TGC",
+            "hamming": "8_4"
         },
         "pre-umi": {
             "tag": "AATGCCAGTACG"

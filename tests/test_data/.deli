@@ -1,0 +1,26 @@
+[DEFAULT]
+
+[deli.data]
+deli_data_dir =
+
+[deli.hamming]
+nuc_2_int = A:0,T:1,C:2,G:3
+
+[deli.hamming.8_4]
+hamming_order = p0,p1,p2,d3,p4,d5,d6,d7
+custom_order = p0,p1,p2,d3,p4,d5,d6,d7
+
+[deli.hamming.16_5]
+hamming_order = p0,p1,p2,d3,p4,d5,d6,d7,p8,d9,d10,d11,d12,d13,d14,d15
+custom_order = p0,p1,p2,d3,p4,d5,d6,d7,p8,d9,d10,d11,d12,d13,d14,d15
+
+[deli.hamming.7_3]
+hamming_order = p1,p2,d3,p4,d5,d6,d7
+custom_order = p1,p2,d3,p4,d5,d6,d7
+
+[deli.hamming.15_4]
+hamming_order = p1,p2,d3,p4,d5,d6,d7,p8,d9,d10,d11,d12,d13,d14,d15
+custom_order = p1,p2,d3,p4,d5,d6,d7,p8,d9,d10,d11,d12,d13,d14,d15
+
+[deli.buildingblocks]
+bb_mask = ###

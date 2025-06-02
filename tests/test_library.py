@@ -1,17 +1,12 @@
 """test cases for library code"""
 
-import os
 import warnings
 
 import pytest
 
-from deli.configure import set_deli_data_dir
 from deli.dels import BuildingBlockBarcodeSection
 from deli.dels.building_block import BuildingBlockSet
 from deli.dels.library import DELCollection, DELibrary, LibraryBuildError
-
-
-set_deli_data_dir(os.path.join(os.path.dirname(__file__), "test_data", "test_deli_data_dir"))
 
 
 @pytest.mark.functional
