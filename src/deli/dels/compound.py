@@ -42,7 +42,7 @@ class Compound:
 
     def __repr__(self):
         """Return a string representation of the object."""
-        return self.compound_id
+        return f"{self.__class__.__name__}: {self.compound_id}"
 
 
 class DELCompound(Compound):
@@ -111,9 +111,10 @@ class LowMemDELCompound(Compound):
     Rather than pointing to objects (like DELibrary or BuildingBlocks),
     this class stores info about a compound as the object string ids
 
-    This is useful for large DELs where memory usage is a concern,
-    or if compounds need to be used as keys in a dictionary or set,
-    or if you need to save info about the compound in a memory efficient file format.
+    This is useful for large DELs where:
+    - memory usage is a concern
+    - compounds need to be used as keys in a dictionary or set
+    - you need to save info about the compound in a non-binary file
     """
 
     def __init__(
@@ -177,3 +178,17 @@ class LowMemDELCompound(Compound):
                     f"not found in library {self.library_id}"
                 ) from e
         return DELCompound(library=library, building_blocks=_bbs, compound_id=self.compound_id)
+
+    def to_dict(self) -> dict:
+        """
+        Convert this LowMemDELCompound to a dict of info required to recreate it.
+
+        Returns
+        -------
+        dict
+            A dictionary representation of the compound.
+        """
+        return {
+            "library_id": self.library_id,
+            "building_blocks_ids": self.building_blocks_ids,
+        }
