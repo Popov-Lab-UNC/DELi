@@ -10,8 +10,7 @@ from .compound import (
     LowMemEnumeratedDELCompound,
     SmilesMixin,
 )
-from .enumerator import DELEnumerator
-from .library import DELibrary, DELibraryCollection
+from .library import DELibrary, DELibraryCollection, Library, LibraryCollection
 from .selection import SectionCondition, Selection, SequencedSelection
 from .umi import Umi
 
@@ -20,8 +19,9 @@ __all__ = [
     "BarcodeSchema",
     "BuildingBlockBarcodeSection",
     "DELibrary",
+    "Library",
     "DELibraryCollection",
-    "DELEnumerator",
+    "LibraryCollection",
     "BaseBuildingBlock",
     "BuildingBlock",
     "MaskedBuildingBlock",

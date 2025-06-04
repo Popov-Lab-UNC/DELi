@@ -33,7 +33,7 @@ from deli.decode import (
     build_decoding_report,
 )
 from deli.dels import Selection
-from deli.dels.enumerator import DELEnumerator
+from deli.dels.library import Library
 
 
 def _timestamp() -> str:
@@ -335,8 +335,8 @@ def enumerate_(library_file, out_path, tqdm):
 
     _start = datetime.datetime.now()
 
-    enumerator = DELEnumerator.load(library_file)
-    enumerator.enumerate_to_csv_file(output_file, use_tqdm=tqdm)
+    enumerator = Library.load(library_file)
+    enumerator.enumerate_to_file(output_file, separator=",", use_tqdm=tqdm)
 
 
 @decode.group()
