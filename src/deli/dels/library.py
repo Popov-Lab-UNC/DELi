@@ -3,12 +3,13 @@
 import json
 import os
 import warnings
+from collections.abc import Iterator
 from copy import deepcopy
 from functools import reduce
 from itertools import product as iter_product
 from operator import mul
 from pathlib import Path
-from typing import Any, Generic, Iterator, List, Literal, Optional, TypeVar, Union, overload
+from typing import Any, Generic, List, Literal, Optional, TypeVar, Union, overload
 
 from tqdm import tqdm
 
@@ -339,12 +340,68 @@ class Library(DeliDataLoadable):
             *[[(key, bb) for bb in val.building_blocks] for key, val in bb_set_dict.items()]
         )
 
-        # do each enumeration
+        return self._enumerate(
+            reaction_workflow=_reaction_workflow,
+            bb_combos=bb_combos,
+            dropped_failed=dropped_failed,
+            fail_on_error=fail_on_error,
+            use_tqdm=use_tqdm,
+        )
+
+    @overload
+    def _enumerate(
+        self,
+        reaction_workflow: ReactionWorkflow,
+        bb_combos,
+        dropped_failed: Literal[True],
+        fail_on_error: bool,
+        use_tqdm: bool,
+    ) -> Iterator[EnumeratedDELCompound]: ...
+
+    @overload
+    def _enumerate(
+        self,
+        reaction_workflow: ReactionWorkflow,
+        bb_combos,
+        dropped_failed: bool,
+        fail_on_error: Literal[True],
+        use_tqdm: bool,
+    ) -> Iterator[EnumeratedDELCompound]: ...
+
+    @overload
+    def _enumerate(
+        self,
+        reaction_workflow: ReactionWorkflow,
+        bb_combos,
+        dropped_failed: Literal[False],
+        fail_on_error: Literal[False],
+        use_tqdm: bool,
+    ) -> Iterator[EnumeratedDELCompound | DELCompound]: ...
+
+    @overload
+    def _enumerate(
+        self,
+        reaction_workflow: ReactionWorkflow,
+        bb_combos,
+        dropped_failed: bool,
+        fail_on_error: bool,
+        use_tqdm: bool,
+    ) -> Iterator[EnumeratedDELCompound | DELCompound]: ...
+
+    def _enumerate(
+        self,
+        reaction_workflow: ReactionWorkflow,
+        bb_combos,
+        dropped_failed: bool,
+        fail_on_error: bool,
+        use_tqdm: bool,
+    ) -> Iterator[EnumeratedDELCompound | DELCompound]:
+        """Run the enumeration after check that enumeration is possible"""
         for bb_combo in tqdm(bb_combos, total=self.library_size, disable=not use_tqdm):
             # map to cycle number (required for the ReactionVial)
             bb_id_map = {bb[0]: bb[1] for bb in bb_combo}
             try:
-                enumerated_mol = _reaction_workflow.run_workflow(
+                enumerated_mol = reaction_workflow.run_workflow(
                     ReactionVial({bb[0]: deepcopy(bb[1].mol) for bb in bb_combo})
                 )
                 enumerated_smile = to_smi(enumerated_mol)
@@ -423,28 +480,12 @@ class Library(DeliDataLoadable):
         EnumerationRunError
             if enumeration fails
         """
-        _reaction_workflow = self._get_reaction_workflow()
-
-        bb_map = {
-            bb_set.bb_set_id: bb_set.get_bb_by_id(bb_id, fail_on_missing=True)
-            for bb_set, bb_id in zip(self.bb_sets, bb_ids)
-        }
-        try:
-            enumerated_mol = _reaction_workflow.run_workflow(
-                ReactionVial({bb_cycle: deepcopy(bb.mol) for bb_cycle, bb in bb_map.items()})
-            )
-            enumerated_smile = to_smi(enumerated_mol)
-            return EnumeratedDELCompound(
-                library=self,
-                building_blocks=list(bb_map.values()),
-                smiles=enumerated_smile,
-                mol=enumerated_mol,
-            )
-        except ReactionError as e:
-            raise EnumerationRunError(
-                f"enumeration failed for compound from library {self.library_id} "
-                f"with building blocks: {bb_ids}; "
-            ) from e
+        return self.enumerate_by_bbs(
+            [
+                bb_set.get_bb_by_id(bb_id, fail_on_missing=True)
+                for bb_set, bb_id in zip(self.bb_sets, bb_ids)
+            ]
+        )
 
     def enumerate_to_file(
         self,

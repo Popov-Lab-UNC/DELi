@@ -281,9 +281,9 @@ class SmilesMixin:
     _mol: None | Mol
 
     @property
-    def smi(self):
+    def smi(self) -> str:
         """The enumerated SMILES of the compound"""
-        return
+        return self._smiles
 
     @smi.setter
     def smi(self, value):
@@ -299,7 +299,7 @@ class SmilesMixin:
         raise DELCompoundException(f"Cannot delete SMILES for {self.__class__.__name__}; object")
 
     @property
-    def mol(self):
+    def mol(self) -> Mol:
         """The RDKit Mol object for the compound; will cache it after first access"""
         if self._mol is None:
             try:
