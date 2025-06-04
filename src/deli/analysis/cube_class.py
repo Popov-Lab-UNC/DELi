@@ -345,6 +345,7 @@ class DELi_Cube:
 
         normalized_df = self.data.copy()
 
+        control_cols_to_drop = set()
         for exp_name, columns in self.indexes.items():
             control_col = self.control_cols.get(exp_name)
             if control_col is None:
@@ -360,16 +361,19 @@ class DELi_Cube:
             
             print(f"Normalizing {exp_name} with columns: {columns}")
 
-            normalized_df[columns] = normalized_df[columns].sub(normalized_df[control_col], axis=0)
-            normalized_df[columns] = normalized_df[columns].clip(lower=0)
-            #drop control column
-            normalized_df.drop(columns=control_col, inplace=True, axis=1)
-            #if col present with control_col name but raw instead of corrected, drop it
-            if control_col.replace('corrected', 'raw') in normalized_df.columns:
-                normalized_df.drop(columns=control_col.replace('corrected', 'raw'), inplace=True, axis=1)
-                
-
+            # Use a temporary DataFrame for normalization
+            temp_df = normalized_df[columns].sub(normalized_df[control_col], axis=0)
+            temp_df = temp_df.clip(lower=0)
+            normalized_df[columns] = temp_df
             normalized_df[f"{exp_name}_avg"] = normalized_df[columns].mean(axis=1)
+            # Collect control columns to drop after normalization
+            control_cols_to_drop.add(control_col)
+            raw_col = control_col.replace('corrected', 'raw')
+            if raw_col in normalized_df.columns:
+                control_cols_to_drop.add(raw_col)
+
+        # Drop all control columns after normalization
+        #normalized_df.drop(columns=list(control_cols_to_drop), inplace=True, axis=1)
 
         self.data = normalized_df
         return self.data
