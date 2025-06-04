@@ -1,8 +1,18 @@
 """for classes relating to DEL compounds"""
 
-from typing import Optional
+import abc
+from typing import TYPE_CHECKING, Optional
 
-from deli.dels import BuildingBlock, DELCollection, DELibrary
+from rdkit.Chem import Mol
+
+from deli.utils import to_mol
+
+from .building_block import BuildingBlock
+
+
+# for mypy to recognize the library type hints
+if TYPE_CHECKING:
+    from .library import Library, LibraryCollection
 
 
 class DELCompoundException(Exception):
@@ -31,8 +41,8 @@ class Compound:
         self.compound_id = compound_id
 
     def __eq__(self, other):
-        """Check if two LowMemDELCompound objects are equal."""
-        if not isinstance(other, LowMemDELCompound):
+        """Check if two Compound objects are equal (share the same compound_id)"""
+        if not isinstance(other, Compound):
             return False
         return self.compound_id == other.compound_id
 
@@ -59,17 +69,14 @@ class DELCompound(Compound):
 
     def __init__(
         self,
-        library: DELibrary,
+        library: "Library",
         building_blocks: list[BuildingBlock],
-        compound_id: Optional[str] = None,
     ):
         """
         Initialize the DELCompound object.
 
         Parameters
         ----------
-        compound_id: str
-            The ID of the compound.
         library: DELibrary
             The DELibrary object that this compound belongs to.
         building_blocks: dict[str, BuildingBlock]
@@ -79,14 +86,29 @@ class DELCompound(Compound):
         self.library = library
         self.building_blocks = building_blocks
 
-        if compound_id is None:
-            _compound_id = f"{self.library.library_id}-" + "-".join(
-                [bb.bb_id for bb in self.building_blocks]
-            )
-        else:
-            _compound_id = compound_id
+        _compound_id = f"{self.library.library_id}-" + "-".join(
+            [bb.bb_id for bb in self.building_blocks]
+        )
 
         super().__init__(_compound_id)
+
+    def enumerate(self) -> "EnumeratedDELCompound":
+        """
+        Attempt to enumerate to get the SMILES for this compound.
+
+        Returns
+        -------
+        EnumeratedDELCompound
+            An EnumeratedDELCompound object with the SMILES string set.
+
+        Raises
+        ------
+        DELCompoundException
+            when the DEL compounds library lacks an enumerator
+        EnumerationRunError
+            when the enumeration fails for any reason
+        """
+        return self.library.enumerate_by_bbs(self.building_blocks)
 
     def to_low_mem(self) -> "LowMemDELCompound":
         """
@@ -98,30 +120,85 @@ class DELCompound(Compound):
             A low-memory representation of this compound.
         """
         return LowMemDELCompound(
-            compound_id=self.compound_id,
             library_id=self.library.library_id,
             building_blocks_ids=[bb.bb_id for bb in self.building_blocks],
         )
 
 
-class LowMemDELCompound(Compound):
+class LowMemCompound(Compound, abc.ABC):
+    """
+    Abstract interface for low memory compound classes
+
+    Low memory compounds are used to avoid excessive pointers/object usage when it is unnecessary.
+
+    Rather than pointing to objects (like DELibrary or BuildingBlocks),
+    this class stores info about a compound as the object string ids.
+    As long as you have the DELibraryCollection object that originally contained these IDs,
+    you can load the full DELCompound object again later on.
+
+    This is useful when you need to save the compounds to a file,
+    as they can be saved in an efficient text format.
+    They can be converted to the full DELCompound object after loading,
+    only requiring the DELibraryCollection object that they originated from.
+
+    An example of where this is useful is when trying to merge several DEL counters
+    after parallel decoding runs.
+    If the counters are saving the compounds as serialized objects/pickles,
+    loading and merging will result in the duplication of all the DELibrary and
+    BuildingBlock objects.
+    Instead, you can save the compounds as low memory representations,
+    merge on the string IDs,
+    and reassign pointers to a single object in memory.
+    This is after faster and memory efficient, and avoid using pickles,
+    which can be a security risk
+    """
+
+    @abc.abstractmethod
+    def load_compound(self, collection: "LibraryCollection") -> DELCompound:
+        """
+        Load the full DELCompound object from this low memory representation.
+
+        Parameters
+        ----------
+        collection: DELibraryCollection
+            The collection of libraries to load the compound from.
+
+        Returns
+        -------
+        DELCompound
+            The full DELCompound object.
+        """
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def to_dict(self) -> dict:
+        """
+        Convert this LowMemCompound to a dict of info required to recreate it.
+
+        Returns
+        -------
+        dict
+            A dictionary representation of the compound.
+        """
+        raise NotImplementedError()
+
+
+class LowMemDELCompound(LowMemCompound):
     """
     Low memory DEL compound class
 
-    Rather than pointing to objects (like DELibrary or BuildingBlocks),
-    this class stores info about a compound as the object string ids
-
-    This is useful for large DELs where:
-    - memory usage is a concern
-    - compounds need to be used as keys in a dictionary or set
-    - you need to save info about the compound in a non-binary file
+    Notes
+    -----
+    Because of the low memory representation, this class does not contain
+    checks that the building blocks are valid or that the library exists.
+    It is best to create objects of this class by calling "to_low_mem" on the parent
+    a DELCompound object.
     """
 
     def __init__(
         self,
         library_id: str,
         building_blocks_ids: list[str],
-        compound_id: str,
     ):
         """
         Initialize the LowMemDELCompound object.
@@ -135,16 +212,13 @@ class LowMemDELCompound(Compound):
         """
         self.library_id = library_id
         self.building_blocks_ids = building_blocks_ids
-        if compound_id is None:
-            _compound_id = f"{self.library_id}-" + "-".join(
-                [bb_id for bb_id in self.building_blocks_ids]
-            )
-        else:
-            _compound_id = compound_id
+        _compound_id = f"{self.library_id}-" + "-".join(
+            [bb_id for bb_id in self.building_blocks_ids]
+        )
 
         super().__init__(_compound_id)
 
-    def load_compound(self, collection: DELCollection) -> DELCompound:
+    def load_compound(self, collection: "LibraryCollection") -> DELCompound:
         """
         Load the full DELCompound object from this low memory representation.
 
@@ -164,7 +238,7 @@ class LowMemDELCompound(Compound):
             when the library or building blocks cannot be found to create the compound.
         """
         try:
-            library = collection.get_library(self.library_id)
+            library: "Library" = collection.get_library(self.library_id)
         except KeyError as e:
             raise DELCompoundException(f"Library {self.library_id} not found in collection") from e
 
@@ -177,7 +251,7 @@ class LowMemDELCompound(Compound):
                     f"Building block {bb_id} for cycle {i+1} "
                     f"not found in library {self.library_id}"
                 ) from e
-        return DELCompound(library=library, building_blocks=_bbs, compound_id=self.compound_id)
+        return DELCompound(library=library, building_blocks=_bbs)
 
     def to_dict(self) -> dict:
         """
@@ -192,3 +266,148 @@ class LowMemDELCompound(Compound):
             "library_id": self.library_id,
             "building_blocks_ids": self.building_blocks_ids,
         }
+
+
+class SmilesMixin:
+    """
+    Mixin for Compound objects that are expected to have a fully enumerated SMILES
+
+    This class is used as the main way to check if a compound can be used
+    in downstream applications that require a SMILES strings.
+    """
+
+    compound_id: str
+    _smiles: str
+    _mol: None | Mol
+
+    @property
+    def smi(self):
+        """The enumerated SMILES of the compound"""
+        return
+
+    @smi.setter
+    def smi(self, value):
+        """Cannot set the SMILES for a compound, once created it is immutable"""
+        raise DELCompoundException(
+            f"Cannot set SMILES for {self.__class__.__name__} object directly; "
+            f"SMILES can only be set at initialization"
+        )
+
+    @smi.deleter
+    def smi(self):
+        """Cannot delete the SMILES for a compound, once created it is immutable"""
+        raise DELCompoundException(f"Cannot delete SMILES for {self.__class__.__name__}; object")
+
+    @property
+    def mol(self):
+        """The RDKit Mol object for the compound; will cache it after first access"""
+        if self._mol is None:
+            try:
+                _mol = to_mol(self._smiles, fail_on_error=True)
+                self._mol = _mol
+            except ValueError as e:
+                raise DELCompoundException(
+                    f"Cannot create RDKit Mol from SMILES for "
+                    f"compound {self.compound_id}: {self._smiles}"
+                ) from e
+        return self._mol
+
+    @mol.setter
+    def mol(self, value):
+        """No support for setting mol directly; any modification should be done outside DELi"""
+        raise DELCompoundException(
+            f"Cannot change `mol` for {self.__class__.__name__} object directly; "
+            f"Derived from `smi` which can only be set at initialization\n"
+        )
+
+    @mol.deleter
+    def mol(self):
+        """Delete the cache of the Mol object (if cached)"""
+        self._mol = None
+
+
+class LowMemEnumeratedDELCompound(LowMemDELCompound, SmilesMixin):
+    """
+    Low memory DEL enumerated compound class
+
+    This class is used to represent a DEL compound that has been fully enumerated
+    and has a SMILES string mapped to the full compound, represented as string IDs.
+    It inherits from LowMemDELCompound and implements the SmilesMixin.
+
+    If Mol is not provided, it will be generated from the SMILES string
+    and cached when first accessed.
+    """
+
+    def __init__(
+        self,
+        library_id: str,
+        building_blocks_ids: list[str],
+        smiles: str,
+        mol: Optional[Mol] = None,
+    ):
+        """
+        Initialize the LowMemEnumeratedDELCompound object.
+
+        Parameters
+        ----------
+        library_id: str
+            The ID of the library.
+        building_blocks_ids: list[str]
+            The IDs of the building blocks.
+        smiles: str
+            The SMILES string of the compound.
+        mol: Optional[Mol], default=None
+            The RDKit Mol object for the compound.
+            If None, it will be generated from the SMILES string and
+            cached when first accessed.
+            NOTE: it is not recommended to set this directly unless
+                  you are confident the mol object
+                  is the results of the provided SMILES
+        """
+        super().__init__(library_id=library_id, building_blocks_ids=building_blocks_ids)
+        self._smiles = smiles
+        self._mol = mol
+
+
+class EnumeratedDELCompound(DELCompound, SmilesMixin):
+    """
+    DEL enumerated compound class
+
+    This class is used to represent a DEL compound that has been fully enumerated
+    and has a SMILES string mapped to the full compound.
+    It inherits from DELCompound and implements the SmilesMixin.
+
+    If Mol is not provided, it will be generated from the SMILES string
+    and cached when first accessed.
+    """
+
+    def __init__(
+        self,
+        library: "Library",
+        building_blocks: list[BuildingBlock],
+        smiles: str,
+        mol: Optional[Mol] = None,
+    ):
+        """
+        Initialize the EnumeratedDELCompound object.
+
+        Parameters
+        ----------
+        library: DELibrary
+            The DELibrary object that this compound belongs to.
+        building_blocks: dict[str, BuildingBlock]
+            The building blocks of the compound
+            should be in cycle order (cycle 1 first, then cycle 2, etc.)
+        smiles: str
+            The SMILES string of the compound.
+        mol: Optional[Mol], default=None
+            The RDKit Mol object for the compound.
+            If None, it will be generated from the SMILES string
+            and cached when first accessed.
+            NOTE: it is not recommended to set this directly
+                  unless you are confident the mol object
+                  is the results of the provided SMILES
+        """
+        super().__init__(library=library, building_blocks=building_blocks)
+        self._smiles = smiles
+        self._mol = mol

@@ -13,9 +13,10 @@ import yaml
 from tqdm import tqdm
 
 from deli._logging import get_dummy_logger, get_logger
-from deli.dels import DELCollection, DELibrary, Selection, SequencedSelection
+from deli.dels import DELibrary, DELibraryCollection, Selection, SequencedSelection
 
-from .decoder import DecodedBarcode, DecodeStatistics, DELCollectionDecoder
+from ..dels.library import EnumerationRunError
+from .decoder import DecodedDELCompound, DecodeStatistics, DELCollectionDecoder
 from .degen import DELCollectionCounter, DELCollectionIdCounter, DELCollectionIdUmiCounter
 from .report import build_decoding_report
 
@@ -309,11 +310,11 @@ class DecodingRunnerResults:
 
         # check for enumeration
         if enumerate_smiles:
-            if not self.selection.library_collection.all_libs_have_enumerators():
+            if not self.selection.library_collection.all_libs_can_enumerate():
                 _libraries_missing_enumerators = [
                     lib.library_id
                     for lib in self.selection.library_collection.libraries
-                    if lib.enumerator is None
+                    if not lib.can_enumerate()
                 ]
                 warnings.warn(
                     f"Some libraries are missing enumerators: "
@@ -373,7 +374,7 @@ class DecodingRunnerResults:
                 f.write(_header)
                 for library_count_set in self.degen.del_counter.values():
                     for decode_barcode, counts in library_count_set.items():
-                        _row = f"{decode_barcode.id}"
+                        _row = f"{decode_barcode.compound_id}"
                         if include_library_id_col:
                             _row += f"{delimiter}{decode_barcode.library.library_id}"
                         for _, bb in zip_longest(
@@ -387,7 +388,11 @@ class DecodingRunnerResults:
                                     f"{bb.smiles if (bb is not None and bb.smiles) else 'null'}"
                                 )
                         if enumerate_smiles:
-                            _row += f"{delimiter}{decode_barcode.get_smiles(default='null')}"
+                            try:
+                                _smi = decode_barcode.enumerate().smi
+                            except EnumerationRunError:
+                                _smi = "null"
+                            _row += f"{delimiter}{_smi}"
                         if include_raw_count_col:
                             _row += f"{delimiter}{counts.get_raw_count()}"
                         _row += f"{delimiter}{counts.get_degen_count()}\n"
@@ -541,7 +546,7 @@ class DecodingRunner:
             # decode the read
             decoded_barcode = self.decoder.decode_read(seq_record)
             # skip failed reads
-            if isinstance(decoded_barcode, DecodedBarcode):
+            if isinstance(decoded_barcode, DecodedDELCompound):
                 self.decoder.decode_statistics.num_seqs_decoded_per_lib[
                     decoded_barcode.library.library_id
                 ] += 1
@@ -705,7 +710,9 @@ class DecodingRunner:
             raise DecodingRunParsingError(
                 f"{decode_file} decoding run config file does not contain a 'libraries' section"
             ) from e
-        _library_collection = DELCollection([DELibrary.load(lib_path) for lib_path in _libraries])
+        _library_collection = DELibraryCollection(
+            [DELibrary.load(lib_path) for lib_path in _libraries]
+        )
 
         _selection_id = data.get("selection_id", None)
         _target_id = data.get("target_id", None)
