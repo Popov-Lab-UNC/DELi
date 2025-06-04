@@ -88,9 +88,9 @@ priority = "explicit"
 optional = true
 
 [tool.poetry.group.ml.dependencies]
-torch = { version = "2.1.0", source = "pytorch-cpu" }
-torchvision = { version = "0.16.0", source = "pytorch-cpu" }
-torchaudio = { version = "2.1.0", source = "pytorch-cpu" }
+torch = { version = ">=2.2.0", source = "pytorch-cpu" }
+torchvision = { version = ">=0.17.0", source = "pytorch-cpu" }
+torchaudio = { version = ">=2.2.0", source = "pytorch-cpu" }
 pytorch-lightning = "1.6.3"
 torch-geometric = "2.6.1"
 
