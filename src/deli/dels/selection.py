@@ -8,7 +8,7 @@ import yaml
 
 from deli.dna import SequenceGlobReader, SequenceReader
 
-from .library import DELCollection, DELibrary
+from .library import DELibrary, DELibraryCollection
 
 
 class SectionCondition:
@@ -77,7 +77,7 @@ class Selection:
 
     def __init__(
         self,
-        library_collection: DELCollection,
+        library_collection: DELibraryCollection,
         date_ran: datetime | None = None,
         target_id: str | None = None,
         selection_condition: str | None = None,
@@ -89,7 +89,7 @@ class Selection:
 
         Parameters
         ----------
-        library_collection: DELCollection
+        library_collection: DELibraryCollection
             the library collection used in the selection
         date_ran: datetime | None
             the date the selection was run, defaults to now if None
@@ -153,7 +153,7 @@ class Selection:
         Selection
         """
         data = yaml.safe_load(open(path, "r"))
-        data["library_collection"] = DELCollection(
+        data["library_collection"] = DELibraryCollection(
             [DELibrary.load(lib) for lib in data["libraries"]]
         )
 
@@ -200,7 +200,7 @@ class SequencedSelection(Selection):
 
     def __init__(
         self,
-        library_collection: DELCollection,
+        library_collection: DELibraryCollection,
         sequence_files: list[str | os.PathLike],
         date_ran: datetime | None = None,
         target_id: str | None = None,
@@ -213,7 +213,7 @@ class SequencedSelection(Selection):
 
         Parameters
         ----------
-        library_collection: DELCollection
+        library_collection: DELibraryCollection
             the library collection used in the selection
         date_ran: datetime | None
             the date the selection was run, defaults to now if None

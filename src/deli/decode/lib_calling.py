@@ -6,7 +6,7 @@ from typing import Optional, TypeAlias, Union
 from cutadapt.adapters import BackAdapter, FrontAdapter, MultipleAdapters, SingleMatch
 from dnaio import SequenceRecord
 
-from deli.dels import DELCollection, DELibrary
+from deli.dels import DELibrary, DELibraryCollection
 
 from .calls import FailedCall, ValidCall
 from .demultiplex import Demultiplexer
@@ -147,7 +147,7 @@ class LibraryCaller(Demultiplexer, abc.ABC):
 
     def __init__(
         self,
-        library_collection: DELCollection,
+        library_collection: DELibraryCollection,
         error_rate: Union[float, int],
         min_overlap: Optional[int] = None,
     ):
@@ -156,7 +156,7 @@ class LibraryCaller(Demultiplexer, abc.ABC):
 
         Parameters
         ----------
-        library_collection: DELCollection
+        library_collection: DELibraryCollection
             the library collection to demultiplex on
         error_rate: Union[float, int]
             the max error rate for any match
@@ -242,7 +242,7 @@ class SingleReadLibraryCaller(LibraryCaller):
 
     def __init__(
         self,
-        library_collection: DELCollection,
+        library_collection: DELibraryCollection,
         error_rate: Union[float, int] = 0.1,
         min_overlap: Optional[int] = None,
         revcomp: bool = False,
@@ -252,7 +252,7 @@ class SingleReadLibraryCaller(LibraryCaller):
 
         Parameters
         ----------
-        library_collection: DELCollection
+        library_collection: DELibraryCollection
             the library collection to demultiplex on
         error_rate: Union[float, int]
             the max error rate for any match
@@ -354,7 +354,7 @@ class SingleReadDuplexLibraryCaller(SingleReadLibraryCaller):
 
     def __init__(
         self,
-        library_collection: DELCollection,
+        library_collection: DELibraryCollection,
         error_rate: Union[float, int] = 0.1,
         min_overlap: int = 3,
         revcomp: bool = False,
@@ -365,7 +365,7 @@ class SingleReadDuplexLibraryCaller(SingleReadLibraryCaller):
 
         Parameters
         ----------
-        library_collection: DELCollection
+        library_collection: DELibraryCollection
             the library collection to demultiplex on
         error_rate: Union[float, int]
             the max error rate for any match

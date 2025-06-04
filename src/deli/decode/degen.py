@@ -6,7 +6,7 @@ from functools import partial
 
 from Levenshtein import distance as levenshtein_distance
 
-from .decoder import DecodedBarcode
+from .decoder import DecodedDELCompound
 from .umi import UMI
 
 
@@ -392,7 +392,7 @@ class DELIdUmiCounter(DELCounter):
 
 
 class DELCollectionCounter(abc.ABC):
-    """Base class for all DELCollection degen counters"""
+    """Base class for all DELibraryCollection degen counters"""
 
     del_counter: dict
 
@@ -417,7 +417,7 @@ class DELCollectionCounter(abc.ABC):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def count_barcode(self, barcode: DecodedBarcode) -> bool:
+    def count_barcode(self, barcode: DecodedDELCompound) -> bool:
         """
         Given a barcode, add it to the current degen count
 
@@ -426,7 +426,7 @@ class DELCollectionCounter(abc.ABC):
 
         Parameters
         ----------
-        barcode: DecodedBarcode
+        barcode: DecodedDELCompound
             the barcode to add to the counter
 
         Returns
@@ -460,12 +460,14 @@ class DELCollectionIdUmiCounter(DELCollectionCounter):
             ignored if `umi_clustering` is False
         """
         # god forgive me for this one
-        self.del_counter: dict[str, defaultdict[DecodedBarcode, DELIdUmiCounter]] = defaultdict(
-            lambda: defaultdict(
-                partial(
-                    DELIdUmiCounter,
-                    umi_clustering=umi_clustering,
-                    min_umi_cluster_dist=min_umi_cluster_dist,
+        self.del_counter: dict[str, defaultdict[DecodedDELCompound, DELIdUmiCounter]] = (
+            defaultdict(
+                lambda: defaultdict(
+                    partial(
+                        DELIdUmiCounter,
+                        umi_clustering=umi_clustering,
+                        min_umi_cluster_dist=min_umi_cluster_dist,
+                    )
                 )
             )
         )
@@ -560,7 +562,7 @@ class DELCollectionIdUmiCounter(DELCollectionCounter):
             return new_counter
         raise TypeError(f"unsupported operand type(s) for +: '{type(self)}' and '{type(other)}'")
 
-    def count_barcode(self, barcode: DecodedBarcode) -> bool:
+    def count_barcode(self, barcode: DecodedDELCompound) -> bool:
         """
         Given a barcode, add it to the current degen count
 
@@ -569,7 +571,7 @@ class DELCollectionIdUmiCounter(DELCollectionCounter):
 
         Parameters
         ----------
-        barcode: DecodedBarcode
+        barcode: DecodedDELCompound
             the barcode to add to the counter
 
         Returns
@@ -599,7 +601,7 @@ class DELCollectionIdCounter(DELCollectionCounter):
     """
 
     def __init__(self):
-        self.del_counter: defaultdict[str, defaultdict[DecodedBarcode, DELIdCounter]] = (
+        self.del_counter: defaultdict[str, defaultdict[DecodedDELCompound, DELIdCounter]] = (
             defaultdict(lambda: defaultdict(DELIdCounter))
         )
 
@@ -644,7 +646,7 @@ class DELCollectionIdCounter(DELCollectionCounter):
             return new_counter
         raise TypeError(f"unsupported operand type(s) for +: '{type(self)}' and '{type(other)}'")
 
-    def count_barcode(self, barcode: DecodedBarcode) -> bool:
+    def count_barcode(self, barcode: DecodedDELCompound) -> bool:
         """
         Given a barcode, add it to the current degen count
 
@@ -652,7 +654,7 @@ class DELCollectionIdCounter(DELCollectionCounter):
 
         Parameters
         ----------
-        barcode: DecodedBarcode
+        barcode: DecodedDELCompound
             the barcode to add to the counter
 
         Returns
