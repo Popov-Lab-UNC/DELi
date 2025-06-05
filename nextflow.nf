@@ -60,8 +60,25 @@ process MergeCounters {
 
     script:
     """
-    deli decode counter merge *_counters.pkl --out-path merged_counters.pkl
+    #!/usr/bin/env python
+
+    import pickle
+    import os
+
+    files = [f for f in os.listdir('.') if f.endswith('_counters.pkl')]
+    overall = pickle.load(open(files[0], "rb"))
+
+    for f in files[1:]:
+        other = pickle.load(open(f, "rb"))
+        for library_id in other.del_counter.keys():
+            for compound in other.del_counter[library_id].keys():
+                if compound in overall.del_counter[library_id]:
+                    overall.del_counter[library_id][compound] += other.del_counter[library_id][compound]
+                else:
+                    overall.del_counter[library_id][compound] = other.del_counter[library_id][compound]
+    pickle.dump(overall, open("merged_counters.pkl", "wb"))
     """
+
 }
 
 
