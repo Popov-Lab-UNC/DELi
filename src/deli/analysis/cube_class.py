@@ -12,7 +12,6 @@ import numpy as np
 from tqdm import tqdm
 import seaborn as sns
 from PIL import ImageDraw, ImageFont
-from IPython.display import display
 from deli.analysis.poly_o import PolyO
 
 class DELi_Cube:
@@ -978,8 +977,10 @@ class DELi_Cube:
                 img.save(f'{output_dir}/{file_name}')
             except AttributeError:
                 pass
-
+            
+            # Optional notebook display - lazy import to avoid hard dependency on IPython/Jupyter
             try:
+                from IPython.display import display
                 print(f"Top {n} compounds for {exp_name} based on {metric}")
                 display(img)
             except ImportError:
