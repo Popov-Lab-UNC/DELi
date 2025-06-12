@@ -117,6 +117,9 @@ replace = '__version__ = "{new_version}"'
 module = ["untyped_package.*"]
 follow_untyped_imports = true
 
+[tool.mypy]
+files = ["src"]
+
 [tool.coverage.report]
 fail_under = 75
 
