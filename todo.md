@@ -1,3 +1,19 @@
+If I need to save on memery, I could convert UMI to a HexaDecimal to cut the length of UMI in half
+(should cut file size in half?)
+
+
+After some test, looks like I should just have the merge and counter stuff happen in Nextflow, not
+in the cli.py file.
+
+Also the pickles are too much overhead, need to just use json instead, which should be fine for
+parallel because we don't care about the objects anymore, it is all file based.
+Pickles seem to be added as much as 20 seconds of overhead due to long loading times.
+Can just get away with jsons
+
+Will need to think of logic for UMI verus no UMI, not that I think anyone ever does no UMI
+
+Also notice that taking the set of a list is far faster then doing constant unions of the list
+
 After running, the merging of the decode result is too slow when in parallel.
 This is because i'm using pickle.
 I need to come up with a way to avoid that.
