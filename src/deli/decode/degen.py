@@ -1,8 +1,12 @@
 """code for degenerating barcode reads"""
 
 import abc
+import gzip
 from collections import defaultdict
+from copy import deepcopy
 from functools import partial
+from pathlib import Path
+from typing import Generic, TypeVar
 
 from Levenshtein import distance as levenshtein_distance
 
@@ -21,6 +25,11 @@ class DELCounter(abc.ABC):
     @abc.abstractmethod
     def get_raw_count(self) -> int:
         """Return the raw count for the degenerator"""
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def to_dict(self) -> dict:
+        """Convert the counter to a dictionary representation"""
         raise NotImplementedError()
 
 
@@ -88,6 +97,10 @@ class DELIdCounter(DELCounter):
             the raw count
         """
         return self.count
+
+    def to_dict(self) -> dict:
+        """Covert the counter to a JSON compatible dictionary representation"""
+        return {"raw_count": self.count}
 
 
 class UMIDegenerate(abc.ABC):
@@ -167,9 +180,10 @@ class UMICounter(UMIDegenerate, DELCounter):
             False if it is not added (not novel)
         """
         self._raw_count += 1
-        if umi.umi_tag in self.umis:
+        umi_code = umi.to_ascii_code()
+        if umi_code in self.umis:
             return False
-        self.umis.add(umi.umi_tag)
+        self.umis.add(umi_code)
         return True
 
     def get_degen_count(self) -> int:
@@ -193,6 +207,17 @@ class UMICounter(UMIDegenerate, DELCounter):
             the raw count
         """
         return self._raw_count
+
+    def to_dict(self) -> dict:
+        """
+        Convert the counter to a dictionary representation
+
+        Returns
+        -------
+        dict
+            the dictionary representation of the counter
+        """
+        return {"raw_count": self._raw_count, "umis": list(self.umis)}
 
 
 class UMICluster(UMIDegenerate, DELCounter):
@@ -293,6 +318,17 @@ class UMICluster(UMIDegenerate, DELCounter):
         """
         return self._raw_count
 
+    def to_dict(self) -> dict:
+        """
+        Convert the counter to a dictionary representation
+
+        Returns
+        -------
+        dict
+            the dictionary representation of the counter
+        """
+        return {"raw_count": self._raw_count, "umis": list(self.umis)}
+
 
 class DELIdUmiCounter(DELCounter):
     """
@@ -390,11 +426,26 @@ class DELIdUmiCounter(DELCounter):
         """
         return self.umis.get_raw_count()
 
+    def to_dict(self) -> dict:
+        """
+        Convert the counter to a dictionary representation
 
-class DELCollectionCounter(abc.ABC):
+        Returns
+        -------
+        dict
+            the dictionary representation of the counter
+        """
+        return self.umis.to_dict()
+
+
+# to help with type hinting
+DEL_COUNTER_TYPE = TypeVar("DEL_COUNTER_TYPE", bound=DELCounter)
+
+
+class DELCollectionCounter(abc.ABC, Generic[DEL_COUNTER_TYPE]):
     """Base class for all DELibraryCollection degen counters"""
 
-    del_counter: dict
+    del_counter: dict[str, defaultdict[DecodedDELCompound, DEL_COUNTER_TYPE]]
 
     def __len__(self):
         """Get total number of unique DELs in the counter"""
@@ -433,6 +484,18 @@ class DELCollectionCounter(abc.ABC):
         -------
         bool
             `True` is added barcode is new (not degenerate), else `False`
+        """
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def to_json(self, path: str | Path, compress: bool = False):
+        """
+        Convert the counter to a JSON serializable dict
+
+        Returns
+        -------
+        dict
+            the JSON serializable dict representation of the counter
         """
         raise NotImplementedError()
 
@@ -531,34 +594,17 @@ class DELCollectionIdUmiCounter(DELCollectionCounter):
                     f"{self.min_umi_cluster_dist} and {other.min_umi_cluster_dist}"
                 )
 
-            new_counter = DELCollectionIdUmiCounter(
-                umi_clustering=self.umi_clustering, min_umi_cluster_dist=self.min_umi_cluster_dist
-            )
-            for library_id in self.del_counter.keys() | other.del_counter.keys():
-                _length_self = len(self.del_counter[library_id])
-                _length_other = len(other.del_counter[library_id])
-                if (_length_self == 0) and (_length_other == 0):
-                    continue
-                _cached_lib = (
-                    iter(self.del_counter[library_id].keys()).__next__().library
-                    if _length_self > 0
-                    else iter(other.del_counter[library_id].keys()).__next__().library
-                )
-                for barcode in (
-                    self.del_counter[library_id].keys() | other.del_counter[library_id].keys()
-                ):
-                    barcode.library = _cached_lib
-                    barcode.building_blocks = [
-                        bb_set.get_bb_by_id(bb_id, fail_on_missing=True)
-                        for bb_id, bb_set in zip(
-                            [bb.bb_id for bb in barcode.building_blocks], _cached_lib.bb_sets
+            new_counter = deepcopy(self)
+            for library_id in other.del_counter.keys():
+                for compound in other.del_counter[library_id].keys():
+                    if compound in new_counter.del_counter[library_id]:
+                        new_counter.del_counter[library_id][compound] += other.del_counter[
+                            library_id
+                        ][compound]
+                    else:
+                        new_counter.del_counter[library_id][compound] = deepcopy(
+                            other.del_counter[library_id][compound]
                         )
-                    ]
-                    new_counter.del_counter[library_id][barcode] = (
-                        self.del_counter[library_id][barcode]
-                        + other.del_counter[library_id][barcode]
-                    )
-
             return new_counter
         raise TypeError(f"unsupported operand type(s) for +: '{type(self)}' and '{type(other)}'")
 
@@ -588,6 +634,45 @@ class DELCollectionIdUmiCounter(DELCollectionCounter):
             raise RuntimeError("cannot UMI degen on read missing UMI")
         else:
             return self.del_counter[barcode.library.library_id][barcode].add_umi(barcode.umi)
+
+    def to_json(self, path: str | Path, compress: bool = False):
+        """
+        Convert the counter to a JSON serializable dict
+
+        Parameters
+        ----------
+        path: str | Path
+            path to save the JSON file to
+        compress: bool, default = False
+            if True, will compress the JSON file using gzip
+            will be encoded with utf-8
+
+        Returns
+        -------
+        dict
+            the JSON serializable dict representation of the counter
+        """
+        import json
+
+        # collect data
+        _data: dict[str, dict[str, object]] = {}
+        for lib_ids, dels in self.del_counter.items():
+            _data[lib_ids] = {}
+            for compound, counter in dels.items():
+                _id = compound.compound_id
+                _info = {
+                    "lib_id": compound.library.library_id,
+                    "bb_ids": [bb.bb_id for bb in compound.building_blocks],
+                    "raw_count": counter.umis.get_raw_count(),
+                    "umis": list(counter.umis.umis),
+                }
+                _data[lib_ids][_id] = _info
+
+        if compress:
+            with gzip.open(path, "wt", encoding="utf-8") as zipfile:
+                json.dump(_data, zipfile)
+        else:
+            json.dump(_data, open(path, "w"))
 
 
 class DELCollectionIdCounter(DELCollectionCounter):
@@ -664,3 +749,40 @@ class DELCollectionIdCounter(DELCollectionCounter):
         """
         self.del_counter[barcode.library.library_id][barcode].add_id()
         return True  # always not degenerate with this counter
+
+    def to_json(self, path: str | Path, compress: bool = False):
+        """
+        Convert the counter to a JSON serializable dict
+
+        Parameters
+        ----------
+        path: str | Path
+            path to save the JSON file to
+        compress: bool, default = False
+            if True, will compress the JSON file using gzip
+
+        Returns
+        -------
+        dict
+            the JSON serializable dict representation of the counter
+        """
+        import json
+
+        # collect data
+        _data: dict[str, dict[str, object]] = {}
+        for lib_ids, dels in self.del_counter.items():
+            _data[lib_ids] = {}
+            for compound, counter in dels.items():
+                _id = compound.compound_id
+                _info = {
+                    "lib_id": compound.library.library_id,
+                    "bb_ids": [bb.bb_id for bb in compound.building_blocks],
+                    "raw_count": counter.get_raw_count(),
+                }
+                _data[lib_ids][_id] = _info
+
+        if compress:
+            with gzip.open(path, "wt", encoding="utf-8") as zipfile:
+                json.dump(_data, zipfile)
+        else:
+            json.dump(_data, open(path, "w"))

@@ -649,3 +649,20 @@ class BarcodeSchema:
     def has_umi(self) -> bool:
         """True is library has UMI barcode section, else False"""
         return self.umi_section is not None
+
+    def get_section_length(self, section_name: str) -> int:
+        """
+        Get the length of a specific barcode section
+
+        Parameters
+        ----------
+        section_name: str
+            the name of the barcode section
+
+        Returns
+        -------
+        int: length of the barcode section
+        """
+        if section_name not in self._barcode_section_map:
+            raise KeyError(f"Barcode section '{section_name}' not found in schema")
+        return len(self._barcode_section_map[section_name])
