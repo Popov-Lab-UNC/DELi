@@ -73,7 +73,7 @@ process Decode {
     path fastq_file
 
     output:
-    path '*_counter_subjob.json', emit: counters
+    path '*_counter_subjob.json.gz', emit: counters
     path '*_decode_statistics_subjob.json', emit: decode_stats
     path '*.log', emit: log
     path '*_decode_failed.tsv', emit: failed, optional: true
@@ -88,7 +88,7 @@ process MergeResultsUMI {
     publishDir "$params.out_dir/", mode: 'move'
 
     input:
-    path "*_counter_subjob.json"
+    path "*_counter_subjob.json.gz"
     path "*_decode_statistics_subjob.json"
 
     output:

@@ -22,10 +22,11 @@ parser.add_argument(
 args = parser.parse_args()
 
 # merge the counter files into a single count
-counter_files = [f for f in os.listdir("./") if f.endswith("_counter_subjob.json")]
-data = json.load(gzip.open(counter_files[0], "rb"))
+counter_files = [f for f in os.listdir("./") if f.endswith("_counter_subjob.json.gz")]
+print(counter_files)
+data = json.load(gzip.open(counter_files[0], "rt", encoding="utf-8"))
 for f in counter_files[1:]:
-    new_data = json.load(gzip.open(f, "rb", encoding="UTF-8"))
+    new_data = json.load(gzip.open(f, "rt", encoding="utf-8"))
     for lib_id, counter_data in new_data.items():
         if lib_id not in data.keys():
             data[lib_id] = {}
@@ -39,6 +40,8 @@ for f in counter_files[1:]:
                 }
             data[lib_id][del_id]["raw_count"] += count_data["raw_count"]
             data[lib_id][del_id]["umis"].extend(count_data["umis"])
+
+print(len(data["DEL004"]), len(data["DEL005"]))
 
 # merge the relevant statistics from the stats files
 statistic_files = [f for f in os.listdir() if f.endswith("_decode_statistics_subjob.json")]
@@ -97,7 +100,7 @@ merged_stats.num_seqs_degen_per_lib = updated_num_seqs_degen_per_lib
 
 # save counter if requested
 if args.save_counter:
-    with open(f"./{selection.selection_id}_counter.json", "w") as f:
+    with gzip.open(f"./{selection.selection_id}_counter.json", "wt", encoding="utf-8") as f:
         json.dump(data, f)
 
 # write the report at the end

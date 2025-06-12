@@ -67,6 +67,7 @@ class DecodeStatistics:
         self.num_failed_library_match_too_short: int = 0
         self.num_failed_building_block_call: int = 0
         self.num_failed_alignment: int = 0
+        self.num_failed_umi_match_too_short: int = 0
 
     def __add__(self, other) -> "DecodeStatistics":
         """Add two DecodeStatistics objects together"""
@@ -86,6 +87,9 @@ class DecodeStatistics:
             self.num_failed_building_block_call + other.num_failed_building_block_call
         )
         result.num_failed_alignment = self.num_failed_alignment + other.num_failed_alignment
+        result.num_failed_umi_match_too_short = (
+                self.num_failed_umi_match_too_short + other.num_failed_umi_match_too_short
+        )
 
         # Merge defaultdicts
         result.seq_lengths = defaultdict(

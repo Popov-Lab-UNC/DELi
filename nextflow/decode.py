@@ -42,9 +42,9 @@ runner.logger.info(f"Saving outputs to {out_dir}")
 
 statistics_out_path = os.path.join(out_dir, f"{sub_job_id}_decode_statistics_subjob.json")
 runner.logger.debug(f"Saving decode statistics to {statistics_out_path}")
-results.write_decode_statistics(statistics_out_path)
+results.write_decode_statistics(statistics_out_path, include_read_lengths=True)
 
-counter_out_path = os.path.join(out_dir, f"{sub_job_id}_counter_subjob.json")
+counter_out_path = os.path.join(out_dir, f"{sub_job_id}_counter_subjob.json.gz")
 runner.logger.debug(f"Saving counters to {counter_out_path}")
 runner.degen.to_json(counter_out_path, compress=True)
 
