@@ -217,9 +217,10 @@ class LibraryCaller(Demultiplexer, abc.ABC):
             the trim slice and the called DEL
         """
         called_lib = self.library_collection.get_library(match.adapter.name)
+        # a padding of 5 is added to the trim region to allow some leway later alignment
         retain_region = slice(
-            max(0, match.rstart - called_lib.barcode_schema.get_length_before_library()),
-            min(len(sequence), match.rstop + called_lib.barcode_schema.get_length_after_library()),
+            match.rstart - called_lib.barcode_schema.get_length_before_library() - 20,
+            match.rstop + called_lib.barcode_schema.get_length_after_library() + 20,
         )
         return retain_region, called_lib
 

@@ -503,7 +503,7 @@ class DecodingRunner:
         ----------
         save_failed_to: str | PathLike | None, default = None
             if provided, will save failed reads to this directory
-            file will be named <selection_id>_decode_failed.csv
+            file will be named <selection_id>_decode_failed.tsv
             will include the read_id, the sequence, the quality chain,
             and reason failed
         use_tqdm: bool, default = False

@@ -9,7 +9,7 @@ from collections import defaultdict
 from typing import Literal, no_type_check
 
 import numpy as np
-from Bio.Align import PairwiseAligner
+from Bio.Align import PairwiseAligner, substitution_matrices
 from dnaio import SequenceRecord
 from numba import njit
 
@@ -129,7 +129,7 @@ class DecodeStatistics:
         """Number of degen sequences observed in total"""
         return sum(self.num_seqs_degen_per_lib.values())
 
-    def to_file(self, out_path: str | os.PathLike):
+    def to_file(self, out_path: str | os.PathLike, include_read_lengths: bool = False):
         """
         Write the statistics to a file
 
@@ -139,8 +139,15 @@ class DecodeStatistics:
         ----------
         out_path: str or os.PathLike
             path to write the statistics to
+        include_read_lengths: bool, default = False
+            if True, will include the read lengths in the file
         """
-        json.dump(self.__dict__, open(out_path, "w"))
+        if include_read_lengths:
+            json.dump(self.__dict__, open(out_path, "w"))
+        else:
+            _dict = self.__dict__.copy()
+            del _dict["seq_lengths"]
+            json.dump(_dict, open(out_path, "w"))
 
     @classmethod
     def from_file(cls, path: str | os.PathLike) -> "DecodeStatistics":
@@ -271,6 +278,12 @@ class BuildingBlockLookupFailed(FailedDecode):
 
 class AlignmentFailed(FailedDecode):
     """Returned if the alignment is not successful during calling"""
+
+    pass
+
+
+class UMIMatchTooShort(FailedDecode):
+    """Returned if UMI match is too short to call post decode"""
 
     pass
 
@@ -655,6 +668,19 @@ class BioAlignmentLibraryDecoder(LibraryDecoder):
             library=library, decode_statistics=decode_statistics, use_hamming=use_hamming
         )
 
+        # define a custom substitution matrix
+        # when aligning to N we don't want to penalize for mismatches
+        alphabet = "ACGTN"
+        matrix = substitution_matrices.Array(alphabet, dims=2)
+        for base1 in alphabet:
+            for base2 in alphabet:
+                if base1 == base2:
+                    matrix[base1, base2] = 1  # matches score 1
+                elif "N" in (base1, base2):
+                    matrix[base1, base2] = 0  # mismatches with 'N' score 0
+                else:
+                    matrix[base1, base2] = -1  # other mismatches score -1
+
         # assign the aligner
         self.aligner = PairwiseAligner(
             match_score=1,
@@ -664,6 +690,7 @@ class BioAlignmentLibraryDecoder(LibraryDecoder):
             mode="global",
             end_open_gap_score=0,
             end_extend_gap_score=0,
+            substitution_matrix=matrix,
         )
 
         self._bb_callers: dict[str, BuildingBlockSetTagCaller] = {
@@ -757,6 +784,22 @@ class BioAlignmentLibraryDecoder(LibraryDecoder):
                         + 1
                     ]
                 )
+
+            # check umi length
+            if (_umi is not None) and (
+                len(_umi) < self.library.barcode_schema.get_section_length("umi")
+            ):
+                warnings.warn(
+                    f"UMI length {len(_umi)} is shorter than expected "
+                    f"{self.library.barcode_schema.get_section_length('umi')}; "
+                    f"This is likely the result of a major gap in an otherwise "
+                    f"perfect (decodable) the alignment. "
+                    f"This may indicate a problem with missing or extra barcode "
+                    f"sections in your library definition.",
+                    stacklevel=1,
+                )
+                return UMIMatchTooShort()
+
             return DecodedDELCompound(
                 library=library_call.library,
                 building_blocks=[val.building_block for val in bb_calls.values()],
@@ -766,7 +809,7 @@ class BioAlignmentLibraryDecoder(LibraryDecoder):
         return BuildingBlockLookupFailed()
 
 
-# TODO for some reason, this is needed to prevent when running as a CMD,
+# TODO for some reason, this is needed to prevent crash when running as a CMD,
 #  but not in a python interpreter... not sure why?
 sys.setrecursionlimit(3000)
 
