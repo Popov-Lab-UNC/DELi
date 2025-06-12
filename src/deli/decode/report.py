@@ -16,7 +16,7 @@ def _generate_calling_pie_chart(
     decode_stats: DecodeStatistics,
 ):
     """Generate the main calling results pie chart html"""
-    _all_colors = ["orange", "yellow", "firebrick", "pink", "orchid", "crimson", "royalblue"]
+    _all_colors = ["orange", "yellow", "firebrick", "pink", "orchid", "crimson", "lightpink", "royalblue"]
     _all_labels = [
         "Read to Small",
         "Read to Large",
@@ -24,6 +24,7 @@ def _generate_calling_pie_chart(
         "Library Call Malformed",
         "Failed Barcode Alignment",
         "Failed Building Block Call",
+        "UMI Match to Small",
         "Decoded",
     ]
     _all_values: list[int] = [
@@ -33,6 +34,7 @@ def _generate_calling_pie_chart(
         decode_stats.num_failed_library_match_too_short,
         decode_stats.num_failed_building_block_call,
         decode_stats.num_failed_alignment,
+        decode_stats.num_failed_umi_match_too_short,
         decode_stats.num_seqs_decoded,
     ]
 

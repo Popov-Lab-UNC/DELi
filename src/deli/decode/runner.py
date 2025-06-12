@@ -213,7 +213,7 @@ class DecodingRunnerResults:
         else:
             raise RuntimeError("Cannot write decode report, no decode statistics found")
 
-    def write_decode_statistics(self, out_path: str | os.PathLike):
+    def write_decode_statistics(self, out_path: str | os.PathLike, include_read_lengths: bool = False):
         """
         Write the decoding statistics for this run
 
@@ -221,11 +221,13 @@ class DecodingRunnerResults:
         ----------
         out_path: str | PathLike
             path to save decoding statistics to
+        include_read_lengths: bool, default = False
+            if True, will include the read lengths in the file
         """
         if self.decode_statistics is not None:
             if os.path.dirname(out_path) != "":
                 os.makedirs(os.path.dirname(out_path), exist_ok=True)
-            self.decode_statistics.to_file(out_path)
+            self.decode_statistics.to_file(out_path, include_read_lengths=include_read_lengths)
         else:
             raise RuntimeError("Cannot write decode statistics, no decode statistics found")
 
