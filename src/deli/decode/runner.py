@@ -213,7 +213,9 @@ class DecodingRunnerResults:
         else:
             raise RuntimeError("Cannot write decode report, no decode statistics found")
 
-    def write_decode_statistics(self, out_path: str | os.PathLike, include_read_lengths: bool = False):
+    def write_decode_statistics(
+        self, out_path: str | os.PathLike, include_read_lengths: bool = False
+    ):
         """
         Write the decoding statistics for this run
 
@@ -357,9 +359,9 @@ class DecodingRunnerResults:
             _header += f"{delimiter}LIBRARY_ID"
         for i in range(_max_cycle_size):
             if include_bb_id_cols:
-                _header += f"{delimiter}BB{i+1}_ID"
+                _header += f"{delimiter}BB{i + 1}_ID"
             if include_bb_smi_cols:
-                _header += f"{delimiter}BB{i+1}_SMILES"
+                _header += f"{delimiter}BB{i + 1}_SMILES"
         if enumerate_smiles:
             _header += f"{delimiter}SMILES"
         if include_raw_count_col:
@@ -383,7 +385,7 @@ class DecodingRunnerResults:
                             range(_max_cycle_size), decode_barcode.building_blocks
                         ):
                             if include_bb_id_cols:
-                                _row += f"{delimiter}" f"{bb.bb_id if bb is not None else 'null'}"
+                                _row += f"{delimiter}{bb.bb_id if bb is not None else 'null'}"
                             if include_bb_smi_cols:
                                 _row += (
                                     f"{delimiter}"
@@ -568,7 +570,7 @@ class DecodingRunner:
 
             if ((i + 1) % 1000) == 0:
                 self.logger.debug(
-                    f"Decoded {i+1} reads for selection {self.selection.selection_id}"
+                    f"Decoded {i + 1} reads for selection {self.selection.selection_id}"
                 )
 
         if fail_csv_file is not None:

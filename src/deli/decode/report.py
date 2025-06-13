@@ -16,7 +16,16 @@ def _generate_calling_pie_chart(
     decode_stats: DecodeStatistics,
 ):
     """Generate the main calling results pie chart html"""
-    _all_colors = ["orange", "yellow", "firebrick", "pink", "orchid", "crimson", "lightpink", "royalblue"]
+    _all_colors = [
+        "orange",
+        "yellow",
+        "firebrick",
+        "pink",
+        "orchid",
+        "crimson",
+        "lightpink",
+        "royalblue",
+    ]
     _all_labels = [
         "Read to Small",
         "Read to Large",
