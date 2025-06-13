@@ -75,6 +75,17 @@ def test_bb_set_iter(del_library1: DELibrary):
 
 
 @pytest.mark.unit
+def test_get_section_length(del_library1: DELibrary):
+    """Test for getting barcode section lengths"""
+    assert del_library1.barcode_schema.get_section_length("umi") == 11
+    assert del_library1.barcode_schema.get_section_length("library") == 31
+    assert del_library1.barcode_schema.get_section_length("pre-umi") == 12
+
+    with pytest.raises(KeyError):
+        del_library1.barcode_schema.get_section_length("FAKE_SECTION")
+
+
+@pytest.mark.unit
 def test_iter_bb_barcode_sections_and_sets(del_library1: DELibrary):
     """Test iter_bb_barcode_sections_and_sets function"""
     bb_sets = list(del_library1.iter_bb_barcode_sections_and_sets())
