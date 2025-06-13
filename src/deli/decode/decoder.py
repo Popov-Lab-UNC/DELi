@@ -88,7 +88,7 @@ class DecodeStatistics:
         )
         result.num_failed_alignment = self.num_failed_alignment + other.num_failed_alignment
         result.num_failed_umi_match_too_short = (
-                self.num_failed_umi_match_too_short + other.num_failed_umi_match_too_short
+            self.num_failed_umi_match_too_short + other.num_failed_umi_match_too_short
         )
 
         # Merge defaultdicts
@@ -217,7 +217,7 @@ class DecodedDELCompound(DELCompound):
         umi: UMI | None = None,
     ):
         """
-        initialize the DecodedDELCompound object
+        Initialize the DecodedDELCompound object
 
         Parameters
         ----------
@@ -419,7 +419,7 @@ class DELCollectionDecoder:
                 for library in library_collection.libraries
             }
         else:
-            raise ValueError(f"unrecognized bb_calling_approach " f"{bb_calling_approach}")
+            raise ValueError(f"unrecognized bb_calling_approach {bb_calling_approach}")
 
         # set the min/max lengths
         self._min_read_length: int

@@ -539,7 +539,7 @@ class DELCollectionIdUmiCounter(DELCollectionCounter):
 
     def __getstate__(self):
         """
-        covert state to generic dict with no partial functions when requesting state
+        Covert state to generic dict with no partial functions when requesting state
         """
         state = self.__dict__.copy()
         state["del_counter"] = {k: dict(v) for k, v in self.del_counter.items()}
@@ -547,7 +547,7 @@ class DELCollectionIdUmiCounter(DELCollectionCounter):
 
     def __setstate__(self, state):
         """
-        set state for del_counter back to nested defaultdict when reloading state from getstate
+        Set state for del_counter back to nested defaultdict when reloading state from getstate
         """
         self.__dict__.update(state)
         self.del_counter = defaultdict(
@@ -692,7 +692,7 @@ class DELCollectionIdCounter(DELCollectionCounter):
 
     def __getstate__(self):
         """
-        covert state to generic dict with no partial functions when requesting state
+        Covert state to generic dict with no partial functions when requesting state
         """
         state = self.__dict__.copy()
         state["del_counter"] = {k: dict(v) for k, v in self.del_counter.items()}
@@ -700,7 +700,7 @@ class DELCollectionIdCounter(DELCollectionCounter):
 
     def __setstate__(self, state):
         """
-        set state for del_counter back to nested defaultdict when reloading state from getstate
+        Set state for del_counter back to nested defaultdict when reloading state from getstate
         """
         self.__dict__.update(state)
         self.del_counter = defaultdict(

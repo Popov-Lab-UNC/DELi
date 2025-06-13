@@ -23,6 +23,7 @@ repos:
       - id: mypy
         additional_dependencies:
           - types-PyYAML
+        exclude: '^nextflow/.*'
 
   - repo: local
     hooks:

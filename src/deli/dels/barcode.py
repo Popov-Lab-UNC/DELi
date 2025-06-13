@@ -328,7 +328,7 @@ class BarcodeSchema:
             for i, (_bb_section_idx, bb_section) in enumerate(_building_block_sections):
                 if (i + 1) != bb_section.cycle_number:
                     raise BarcodeSchemaError(
-                        f"expected building block section to be for cycle {i+1},"
+                        f"expected building block section to be for cycle {i + 1},"
                         f"but found cycle number {bb_section.cycle_number} for "
                         f"building block section {bb_section.section_name}"
                     )
@@ -515,7 +515,7 @@ class BarcodeSchema:
 
     def to_regex_pattern(self, error_tolerance: float = 0.1) -> str:
         """
-        generate the full barcode regex pattern for regex searching
+        Generate the full barcode regex pattern for regex searching
 
         Parameters
         ----------
