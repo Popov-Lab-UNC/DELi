@@ -328,7 +328,7 @@ class BarcodeSchema:
             for i, (_bb_section_idx, bb_section) in enumerate(_building_block_sections):
                 if (i + 1) != bb_section.cycle_number:
                     raise BarcodeSchemaError(
-                        f"expected building block section to be for cycle {i+1},"
+                        f"expected building block section to be for cycle {i + 1},"
                         f"but found cycle number {bb_section.cycle_number} for "
                         f"building block section {bb_section.section_name}"
                     )
@@ -515,7 +515,7 @@ class BarcodeSchema:
 
     def to_regex_pattern(self, error_tolerance: float = 0.1) -> str:
         """
-        generate the full barcode regex pattern for regex searching
+        Generate the full barcode regex pattern for regex searching
 
         Parameters
         ----------
@@ -649,3 +649,20 @@ class BarcodeSchema:
     def has_umi(self) -> bool:
         """True is library has UMI barcode section, else False"""
         return self.umi_section is not None
+
+    def get_section_length(self, section_name: str) -> int:
+        """
+        Get the length of a specific barcode section
+
+        Parameters
+        ----------
+        section_name: str
+            the name of the barcode section
+
+        Returns
+        -------
+        int: length of the barcode section
+        """
+        if section_name not in self._barcode_section_map:
+            raise KeyError(f"Barcode section '{section_name}' not found in schema")
+        return len(self._barcode_section_map[section_name])

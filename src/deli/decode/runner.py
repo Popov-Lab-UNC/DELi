@@ -13,9 +13,10 @@ import yaml
 from tqdm import tqdm
 
 from deli._logging import get_dummy_logger, get_logger
-from deli.dels import DELCollection, DELibrary, Selection, SequencedSelection
+from deli.dels import DELibrary, DELibraryCollection, Selection, SequencedSelection
 
-from .decoder import DecodedBarcode, DecodeStatistics, DELCollectionDecoder
+from ..dels.library import EnumerationRunError
+from .decoder import DecodedDELCompound, DecodeStatistics, DELCollectionDecoder
 from .degen import DELCollectionCounter, DELCollectionIdCounter, DELCollectionIdUmiCounter
 from .report import build_decoding_report
 
@@ -212,7 +213,9 @@ class DecodingRunnerResults:
         else:
             raise RuntimeError("Cannot write decode report, no decode statistics found")
 
-    def write_decode_statistics(self, out_path: str | os.PathLike):
+    def write_decode_statistics(
+        self, out_path: str | os.PathLike, include_read_lengths: bool = False
+    ):
         """
         Write the decoding statistics for this run
 
@@ -220,11 +223,13 @@ class DecodingRunnerResults:
         ----------
         out_path: str | PathLike
             path to save decoding statistics to
+        include_read_lengths: bool, default = False
+            if True, will include the read lengths in the file
         """
         if self.decode_statistics is not None:
             if os.path.dirname(out_path) != "":
                 os.makedirs(os.path.dirname(out_path), exist_ok=True)
-            self.decode_statistics.to_file(out_path)
+            self.decode_statistics.to_file(out_path, include_read_lengths=include_read_lengths)
         else:
             raise RuntimeError("Cannot write decode statistics, no decode statistics found")
 
@@ -309,11 +314,11 @@ class DecodingRunnerResults:
 
         # check for enumeration
         if enumerate_smiles:
-            if not self.selection.library_collection.all_libs_have_enumerators():
+            if not self.selection.library_collection.all_libs_can_enumerate():
                 _libraries_missing_enumerators = [
                     lib.library_id
                     for lib in self.selection.library_collection.libraries
-                    if lib.enumerator is None
+                    if not lib.can_enumerate()
                 ]
                 warnings.warn(
                     f"Some libraries are missing enumerators: "
@@ -354,9 +359,9 @@ class DecodingRunnerResults:
             _header += f"{delimiter}LIBRARY_ID"
         for i in range(_max_cycle_size):
             if include_bb_id_cols:
-                _header += f"{delimiter}BB{i+1}_ID"
+                _header += f"{delimiter}BB{i + 1}_ID"
             if include_bb_smi_cols:
-                _header += f"{delimiter}BB{i+1}_SMILES"
+                _header += f"{delimiter}BB{i + 1}_SMILES"
         if enumerate_smiles:
             _header += f"{delimiter}SMILES"
         if include_raw_count_col:
@@ -373,21 +378,25 @@ class DecodingRunnerResults:
                 f.write(_header)
                 for library_count_set in self.degen.del_counter.values():
                     for decode_barcode, counts in library_count_set.items():
-                        _row = f"{decode_barcode.id}"
+                        _row = f"{decode_barcode.compound_id}"
                         if include_library_id_col:
                             _row += f"{delimiter}{decode_barcode.library.library_id}"
                         for _, bb in zip_longest(
                             range(_max_cycle_size), decode_barcode.building_blocks
                         ):
                             if include_bb_id_cols:
-                                _row += f"{delimiter}" f"{bb.bb_id if bb is not None else 'null'}"
+                                _row += f"{delimiter}{bb.bb_id if bb is not None else 'null'}"
                             if include_bb_smi_cols:
                                 _row += (
                                     f"{delimiter}"
                                     f"{bb.smiles if (bb is not None and bb.smiles) else 'null'}"
                                 )
                         if enumerate_smiles:
-                            _row += f"{delimiter}{decode_barcode.get_smiles(default='null')}"
+                            try:
+                                _smi = decode_barcode.enumerate().smi
+                            except EnumerationRunError:
+                                _smi = "null"
+                            _row += f"{delimiter}{_smi}"
                         if include_raw_count_col:
                             _row += f"{delimiter}{counts.get_raw_count()}"
                         _row += f"{delimiter}{counts.get_degen_count()}\n"
@@ -498,7 +507,7 @@ class DecodingRunner:
         ----------
         save_failed_to: str | PathLike | None, default = None
             if provided, will save failed reads to this directory
-            file will be named <selection_id>_decode_failed.csv
+            file will be named <selection_id>_decode_failed.tsv
             will include the read_id, the sequence, the quality chain,
             and reason failed
         use_tqdm: bool, default = False
@@ -541,7 +550,7 @@ class DecodingRunner:
             # decode the read
             decoded_barcode = self.decoder.decode_read(seq_record)
             # skip failed reads
-            if isinstance(decoded_barcode, DecodedBarcode):
+            if isinstance(decoded_barcode, DecodedDELCompound):
                 self.decoder.decode_statistics.num_seqs_decoded_per_lib[
                     decoded_barcode.library.library_id
                 ] += 1
@@ -561,7 +570,7 @@ class DecodingRunner:
 
             if ((i + 1) % 1000) == 0:
                 self.logger.debug(
-                    f"Decoded {i+1} reads for selection {self.selection.selection_id}"
+                    f"Decoded {i + 1} reads for selection {self.selection.selection_id}"
                 )
 
         if fail_csv_file is not None:
@@ -705,7 +714,9 @@ class DecodingRunner:
             raise DecodingRunParsingError(
                 f"{decode_file} decoding run config file does not contain a 'libraries' section"
             ) from e
-        _library_collection = DELCollection([DELibrary.load(lib_path) for lib_path in _libraries])
+        _library_collection = DELibraryCollection(
+            [DELibrary.load(lib_path) for lib_path in _libraries]
+        )
 
         _selection_id = data.get("selection_id", None)
         _target_id = data.get("target_id", None)
