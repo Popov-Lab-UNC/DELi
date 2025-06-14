@@ -19,10 +19,11 @@ parser.add_argument(
     "--save_counter",
     action="store_true",
 )
+parser.add_argument("--counters", nargs="+")
 args = parser.parse_args()
 
 # merge the counter files into a single count
-counter_files = [f for f in os.listdir("./") if f.endswith("_counter_subjob.json.gz")]
+counter_files = args.counters
 print(counter_files)
 data = json.load(gzip.open(counter_files[0], "rt", encoding="utf-8"))
 for f in counter_files[1:]:
