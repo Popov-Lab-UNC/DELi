@@ -80,7 +80,7 @@ process Decode {
 
     script:
     """
-    python ${workflow.projectDir}/decode.py --decode_file ${params.decode_run} --fastq_file ${fastq_file} ${params.debug ? '--debug ' : ''}${params.save_failed ? '--save-failed ' : ''}--counters *_counter_subjob.json.gz
+    python ${workflow.projectDir}/decode.py --decode_file ${params.decode_run} --fastq_file ${fastq_file} ${params.debug ? '--debug ' : ''}${params.save_failed ? '--save-failed ' : ''}
     """
 }
 
@@ -99,7 +99,7 @@ process MergeResultsUMI {
 
     script:
     """
-    python ${workflow.projectDir}/merge_umi.py --decode_file ${params.decode_run} ${params.enumerate_smiles ? '--enumerate_smiles ' : ''}${params.include_bb_smi ? '--include_bb_smi ' : ''}${params.save_counter ? '--save_counter ' : ''}
+    python ${workflow.projectDir}/merge_umi.py --decode_file ${params.decode_run} ${params.enumerate_smiles ? '--enumerate_smiles ' : ''}${params.include_bb_smi ? '--include_bb_smi ' : ''}${params.save_counter ? '--save_counter ' : ''}--counters *_counter_subjob.json.gz
     """
 }
 

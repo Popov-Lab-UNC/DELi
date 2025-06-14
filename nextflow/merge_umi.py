@@ -24,7 +24,6 @@ args = parser.parse_args()
 
 # merge the counter files into a single count
 counter_files = args.counters
-print(counter_files)
 data = json.load(gzip.open(counter_files[0], "rt", encoding="utf-8"))
 for f in counter_files[1:]:
     new_data = json.load(gzip.open(f, "rt", encoding="utf-8"))
@@ -42,7 +41,6 @@ for f in counter_files[1:]:
             data[lib_id][del_id]["raw_count"] += count_data["raw_count"]
             data[lib_id][del_id]["umis"].extend(count_data["umis"])
 
-print(len(data["DEL004"]), len(data["DEL005"]))
 
 # merge the relevant statistics from the stats files
 statistic_files = [f for f in os.listdir() if f.endswith("_decode_statistics_subjob.json")]
