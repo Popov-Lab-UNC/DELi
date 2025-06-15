@@ -444,7 +444,7 @@ class DELi_Cube:
 
         for count_cols in exp_dict.values():
             for col in count_cols:
-                df[col].fillna(0, inplace=True)
+                df[col] = df[col].fillna(0)
 
         self.data = df
         return df, exp_dict
@@ -619,10 +619,10 @@ class DELi_Cube:
 
         for exp_name, index_range in self.indexes.items():
             for column in index_range:
-                spotfire_df.rename(columns={column: f'{exp_name}_{column}'}, inplace=True)
+                spotfire_df = spotfire_df.rename(columns={column: f'{exp_name}_{column}'})
             avg_col_name = f'{exp_name}_avg'
             if avg_col_name not in spotfire_df.columns:
-                spotfire_df[avg_col_name] = df[index_range].mean(axis=1).round(2)
+                spotfire_df.loc[:, avg_col_name] = df[index_range].mean(axis=1).round(2)
 
         return spotfire_df
 
