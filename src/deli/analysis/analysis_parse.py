@@ -150,7 +150,7 @@ def main():
             print("Report generation completed!")
             today_date = datetime.now().strftime("%Y%m%d")
             cube.data.to_csv(os.path.join(output_dir_base, f"cube_data_{today_date}.csv"), index=False)
-            print(f"Cube data saved to {os.path.join(output_dir, 'cube_data.csv')}")
+            print(f"Cube data saved to {os.path.join(output_dir_base, 'cube_data_{today_date}.csv')}")
 
 if __name__ == '__main__':
     main()
