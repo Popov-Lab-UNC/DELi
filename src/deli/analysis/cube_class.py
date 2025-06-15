@@ -665,9 +665,16 @@ class DELi_Cube:
             set_a = set(filtered_data[filtered_data[valid_indices[0]] > threshold]['DEL_ID'])
             set_b = set(filtered_data[filtered_data[valid_indices[1]] > threshold]['DEL_ID'])
 
+            if len(set_a) == 0:
+                raise ValueError(f"No elements found in {valid_indices[0]} above trisynthon threshold {threshold}")
+            if len(set_b) == 0:
+                raise ValueError(f"No elements found in {valid_indices[1]} above trisynthon threshold {threshold}")
+
             plt.figure(figsize=(8, 6))
             if num_valid_indices == 3:
                 set_c = set(filtered_data[filtered_data[valid_indices[2]] > threshold]['DEL_ID'])
+                if len(set_c) == 0:
+                    raise ValueError(f"No elements found in {valid_indices[2]} above trisynthon threshold {threshold}")
                 venn3([set_a, set_b, set_c], set_labels=(valid_indices[0], valid_indices[1], valid_indices[2]))
                 plt.title(f'Overlap Diagram for {exp_name} (Three Indices)')
             else:
@@ -733,9 +740,16 @@ class DELi_Cube:
             set_a = set(filtered_data[filtered_data[valid_indices[0]] > threshold][disynthon_type])
             set_b = set(filtered_data[filtered_data[valid_indices[1]] > threshold][disynthon_type])
 
+            if len(set_a) == 0:
+                raise ValueError(f"No elements found in {valid_indices[0]} above disynthon threshold {threshold}")
+            if len(set_b) == 0:
+                raise ValueError(f"No elements found in {valid_indices[1]} above disynthon threshold {threshold}")
+
             plt.figure(figsize=(8, 6))
             if num_valid_indices == 3:
                 set_c = set(filtered_data[filtered_data[valid_indices[2]] > threshold][disynthon_type])
+                if len(set_c) == 0:
+                    raise ValueError(f"No elements found in {valid_indices[2]} above disynthon threshold {threshold}")
                 venn3([set_a, set_b, set_c], set_labels=(valid_indices[0], valid_indices[1], valid_indices[2]))
                 plt.title(f'Venn Diagram for {exp_name} (Three Indices) \n Threshold = {threshold}', fontsize=16)
             else:
@@ -1039,11 +1053,20 @@ class DELi_Cube:
                 avg_col_name = f'{exp_name}_avg'
                 if avg_col_name not in self.data.columns:
                     self.data[avg_col_name] = self.data[index_range].mean(axis=1).round(2)
+        elif metric == 'sum':
+            for exp_name, index_range in self.indexes.items():
+                sum_col_name = f'{exp_name}_sum'
+                if sum_col_name not in self.data.columns:
+                    self.data[sum_col_name] = self.data[index_range].sum(axis=1).round(2)
 
         for exp_name, indices in self.indexes.items():
             # Ensure the compound is present at least once in each replicate
             filtered_data = self.data[(self.data[indices] > 0).all(axis=1)]
             top_n = filtered_data.nlargest(n, f'{exp_name}_{metric}')
+
+            if len(top_n) == 0:
+                raise ValueError(f"Failed to find replicate compounds in {exp_name} with {metric}")
+
             mols = [Chem.MolFromSmiles(smiles) for smiles in top_n['SMILES']]
             legends = [f"{row['DEL_ID']}\n\n{metric}: {row[f'{exp_name}_{metric}']:.2f}" for _, row in top_n.iterrows()]
             
