@@ -120,7 +120,7 @@ def main():
             )
         if 'trisynthon_overlap' in flags and flags.get('trisynthon_overlap', False):
             trisynthon_dir = create_output_dir(os.path.join(output_dir, "trisynthon"))
-            cube.trisynthon_overlap(output_dir=trisynthon_dir)
+            cube.trisynthon_overlap(output_dir=trisynthon_dir, threshold=int(flags.get('trisynthon_threshold', 20)))
         if 'disynthon_overlap' in flags and flags.get('disynthon_overlap', False):
             disynthon_dir = create_output_dir(os.path.join(output_dir, "disynthon"))
             cube.disynthon_overlap(output_dir=disynthon_dir, disynthon_data=disynthon_data, disynth_exp_dict=disynth_exp_dict, threshold=int(flags.get('disynthon_threshold', 20)))
