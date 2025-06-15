@@ -6,7 +6,7 @@ from sklearn.dummy import DummyRegressor, DummyClassifier
 from sklearn.model_selection import train_test_split, KFold
 from sklearn.metrics import accuracy_score, r2_score, confusion_matrix
 from rdkit import Chem
-from rdkit.Chem import AllChem, Draw
+from rdkit.Chem import AllChem, Draw, rdFingerprintGenerator
 from rdkit.Chem.Draw import rdMolDraw2D
 import numpy as np
 from tqdm import tqdm
@@ -768,16 +768,9 @@ class DELi_Cube:
             None
         """
 
-        def smiles_to_fingerprint(smiles, radius=3, n_bits=2048):
-            mol = Chem.MolFromSmiles(smiles)
-            if mol:
-                try:
-                    Chem.SanitizeMol(mol)
-                    return AllChem.GetMorganFingerprintAsBitVect(mol, radius, nBits=n_bits)
-                except:
-                    return None
-            else:
-                return None
+        def bulk_smiles_to_fingerprint(smiles_list, radius=3, n_bits=2048):
+            mfpgen = rdFingerprintGenerator.GetMorganGenerator(radius, n_bits)
+            return [mfpgen.GetFingerprint(Chem.MolFromSmiles(smiles)) for smiles in smiles_list]
 
         for exp_name, indices in self.indexes.items():
             self.data[f'{exp_name}_average_enrichment'] = self.data[indices].mean(axis=1)
@@ -786,7 +779,7 @@ class DELi_Cube:
             random_50 = remaining_data.sample(n=50, random_state=42)
             subset_data = pd.concat([top_50, random_50]).copy()
 
-            subset_data['fingerprints'] = [smiles_to_fingerprint(smiles) for smiles in tqdm(subset_data['SMILES'])]
+            subset_data['fingerprints'] = bulk_smiles_to_fingerprint(subset_data['SMILES'])
             subset_data.dropna(subset=['fingerprints'], inplace=True)
             X = np.array([list(fp) for fp in subset_data['fingerprints']])
             y = subset_data[f'{exp_name}_average_enrichment']
@@ -851,16 +844,11 @@ class DELi_Cube:
         Returns:
             None
         """
-        def smiles_to_fingerprint(smiles, radius=3, n_bits=2048):
-            mol = Chem.MolFromSmiles(smiles)
-            if mol:
-                try:
-                    Chem.SanitizeMol(mol)
-                    return AllChem.GetMorganFingerprintAsBitVect(mol, radius, nBits=n_bits)
-                except:
-                    return None
-            else:
-                return None
+        def bulk_smiles_to_fingerprint(smiles_list, radius=3, n_bits=2048):
+            if isinstance(smiles_list, str):
+                smiles_list = [smiles_list]
+            mfpgen = rdFingerprintGenerator.GetMorganGenerator(radius, n_bits)
+            return [mfpgen.GetFingerprint(Chem.MolFromSmiles(smiles)) for smiles in tqdm(smiles_list)]
 
         for exp_name, indices in self.indexes.items():
             self.data[f'{exp_name}_average_enrichment'] = self.data[indices].mean(axis=1)
@@ -868,7 +856,7 @@ class DELi_Cube:
             remaining_data = self.data.drop(top_50.index)
             random_50 = remaining_data.sample(n=100, random_state=42)
             subset_data = pd.concat([top_50, random_50]).copy()
-            subset_data['fingerprints'] = [smiles_to_fingerprint(smiles) for smiles in tqdm(subset_data['SMILES'])]
+            subset_data['fingerprints'] = bulk_smiles_to_fingerprint(subset_data['SMILES'])
             subset_data.dropna(subset=['fingerprints'], inplace=True)
             subset_data['target'] = (subset_data[f'{exp_name}_average_enrichment'] > threshold).astype(int)
             X = np.array([list(fp) for fp in subset_data['fingerprints']])
