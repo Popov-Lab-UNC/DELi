@@ -6,7 +6,7 @@ from sklearn.dummy import DummyRegressor, DummyClassifier
 from sklearn.model_selection import train_test_split, KFold
 from sklearn.metrics import accuracy_score, r2_score, confusion_matrix
 from rdkit import Chem
-from rdkit.Chem import AllChem, Draw
+from rdkit.Chem import AllChem, Draw, rdFingerprintGenerator
 from rdkit.Chem.Draw import rdMolDraw2D
 import numpy as np
 from tqdm import tqdm
@@ -438,7 +438,7 @@ class DELi_Cube:
 
         for count_cols in exp_dict.values():
             for col in count_cols:
-                df[col].fillna(0, inplace=True)
+                df[col] = df[col].fillna(0)
 
         self.data = df
         return df, exp_dict
@@ -613,10 +613,10 @@ class DELi_Cube:
 
         for exp_name, index_range in self.indexes.items():
             for column in index_range:
-                spotfire_df.rename(columns={column: f'{exp_name}_{column}'}, inplace=True)
+                spotfire_df = spotfire_df.rename(columns={column: f'{exp_name}_{column}'})
             avg_col_name = f'{exp_name}_avg'
             if avg_col_name not in spotfire_df.columns:
-                spotfire_df[avg_col_name] = df[index_range].mean(axis=1).round(2)
+                spotfire_df.loc[:, avg_col_name] = df[index_range].mean(axis=1).round(2)
 
         return spotfire_df
 
@@ -659,9 +659,16 @@ class DELi_Cube:
             set_a = set(filtered_data[filtered_data[valid_indices[0]] > threshold]['DEL_ID'])
             set_b = set(filtered_data[filtered_data[valid_indices[1]] > threshold]['DEL_ID'])
 
+            if len(set_a) == 0:
+                raise ValueError(f"No elements found in {valid_indices[0]} above trisynthon threshold {threshold}")
+            if len(set_b) == 0:
+                raise ValueError(f"No elements found in {valid_indices[1]} above trisynthon threshold {threshold}")
+
             plt.figure(figsize=(8, 6))
             if num_valid_indices == 3:
                 set_c = set(filtered_data[filtered_data[valid_indices[2]] > threshold]['DEL_ID'])
+                if len(set_c) == 0:
+                    raise ValueError(f"No elements found in {valid_indices[2]} above trisynthon threshold {threshold}")
                 venn3([set_a, set_b, set_c], set_labels=(valid_indices[0], valid_indices[1], valid_indices[2]))
                 plt.title(f'Overlap Diagram for {exp_name} (Three Indices)')
             else:
@@ -727,9 +734,16 @@ class DELi_Cube:
             set_a = set(filtered_data[filtered_data[valid_indices[0]] > threshold][disynthon_type])
             set_b = set(filtered_data[filtered_data[valid_indices[1]] > threshold][disynthon_type])
 
+            if len(set_a) == 0:
+                raise ValueError(f"No elements found in {valid_indices[0]} above disynthon threshold {threshold}")
+            if len(set_b) == 0:
+                raise ValueError(f"No elements found in {valid_indices[1]} above disynthon threshold {threshold}")
+
             plt.figure(figsize=(8, 6))
             if num_valid_indices == 3:
                 set_c = set(filtered_data[filtered_data[valid_indices[2]] > threshold][disynthon_type])
+                if len(set_c) == 0:
+                    raise ValueError(f"No elements found in {valid_indices[2]} above disynthon threshold {threshold}")
                 venn3([set_a, set_b, set_c], set_labels=(valid_indices[0], valid_indices[1], valid_indices[2]))
                 plt.title(f'Venn Diagram for {exp_name} (Three Indices) \n Threshold = {threshold}', fontsize=16)
             else:
@@ -762,16 +776,9 @@ class DELi_Cube:
             None
         """
 
-        def smiles_to_fingerprint(smiles, radius=3, n_bits=2048):
-            mol = Chem.MolFromSmiles(smiles)
-            if mol:
-                try:
-                    Chem.SanitizeMol(mol)
-                    return AllChem.GetMorganFingerprintAsBitVect(mol, radius, nBits=n_bits)
-                except:
-                    return None
-            else:
-                return None
+        def bulk_smiles_to_fingerprint(smiles_list, radius=3, n_bits=2048):
+            mfpgen = rdFingerprintGenerator.GetMorganGenerator(radius, n_bits)
+            return [mfpgen.GetFingerprint(Chem.MolFromSmiles(smiles)) for smiles in smiles_list]
 
         for exp_name, indices in self.indexes.items():
             self.data[f'{exp_name}_average_enrichment'] = self.data[indices].mean(axis=1)
@@ -780,7 +787,7 @@ class DELi_Cube:
             random_50 = remaining_data.sample(n=50, random_state=42)
             subset_data = pd.concat([top_50, random_50]).copy()
 
-            subset_data['fingerprints'] = [smiles_to_fingerprint(smiles) for smiles in tqdm(subset_data['SMILES'])]
+            subset_data['fingerprints'] = bulk_smiles_to_fingerprint(subset_data['SMILES'])
             subset_data.dropna(subset=['fingerprints'], inplace=True)
             X = np.array([list(fp) for fp in subset_data['fingerprints']])
             y = subset_data[f'{exp_name}_average_enrichment']
@@ -845,16 +852,11 @@ class DELi_Cube:
         Returns:
             None
         """
-        def smiles_to_fingerprint(smiles, radius=3, n_bits=2048):
-            mol = Chem.MolFromSmiles(smiles)
-            if mol:
-                try:
-                    Chem.SanitizeMol(mol)
-                    return AllChem.GetMorganFingerprintAsBitVect(mol, radius, nBits=n_bits)
-                except:
-                    return None
-            else:
-                return None
+        def bulk_smiles_to_fingerprint(smiles_list, radius=3, n_bits=2048):
+            if isinstance(smiles_list, str):
+                smiles_list = [smiles_list]
+            mfpgen = rdFingerprintGenerator.GetMorganGenerator(radius, n_bits)
+            return [mfpgen.GetFingerprint(Chem.MolFromSmiles(smiles)) for smiles in tqdm(smiles_list)]
 
         for exp_name, indices in self.indexes.items():
             self.data[f'{exp_name}_average_enrichment'] = self.data[indices].mean(axis=1)
@@ -862,7 +864,7 @@ class DELi_Cube:
             remaining_data = self.data.drop(top_50.index)
             random_50 = remaining_data.sample(n=100, random_state=42)
             subset_data = pd.concat([top_50, random_50]).copy()
-            subset_data['fingerprints'] = [smiles_to_fingerprint(smiles) for smiles in tqdm(subset_data['SMILES'])]
+            subset_data['fingerprints'] = bulk_smiles_to_fingerprint(subset_data['SMILES'])
             subset_data.dropna(subset=['fingerprints'], inplace=True)
             subset_data['target'] = (subset_data[f'{exp_name}_average_enrichment'] > threshold).astype(int)
             X = np.array([list(fp) for fp in subset_data['fingerprints']])
@@ -949,11 +951,20 @@ class DELi_Cube:
                 avg_col_name = f'{exp_name}_avg'
                 if avg_col_name not in self.data.columns:
                     self.data[avg_col_name] = self.data[index_range].mean(axis=1).round(2)
+        elif metric == 'sum':
+            for exp_name, index_range in self.indexes.items():
+                sum_col_name = f'{exp_name}_sum'
+                if sum_col_name not in self.data.columns:
+                    self.data[sum_col_name] = self.data[index_range].sum(axis=1).round(2)
 
         for exp_name, indices in self.indexes.items():
             # Ensure the compound is present at least once in each replicate
             filtered_data = self.data[(self.data[indices] > 0).all(axis=1)]
             top_n = filtered_data.nlargest(n, f'{exp_name}_{metric}')
+
+            if len(top_n) == 0:
+                raise ValueError(f"Failed to find replicate compounds in {exp_name} with {metric}")
+
             mols = [Chem.MolFromSmiles(smiles) for smiles in top_n['SMILES']]
             legends = [f"{row['DEL_ID']}\n\n{metric}: {row[f'{exp_name}_{metric}']:.2f}" for _, row in top_n.iterrows()]
             
