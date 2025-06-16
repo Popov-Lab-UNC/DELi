@@ -1,3 +1,5 @@
+.. _deli-config-docs:
+
 DELi Configuration
 ==================
 
