@@ -1,6 +1,8 @@
-=============
-Defining DELs
-=============
+.. _defining_libraries:
+
+==================
+Defining Libraries
+==================
 
 A DNA encoded library (DEL) is defined as a collection of several parts, some of which are
 optional depending on what you want to do with the library:
@@ -306,7 +308,7 @@ tags (or a need to use them)
 
 
 Saving in the DELi Data Directory
-=================================
+---------------------------------
 If you have configured the :ref:`DELi Data Directory <deli-data-dir-ref>`,
 you should save the library files in the ``libraries`` sub-directory.
 This way, when using DELi, you can reference libraries by their name, rather
