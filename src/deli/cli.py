@@ -14,7 +14,6 @@ import yaml
 
 from deli.analysis.analysis_report_gen import generate_report
 from deli.analysis.cube_class import DELi_Cube
-
 from deli.configure import (
     DeliDataDirError,
     get_deli_config,

@@ -25,7 +25,7 @@ class BaseBuildingBlock(abc.ABC):
     @abc.abstractmethod
     def is_mask(self) -> bool:
         """
-        check if building block is a masked building block or not
+        Check if building block is a masked building block or not
 
         Returns
         -------
@@ -35,7 +35,7 @@ class BaseBuildingBlock(abc.ABC):
 
     def is_real(self) -> bool:
         """
-        check if building block is a real (not null or mask) building block or not
+        Check if building block is a real (not null or mask) building block or not
 
         Returns
         -------

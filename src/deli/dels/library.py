@@ -95,7 +95,7 @@ class Library(DeliDataLoadable):
 
         if len(self.bb_sets) < 2:
             raise LibraryBuildError(
-                f"Library requires at least 2 cycle (bb_sets);" f" found {len(self.bb_sets)}"
+                f"Library requires at least 2 cycle (bb_sets); found {len(self.bb_sets)}"
             )
 
     def __repr__(self):
@@ -155,7 +155,7 @@ class Library(DeliDataLoadable):
             cycle = bb_data.get("cycle", None)
             if cycle is None:
                 raise LibraryBuildError(
-                    f"build block sets require a cycle number;" f"set at index {i} lacks a cycle"
+                    f"build block sets require a cycle number;set at index {i} lacks a cycle"
                 )
             bb_set_name = bb_data.get("bb_set_name", None)
             file_path = bb_data.get("bb_set_path", None)
@@ -223,7 +223,7 @@ class Library(DeliDataLoadable):
 
     def _get_reaction_workflow(self) -> ReactionWorkflow:
         """
-        check and get the library has a valid reaction workflow
+        Check and get the library has a valid reaction workflow
 
         Will fail if library cannot enumerate using the reaction workflow
 
@@ -249,8 +249,7 @@ class Library(DeliDataLoadable):
                 # this error is unreachable, but here to help with clarity,
                 # as the above loop must raise an enumeration error
                 raise EnumerationRunError(
-                    f"cannot enumerate library {self.library_id}; "
-                    f"building blocks missing SMILES"
+                    f"cannot enumerate library {self.library_id}; building blocks missing SMILES"
                 )
 
     def can_enumerate(self) -> bool:
@@ -760,7 +759,7 @@ class LibraryCollection(Generic[LibType]):
 
     def get_library(self, library_id: str) -> LibType:
         """
-        return the library from the collection with the same ID
+        Return the library from the collection with the same ID
 
         Parameters
         ----------
