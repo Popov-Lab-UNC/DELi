@@ -674,6 +674,7 @@ class BioAlignmentLibraryDecoder(LibraryDecoder):
 
         # define a custom substitution matrix
         # when aligning to N we don't want to penalize for mismatches
+        # since N represents an unknown base we need to decode
         alphabet = "ACGTN"
         matrix = substitution_matrices.Array(alphabet, dims=2)
         for base1 in alphabet:

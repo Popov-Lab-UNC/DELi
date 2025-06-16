@@ -15,6 +15,25 @@ if TYPE_CHECKING:
     from .library import Library, LibraryCollection
 
 
+def _generate_compound_id(library_id: str, building_blocks: list[str]) -> str:
+    """
+    Generate a compound ID from the library ID and building block IDs.
+
+    Parameters
+    ----------
+    library_id: str
+        The ID of the library.
+    building_blocks: list[str]
+        The IDs of the building blocks.
+
+    Returns
+    -------
+    str
+        The generated compound ID.
+    """
+    return f"{library_id}-" + "-".join(building_blocks)
+
+
 class DELCompoundException(Exception):
     """for errors related to DEL compounds"""
 
@@ -86,8 +105,8 @@ class DELCompound(Compound):
         self.library = library
         self.building_blocks = building_blocks
 
-        _compound_id = f"{self.library.library_id}-" + "-".join(
-            [bb.bb_id for bb in self.building_blocks]
+        _compound_id = _generate_compound_id(
+            library.library_id, [bb.bb_id for bb in self.building_blocks]
         )
 
         super().__init__(_compound_id)
@@ -212,9 +231,7 @@ class LowMemDELCompound(LowMemCompound):
         """
         self.library_id = library_id
         self.building_blocks_ids = building_blocks_ids
-        _compound_id = f"{self.library_id}-" + "-".join(
-            [bb_id for bb_id in self.building_blocks_ids]
-        )
+        _compound_id = _generate_compound_id(self.library_id, self.building_blocks_ids)
 
         super().__init__(_compound_id)
 
@@ -248,7 +265,7 @@ class LowMemDELCompound(LowMemCompound):
                 _bbs.append(bb_set.get_bb_by_id(bb_id, fail_on_missing=True))
             except KeyError as e:
                 raise DELCompoundException(
-                    f"Building block {bb_id} for cycle {i+1} "
+                    f"Building block {bb_id} for cycle {i + 1} "
                     f"not found in library {self.library_id}"
                 ) from e
         return DELCompound(library=library, building_blocks=_bbs)

@@ -18,11 +18,11 @@ classifiers = [
     "Operating System :: OS Independent"
 ]
 packages = [
-    { include = "deli", from = "src"},
-    { include = "deli/py.typed", from = "src"},
+    { include = "deli", from = "src" },
+    { include = "deli/py.typed", from = "src" },
 ]
 include = [
-    {path = "src/deli/templates/*", format = ["sdist", "wheel"] }
+    { path = "src/deli/templates/*", format = ["sdist", "wheel"] }
 ]
 
 [tool.poetry.scripts]

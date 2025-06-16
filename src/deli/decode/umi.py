@@ -2,6 +2,9 @@
 
 nuc_to_binary = {"A": "00", "T": "01", "G": "10", "C": "11"}
 
+COMPRESSION_BIT_SIZE = 6
+COMPRESSION_ASCII_OFFSET = 35
+
 
 class UMI:
     """Call class for UMIs"""
@@ -29,8 +32,10 @@ class UMI:
         """
         Convert the UMI tag to a printable ASCII string representation
 
-        This will covert every 3 byte nucleotide section of the UMI tag into a single byte.
-        This can help reduce the size of the UMI tag when storing in raw files.
+        Each nucleotide is converted to 2 bits (A=00, G=01, ...), then groups of 6 bits
+        are mapped to printable ASCII characters, starting with 35 ('#').
+        This can help reduce the size of the UMI tag when storing in raw files
+        by achieving 3:1 compression.
 
         Notes
         -----
@@ -44,9 +49,9 @@ class UMI:
         """
         bit_str = "".join([nuc_to_binary[nuc] for nuc in self.umi_tag])
         code = ""
-        for i in range(0, len(bit_str), 6):
-            _sub_bit_str = bit_str[i : i + 6].ljust(6, "0")
+        for i in range(0, len(bit_str), COMPRESSION_BIT_SIZE):
+            _sub_bit_str = bit_str[i : i + COMPRESSION_BIT_SIZE].ljust(COMPRESSION_BIT_SIZE, "0")
             code += chr(
-                int(_sub_bit_str, 2) + 35
+                int(_sub_bit_str, 2) + COMPRESSION_ASCII_OFFSET
             )  # ASCII offset for printable characters skipping '"'
         return code
