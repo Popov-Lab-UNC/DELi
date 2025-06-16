@@ -4,7 +4,6 @@ import ast
 import configparser
 import datetime
 import os
-import pickle
 import sys
 from pathlib import Path
 
@@ -223,9 +222,7 @@ def click_set_deli_data_dir(path, update_config):
 @click.option(
     "--save-failed", is_flag=True, help="Save failed decoding results to a separate file"
 )
-@click.option(
-    "--save-degen", is_flag=True, help="Save decoding degen counters instead of cube files"
-)
+@click.option("--save-counter", is_flag=True, help="Save raw decoding counters as JSON file")
 @click.option("--debug", is_flag=True, help="Enable debug mode")
 @click.option("--disable-logging", is_flag=True, help="Turn off DELi logging")
 @click.option("--skip-report", is_flag=True, help="Skip generating the decoding report at the end")
@@ -244,7 +241,7 @@ def run_decode(
     prefix,
     tqdm,
     save_failed,
-    save_degen,
+    save_counter,
     debug,
     disable_logging,
     skip_report,
@@ -284,14 +281,14 @@ def run_decode(
     runner.logger.debug(f"Saving decode statistics to {statistics_out_path}")
     results.write_decode_statistics(statistics_out_path)
 
-    if save_degen:
-        degen_out_path = os.path.join(out_dir, f"{prefix}_counters.pkl")
-        runner.logger.debug(f"Saving cube to {degen_out_path}")
-        pickle.dump(results.degen, open(degen_out_path, "wb"))
-    else:
-        cube_out_path = os.path.join(out_dir, f"{prefix}_cube.csv")
-        runner.logger.debug(f"Saving cube to {cube_out_path}")
-        results.write_cube(cube_out_path)
+    cube_out_path = os.path.join(out_dir, f"{prefix}_cube.csv")
+    runner.logger.debug(f"Saving cube to {cube_out_path}")
+    results.write_cube(cube_out_path)
+
+    if save_counter:
+        counter_out_path = os.path.join(out_dir, f"{prefix}_counter.json.gz")
+        runner.logger.debug(f"Saving counter to {counter_out_path}")
+        runner.degen.to_json(counter_out_path, compress=True)
 
     if not skip_report:
         report_out_path = os.path.join(out_dir, f"{prefix}_report.html")
