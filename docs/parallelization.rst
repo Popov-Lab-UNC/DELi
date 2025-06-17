@@ -2,30 +2,40 @@
 Parallelization in DELi
 =======================
 
-First, Parallelization in DELi is really only important for the decoding module (at this
-point in time).
-There, DELi support minimal parallelization in the package/code itself. That is in part because most
-tasks DELi performs are embarrassingly parallel, and pythons native parallelization
-is much less efficient that manually running separate DELi jobs. For example, if I have
-10 Billion sequences to decode, attempting to use the `multiprocessing` module in python
-to form a pool of 40 workers is far slower and prone to strange Python shenanigans than just
-splitting the 10 Billion sequences into 40
-files and running 40 DELi decode commands in parallel.
+DELi as a package does not implement any type of parallelization.
+It is design to run on a single CPU core.
+This is in part because most analysis methods are quick enough that no
+parallelization is needed.
 
-Instead, we recommend splitting you job up into smaller decoding tasks and merging the
-results. DELi implements a handful of merging commands to help streamline this process.
-This also makes DELi easy to use on distributed systems, like HPC clusters or cloud.
+The only place where parallelization could be useful is in enumeration and decoding.
+Yet, the ``mp`` module from python is not very great, and both these
+processes are `embarrassingly parallel <https://en.wikipedia.org/wiki/Embarrassingly_parallel>`_.
+This means it's better to just run separate jobs on your system than to let python do it for you.
 
-Nextflow and DELi
-=================
-While DELi does not support parallelization in the code itself, it can be used with
-very easily with workflow managers. The Authors of DELi prefer Nextflow for this
-since it can natively split FASTQ files. To help streamline this, an example Nextflow
-configuration file and script is provided in the DELi repository. This file can be used to run
-easily parallelized DELi decode jobs. It could also be expanded to add fun custom additions,
-like emailing progress updates or pushing files to remote storage, features DELi will not
-support internally.
+There are a few hiccups to overcome. For example in decoding you need to break up you fastq file
+into chunk, and at the end the UMI corrected counters need to all be loaded at once to get the
+right counts (others the same UMIs could be double counted). For enumeration you need to
+figure out how to split the library building block up into subsets so each job enumerates only
+part of the library.
 
-Running Nextflow for parallel decoding
---------------------------------------
-TODO
+These are not always trivial issues, but also not very hard to write a script to overcome.
+To help show how this works, DELi has some example scripts using `Nextflow <https://www.nextflow.io/>`_
+to parallelize decoding. The DELi team will continue to provide example Nextflow scripts for
+future tasks as well, as Nextflow works well with HPC system (which most academic labs are
+limited too) *and* a cloud environment since it is file based.
+
+Running parallel decoding with Nextflow
+---------------------------------------
+You can run the nextflow script very similar the the decoding CLI command in DELi.
+The largest difference is you can provide a chunk size which will determine how many jobs
+are needed.
+
+.. code-block:: shell
+    nextflow run decode.nf ./example_decode.yaml --chunk_size 100000
+
+One thing to keep in mind is that since Nextflow is file based, copies of the FASTQ files
+will be made. If these are large, you can need alot of disk space.
+This workflow also requires the raw counts for each DEL compound and their UMIs are saved
+and then merged at the end (all loaded into memory). This step would be required even if
+DELi handled parallelization internally, but with Nextflow we can limit the large memory
+usage to the end, limiting how long we need the big memory VM for (and saving cost).

@@ -1,188 +1,108 @@
-==========
-Enumerator
-==========
-
-Overview
-========
-
-The DELi enumerator is a specialized component for enumerating DNA-encoded library (DEL) compounds. 
-It generates compounds by combining building blocks according to specified reaction workflows, producing SMILES representations of the resulting molecules.
-
-How it Works
 ===========
+Enumeration
+===========
+
+DELi includes support for enumerating DNA-encoded libraries (DELs).
+All it requires is that your libraries files have the necessary reaction information
+and that your building block sets have a SMILES column. See :ref:`<define-dels>`
+for more info on how to define these files.
+
+.. note::
+    Enumeration does not require any DNA tag information, thus this data is not
+    required in any of the files.
 
 The enumerator performs the following:
 
-1. Takes a reaction workflow definition
-2. Takes sets of building blocks
-3. Takes a scaffold SMILES string (optional)
-4. Combines building blocks according to the reaction steps
-5. Generates SMILES strings and RDKit mol objects for the resulting compounds
+1. Extracts reaction information from the library files
+2. Builds a reaction workflow (using RDKit)
+3. Runs the reaction for every combination of building blocks for all cycles
+
+As you can imagine, this can be extremely memory/compute intensive for large libraries.
+Careful consideration should be taken about when and how to enumerate a library.
+
+Enumeration with DELi
+---------------------
+DELi provides enumeration functionality through the ``Library`` class.
+Object of this class can be enumerated using the ``enumerate`` method:
+
+.. code-block:: python
+
+    from deli.dels.library import Library
+    library = Library.load("path/to/library.json")
+    for compound in library.enumerate():
+        type(compound)  # An `EnumeratedDELCompound` object
+        smi = compound.smi  # Access SMILES of enumerated compound
+        mol = compound.mol  # Access RDKit mol object
+
+By default, the ``enumerate`` method will *not* fail if a reaction cannot be carried out for a set of blocks.
+Instead it will return a ``DELCompound`` object rather than an ``EnumeratedDELCompound`` object. This means
+the DEL will lack a `smi` and `mol` attribute. If you want the method to fail instead, you can just set
+the ``fail_on_error`` argument to ``True``:
+
+.. code-block:: python
+
+    for compound in library.enumerate(fail_on_error=True):
+        # If a reaction fails, an EnumerationRunError will be raised
+        pass
+
+Note that DELi will tell you which library and which set of building blocks caused the reaction to fail
+if you want to try and figure out the issue. If you just want a list of pure ``EnumeratedDELCompound``s
+You can also just drop failed compounds by setting ``drop_failed=True``:
+
+.. code-block:: python
+
+    for compound in library.enumerate(drop_failed=True):
+        # Only `EnumeratedDELCompound` objects will be returned
+        assert type(compound) is EnumeratedDELCompound
+        smi = compound.smi
+        mol = compound.mol
+
+Enumerating to a file
+---------------------
+More often than not, you will want to save the result of enumeration to a file.
+While you can just generate all the enumerated compounds in memory and then write them to a file,
+that can be very memory intensive. Instead you can use the ``enumerate_to_csv_file`` method:
+
+.. code-block:: python
+
+    library.enumerate_to_csv_file(
+        out_path="enumerated_library.csv",
+        separator=","
+        dropped_failed: bool = False,
+        fail_on_error: bool = False,
+        use_tqdm: bool = True,
+    )
+
+This will write the results of enumeration directly to a CSV file *on the fly* to keep the
+memory usage low. The CSV file will have the following columns:
+
+- `DEL_ID`: the DEL id of the compound
+- `SMILES`: the SMILES of the compound
+- `LIB_ID`: the id of the library the compound belongs to
+- *for each building block set in the library* :
+    - `BB<cycle#>_ID`: the ids of the building blocks used to build the compound
+    - `BB<cycle#>_SMILES`: the smiles of the building block sets used to build the compound
+
+Single Compound Enumeration
+---------------------------
+You can also enumerate a single compound by providing the building block object *or*
+the IDs of the building blocks to use:
+
+.. code-block:: python
+
+    bb_cycle1 = library.bb_sets[0].get_bb_by_id("BB_1")
+    bb_cycle1 = library.bb_sets[1].get_bb_by_id("BB_1")
+    bb_cycle1 = library.bb_sets[2].get_bb_by_id("BB_1")
+
+    compound_a = library.enumerate_by_bbs([bb_cycle1, bb_cycle2, bb_cycle3])
+    compound_b = library.enumerate_by_bb_ids(["BB_1", "BB_234", "BB_624"])
+
+    assert compound_a.smi == compound_b.smi
+
+This can be useful if you only want a handful or specific subset of the DEL to be
+enumerated.
 
 Command-Line Interface
-=====================
-
-The enumerator provides a CLI for direct compound generation without Python coding:
-
-.. code-block:: bash
-
-    deli enumerate <path/to/library.json> [OPTIONS]
-
-Required Arguments
-------------------
-
-* ``<path/to/library.json>`` - JSON file containing reaction workflow, building block definitions, and optional scaffold
-
-Options
--------
-
-* ``-o``, ``--out_path <file.csv>`` - Write results to CSV file (default: "enumerated_library.csv")
-* ``--debug`` - Enable debug mode for detailed output
-* ``--no-tqdm`` - Disable progress bar display
-* ``--help`` - Show help message and exit
-
-JSON Formatting
-----------------
-
-The JSON file should contain this structure:
-
-.. code-block:: json
-
-    {
-        "bb_sets": ["DEL004_BBA", "DEL004_BBB"],
-        "reactions": [
-            {
-                "step": 1,
-                "rxn_smarts": "...",
-                "reactants": ["DEL004_BBA", "scaffold"]
-            },
-            {
-                "step": 2,
-                "rxn_smarts": "...", 
-                "reactants": ["product_1", "DEL004_BBB"]
-            }
-        ],
-        "scaffold": "Nc1ccccc1"
-    }
-
-This is the same JSON format as a typical library JSON. For full details see :doc:`defining_libraries`.
-The items in "bb_sets" must be loadable from the specified building block files.
-Similarly, the items in "reactions" must contain all necessary information for reaction definition.
-
-Example Commands
-----------------
-
-Generate compounds and save to CSV:
-
-.. code-block:: bash
-
-    deli enumerate library.json -o my_compounds.csv
-
-Python Usage
-============
-
-To use Python instead of the command-line interface, you need to provide:
-
-1) A reaction workflow
-2) A list of building block sets
-3) An optional scaffold SMILES string
-
-.. code-block:: python
-
-    from deli.dels.enumerator import DELEnumerator
-    from deli.dels.reaction import ReactionWorkflow
-    from deli.dels.building_block import BuildingBlock, BuildingBlockSet
-
-    # Define the reaction workflow
-    reaction_workflow = ReactionWorkflow.load_from_json_list(
-        rxn_list = [
-            {"step": 1, "rxn_smarts": "...", "reactants": ["DEL004_BBA", "scaffold"]},
-            {"step": 2, "rxn_smarts": "...", "reactants": ["product_1", "DEL004_BBB"]},
-            {"step": 3, "rxn_smarts": "...", "reaction": ["product_2", "DEL004_BBC"]}
-        ],
-        bb_set_ids: ["DEL004_BBA", "DEL004_BBB", "DEL004_BBC"]
-    )
-
-    # Define building block sets
-    bb_sets = [
-        BuildingBlockSet("DEL004_BBA", [BuildingBlock("BB_0", "ATGCTGTA", "CC(=O)Nc1ccc(O)cc1"), BuildingBlock("BB_1", "ATGCAGTA", "CC(=O)Nc1ccccc1")]),
-        BuildingBlockSet("DEL004_BBB", [BuildingBlock("BB_2", "CTGCTGTA", "CCNc1ccc(O)cc1"), BuildingBlock("BB_3", "TCAGCAGTA", "CCNc1ccccc1")]),
-        BuildingBlockSet("DEL004_BBC", [BuildingBlock("BB_4", "TCGCTGTA", "CCNc1cccc(O)cc1"), BuildingBlock("BB_5", "TTAGCAGTA", "Nc1cccc(O)cc1")])
-    ]
-
-    # Optional scaffold
-    scaffold = "Nc1ccccc1"
-
-    # Initialize the enumerator
-    enumerator = DELEnumerator(reaction_workflow, bb_sets, scaffold)
-
-Initialization from JSON
------------------------
-
-Like with the command-line interface, the DELEnumerator can also be initialized from the same JSON file:
-
-.. code-block:: python
-
-    import json
-    from deli.dels.enumerator import DELEnumerator
-    
-    enumerator = DELEnumerator.load("library.json")
-
-Enumeration
--------------
-
-The enumerator can generate all possible compounds.
-Or, it can also generate a specific compound based on building block IDs.
-
-.. code-block:: python
-
-    # Enumerate all possible compounds
-    for compound in enumerator.enumerate():
-        print(compound.smi)  # Access SMILES of enumerated compound
-        print(compound.mol)  # Access RDKit mol object
-
-    # Enumerate a specific compound
-    building_block_id_map = {
-        "BB1": "10", # Building block with ID "10" in the BB1 set
-        "BB2": "12", # Building block with ID "12" in the BB2 set
-        "BB3": "18" # Building block with ID "18" in the BB3 set
-    }
-    compound = enumerator.get_enumerated_compound_from_bb_ids(building_block_id_map)
-
-Writing Results
--------------
-
-You can write enumeration results to a pandas dataframe or a CSV file:
-
-The pandas dataframe has headers: "smi", "mol", multiples of "[BuildingBlockSet ID]".
-WARNING: This could be extremely memory hungry for large libraires.
-
-The CSV has headers: "SMILES", multiples of "[BuildingBlockSet ID]", and an optional "CompoundID".
-The "CompoundID" is a unique identifier for each compound, which can be specified by 
-a callable function or left as None for default behavior.
-
-.. code-block:: python
-
-    # Write enumeration results to pandas dataframe
-    df = enumerator.enumerate_to_pandas()
-
-    # Write enumeration results to CSV
-    def compound_id_function(building_block_id_map: dict[str, str]) -> str:
-        unique_id = building_block_id_map["BB1"] + "_" + building_block_id_map["BB2"]
-        return unique_id
-
-    enumerator.enumerate_to_csv_file(
-        out_path="enumerated_compounds.csv",
-        compound_id_function=compound_id_function, # can be set to None
-        use_tqdm=True  # Show progress bar
-    )
-
-Error Handling
-============
-
-The enumerator includes robust error handling:
-
-* Failed enumerations return a FailedEnumeratedDELCompound
-* Building block validation occurs during initialization
-
-For failed enumerations, the SMILES string will be set to "ENUMERATION_FAILED".
+----------------------
+DELi's CLI include a command for enumerating DELs from a library file: ``deli enumerate``.
+All you need to do is provide the path to a library JSON file. See the :ref:`deli-enumeration-cli-docs` for more info.
