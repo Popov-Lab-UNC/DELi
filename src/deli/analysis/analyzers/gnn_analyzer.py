@@ -29,7 +29,14 @@ class GNNAnalyzer:
         self.data = data
         self.indexes = indexes
 
-    def classify(self, threshold: int = 2, output_dir: str = ".", arch: str = "GAT", num_layers: int = 3, encoding: str = "embedding") -> None:
+    def classify(
+        self,
+        threshold: int = 2,
+        output_dir: str = ".",
+        arch: str = "GAT",
+        num_layers: int = 3,
+        encoding: str = "embedding",
+    ) -> None:
         """
         Train a Graph Neural Network classifier to predict enrichment status.
 
@@ -82,7 +89,9 @@ class GNNAnalyzer:
                 output_dir=output_dir,
             )
 
-    def _prepare_experiment_data(self, exp_name: str, indices: list, threshold: int) -> pd.DataFrame:
+    def _prepare_experiment_data(
+        self, exp_name: str, indices: list, threshold: int
+    ) -> pd.DataFrame:
         """
         Prepare data for a single experiment.
 
@@ -100,16 +109,20 @@ class GNNAnalyzer:
         pd.DataFrame
             Processed subset data with target labels
         """
-        self.data[f'{exp_name}_average_enrichment'] = self.data[indices].mean(axis=1)
+        self.data[f"{exp_name}_average_enrichment"] = self.data[indices].mean(axis=1)
 
-        top_100 = self.data.nlargest(100, f'{exp_name}_average_enrichment')
+        top_100 = self.data.nlargest(100, f"{exp_name}_average_enrichment")
         remaining_data = self.data.drop(top_100.index)
         random_200 = remaining_data.sample(n=200, random_state=42)
 
         subset_data = pd.concat([top_100, random_200]).copy()
-        subset_data["graphs"] = [smi_to_pyg(smiles, 0, encoding="embedding") for smiles in tqdm(subset_data['SMILES'])]
+        subset_data["graphs"] = [
+            smi_to_pyg(smiles, 0, encoding="embedding") for smiles in tqdm(subset_data["SMILES"])
+        ]
         subset_data.dropna(subset=["graphs"], inplace=True)
-        subset_data["target"] = (subset_data[f'{exp_name}_average_enrichment'] > threshold).astype(int)
+        subset_data["target"] = (subset_data[f"{exp_name}_average_enrichment"] > threshold).astype(
+            int
+        )
         return subset_data
 
     @staticmethod
@@ -130,9 +143,12 @@ class GNNAnalyzer:
         graphs = list(subset_data["graphs"])
         labels = torch.tensor(subset_data["target"].values, dtype=torch.long)
 
-        train_graphs, test_graphs, train_labels, test_labels = train_test_split(graphs, labels, test_size=0.2, random_state=42)
-        train_graphs, val_graphs, train_labels, val_labels = train_test_split(train_graphs, train_labels, test_size=0.1, random_state=42)
-
+        train_graphs, test_graphs, train_labels, test_labels = train_test_split(
+            graphs, labels, test_size=0.2, random_state=42
+        )
+        train_graphs, val_graphs, train_labels, val_labels = train_test_split(
+            train_graphs, train_labels, test_size=0.1, random_state=42
+        )
 
         for i, g in enumerate(train_graphs):
             g.y = train_labels[i]
@@ -148,9 +164,18 @@ class GNNAnalyzer:
         return train_loader, val_loader, test_loader, node_dim, edge_dim
 
     @staticmethod
-    def _train_model(train_loader, val_loader, node_dim: int, edge_dim: int, 
-                    arch: str, num_layers: int, encoding: str, output_dir: str, 
-                    exp_name: str, device) -> torch.nn.Module:
+    def _train_model(
+        train_loader,
+        val_loader,
+        node_dim: int,
+        edge_dim: int,
+        arch: str,
+        num_layers: int,
+        encoding: str,
+        output_dir: str,
+        exp_name: str,
+        device,
+    ) -> torch.nn.Module:
         """
         Train the GNN model.
 
@@ -182,15 +207,19 @@ class GNNAnalyzer:
         torch.nn.Module
             Trained model
         """
-        model = Final_Network(node_dim, edge_dim, arch=arch, num_layers=num_layers, encoding=encoding).to(device)
+        model = Final_Network(
+            node_dim, edge_dim, arch=arch, num_layers=num_layers, encoding=encoding
+        ).to(device)
         optimizer = optim.AdamW(model.parameters(), lr=1e-5)
-        scheduler = optim.lr_scheduler.OneCycleLR(optimizer, max_lr=1e-3, steps_per_epoch=len(train_loader), epochs=200)
+        scheduler = optim.lr_scheduler.OneCycleLR(
+            optimizer, max_lr=1e-3, steps_per_epoch=len(train_loader), epochs=200
+        )
         criterion = nn.CrossEntropyLoss()
 
         train_losses = []
         val_losses = []
 
-        best_val_loss = float('inf')
+        best_val_loss = float("inf")
 
         for epoch in range(200):
             model.train()
@@ -221,7 +250,6 @@ class GNNAnalyzer:
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
                 torch.save(model.state_dict(), f"{output_dir}/{exp_name}_{arch}_best_model.pth")
-
 
         # # Plot Training Loss Curve
         # plt.figure(figsize=(6, 5))
@@ -269,8 +297,9 @@ class GNNAnalyzer:
         return y_true, y_pred, acc
 
     @staticmethod
-    def _plot_confusion_matrix(y_true, y_pred, acc, exp_name: str, arch: str, 
-                            threshold: int, output_dir: str) -> None:
+    def _plot_confusion_matrix(
+        y_true, y_pred, acc, exp_name: str, arch: str, threshold: int, output_dir: str
+    ) -> None:
         """
         Create and save confusion matrix plot.
 
@@ -294,10 +323,17 @@ class GNNAnalyzer:
         cm = confusion_matrix(y_true, y_pred)
 
         plt.figure(figsize=(8, 6))
-        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=["Not Enriched", "Enriched"], yticklabels=["Not Enriched", "Enriched"])
+        sns.heatmap(
+            cm,
+            annot=True,
+            fmt="d",
+            cmap="Blues",
+            xticklabels=["Not Enriched", "Enriched"],
+            yticklabels=["Not Enriched", "Enriched"],
+        )
         plt.title(f"{exp_name} {arch} Classifier (Acc = {acc:.2f}), Threshold = {threshold}")
-        plt.xlabel('Predicted')
-        plt.ylabel('True')
+        plt.xlabel("Predicted")
+        plt.ylabel("True")
         plt.tight_layout()
-        plt.savefig(f'{output_dir}/{exp_name}_{arch}_classifier.png')
+        plt.savefig(f"{output_dir}/{exp_name}_{arch}_classifier.png")
         plt.close()

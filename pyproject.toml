@@ -18,11 +18,11 @@ classifiers = [
     "Operating System :: OS Independent"
 ]
 packages = [
-    { include = "deli", from = "src"},
-    { include = "deli/py.typed", from = "src"},
+    { include = "deli", from = "src" },
+    { include = "deli/py.typed", from = "src" },
 ]
 include = [
-    {path = "src/deli/templates/*", format = ["sdist", "wheel"] }
+    { path = "src/deli/templates/*", format = ["sdist", "wheel"] }
 ]
 
 [tool.poetry.scripts]
@@ -116,6 +116,9 @@ replace = '__version__ = "{new_version}"'
 [[tool.mypy.overrides]]
 module = ["untyped_package.*"]
 follow_untyped_imports = true
+
+[tool.mypy]
+files = ["src"]
 
 [tool.coverage.report]
 fail_under = 75

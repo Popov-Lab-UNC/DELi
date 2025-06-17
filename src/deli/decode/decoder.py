@@ -9,11 +9,11 @@ from collections import defaultdict
 from typing import Literal, no_type_check
 
 import numpy as np
-from Bio.Align import PairwiseAligner
+from Bio.Align import PairwiseAligner, substitution_matrices
 from dnaio import SequenceRecord
 from numba import njit
 
-from deli.dels import BuildingBlock, DELCollection, DELibrary
+from deli.dels import BuildingBlock, DELCompound, DELibrary, DELibraryCollection
 from deli.dna import Aligner, HybridSemiGlobalAligner, SemiGlobalAligner
 
 from .bb_calling import BuildingBlockSetTagCaller, FailedBuildingBlockCall, ValidBuildingBlockCall
@@ -67,6 +67,7 @@ class DecodeStatistics:
         self.num_failed_library_match_too_short: int = 0
         self.num_failed_building_block_call: int = 0
         self.num_failed_alignment: int = 0
+        self.num_failed_umi_match_too_short: int = 0
 
     def __add__(self, other) -> "DecodeStatistics":
         """Add two DecodeStatistics objects together"""
@@ -86,6 +87,9 @@ class DecodeStatistics:
             self.num_failed_building_block_call + other.num_failed_building_block_call
         )
         result.num_failed_alignment = self.num_failed_alignment + other.num_failed_alignment
+        result.num_failed_umi_match_too_short = (
+            self.num_failed_umi_match_too_short + other.num_failed_umi_match_too_short
+        )
 
         # Merge defaultdicts
         result.seq_lengths = defaultdict(
@@ -129,7 +133,7 @@ class DecodeStatistics:
         """Number of degen sequences observed in total"""
         return sum(self.num_seqs_degen_per_lib.values())
 
-    def to_file(self, out_path: str | os.PathLike):
+    def to_file(self, out_path: str | os.PathLike, include_read_lengths: bool = False):
         """
         Write the statistics to a file
 
@@ -139,8 +143,15 @@ class DecodeStatistics:
         ----------
         out_path: str or os.PathLike
             path to write the statistics to
+        include_read_lengths: bool, default = False
+            if True, will include the read lengths in the file
         """
-        json.dump(self.__dict__, open(out_path, "w"))
+        if include_read_lengths:
+            json.dump(self.__dict__, open(out_path, "w"))
+        else:
+            _dict = self.__dict__.copy()
+            del _dict["seq_lengths"]
+            json.dump(_dict, open(out_path, "w"))
 
     @classmethod
     def from_file(cls, path: str | os.PathLike) -> "DecodeStatistics":
@@ -185,7 +196,7 @@ class DecodeStatistics:
         return result
 
 
-class DecodedBarcode:
+class DecodedDELCompound(DELCompound):
     """
     Holds information about a decoded barcode
 
@@ -193,7 +204,7 @@ class DecodedBarcode:
 
     Notes
     -----
-    IMPORTANT: two Decoded Barcodes are considered identical if their
+    IMPORTANT: two Decoded Compounds are considered identical if their
     DEL_IDs are the same, even if they have different UMIs.
     This might not seem intuitive, but is needed to help with
     degeneration (based on UMI) that happens later
@@ -206,7 +217,7 @@ class DecodedBarcode:
         umi: UMI | None = None,
     ):
         """
-        initialize the DecodedBarcode object
+        Initialize the DecodedDELCompound object
 
         Parameters
         ----------
@@ -219,68 +230,8 @@ class DecodedBarcode:
             the UMI for the read
             if not using umi or no umi in the barcode, use a `None`
         """
-        self.library: DELibrary = library
-        self.building_blocks: list[BuildingBlock] = building_blocks
+        super().__init__(library=library, building_blocks=building_blocks)
         self.umi = umi
-
-        self.id = f"{self.library.library_id}-" + "-".join(
-            [bb.bb_id for bb in self.building_blocks]
-        )
-
-    def __hash__(self) -> int:
-        """Create hash for a DecodedBarcode based on ID"""
-        return hash(self.id)
-
-    def __eq__(self, other: object) -> bool:
-        """Two DecodedBarcodes are equal if they have the same ID"""
-        if isinstance(other, DecodedBarcode):
-            return self.id == other.id
-        return False
-
-    def get_smiles(self, default: str | None = None) -> str:
-        """
-        Generate the SMILES for the compound
-
-        Notes
-        -----
-        This requires that the reaction schema for the library is defined
-        so that the library as an associated `DELEnumerator` object.
-        Also, generating SMILES on the file can be slow.
-        A database lookup could provide better speed.
-
-        Parameters
-        ----------
-        default : str | `None`, default = `None`
-            if SMILES generation is not possible, return this
-            value instead.
-            If left as `None`, will raise a RunTimeError on failure instead
-
-        Returns
-        -------
-        str
-
-        Raises
-        ------
-        RuntimeError
-            if the reaction schema (thus the enumerator) is not
-            defined and default is `None`
-        """
-        if self.library.enumerator is None:
-            if default is not None:
-                return default
-            raise RuntimeError(
-                f"library '{self.library.library_id}' has no enumerator "
-                f"to enable smiles generation for compound '{self.id}'"
-            )
-        else:
-            return self.library.enumerator.get_enumerated_compound_from_bb_ids(
-                {
-                    bb_cycle.section_name: bb.bb_id
-                    for bb_cycle, bb in zip(
-                        self.library.barcode_schema.building_block_sections, self.building_blocks
-                    )
-                }
-            ).smi
 
 
 class FailedDecode:
@@ -335,6 +286,12 @@ class AlignmentFailed(FailedDecode):
     pass
 
 
+class UMIMatchTooShort(FailedDecode):
+    """Returned if UMI match is too short to call post decode"""
+
+    pass
+
+
 class DELCollectionDecoder:
     """
     A decoder used to decode barcodes from selection using a collection of libraries
@@ -346,7 +303,7 @@ class DELCollectionDecoder:
 
     def __init__(
         self,
-        library_collection: DELCollection,
+        library_collection: DELibraryCollection,
         library_error_tolerance: float = 0.1,
         min_library_overlap: int | None = None,
         revcomp: bool = False,
@@ -363,7 +320,7 @@ class DELCollectionDecoder:
 
         Parameters
         ----------
-        library_collection: DELCollection
+        library_collection: DELibraryCollection
             the library collection used for the selection to decode
         library_error_tolerance: float, default = 0.2
             the percent error to be tolerated in the library section
@@ -462,7 +419,7 @@ class DELCollectionDecoder:
                 for library in library_collection.libraries
             }
         else:
-            raise ValueError(f"unrecognized bb_calling_approach " f"{bb_calling_approach}")
+            raise ValueError(f"unrecognized bb_calling_approach {bb_calling_approach}")
 
         # set the min/max lengths
         self._min_read_length: int
@@ -479,7 +436,7 @@ class DELCollectionDecoder:
         else:
             self._max_read_length = 5 * self._min_read_length
 
-    def decode_read(self, sequence: SequenceRecord) -> DecodedBarcode | FailedDecode:
+    def decode_read(self, sequence: SequenceRecord) -> DecodedDELCompound | FailedDecode:
         """
         Given a sequence read, decode its barcode
 
@@ -545,7 +502,7 @@ class LibraryDecoder(abc.ABC):
             self.decode_statistics = decode_statistics
 
     @abc.abstractmethod
-    def call_barcode(self, library_call: ValidLibraryCall) -> DecodedBarcode | FailedDecode:
+    def call_barcode(self, library_call: ValidLibraryCall) -> DecodedDELCompound | FailedDecode:
         """Given a library call, decode the barcode"""
         raise NotImplementedError()
 
@@ -629,7 +586,7 @@ class DynamicAlignmentLibraryDecoder(LibraryDecoder):
                 f"are missing from the library barcode"
             )
 
-    def call_barcode(self, library_call: ValidLibraryCall) -> DecodedBarcode | FailedDecode:
+    def call_barcode(self, library_call: ValidLibraryCall) -> DecodedDELCompound | FailedDecode:
         """
         Given a library call, decode the read
 
@@ -640,7 +597,7 @@ class DynamicAlignmentLibraryDecoder(LibraryDecoder):
 
         Returns
         -------
-        DecodedBarcode
+        DecodedDELCompound
         """
         _alignment = self.aligner.align(self._barcode_reference, library_call.sequence.sequence)
 
@@ -676,7 +633,7 @@ class DynamicAlignmentLibraryDecoder(LibraryDecoder):
                 ]
             )
 
-        return DecodedBarcode(
+        return DecodedDELCompound(
             library=library_call.library,
             building_blocks=[val.building_block for val in bb_calls.values()],
             umi=_umi,
@@ -715,6 +672,20 @@ class BioAlignmentLibraryDecoder(LibraryDecoder):
             library=library, decode_statistics=decode_statistics, use_hamming=use_hamming
         )
 
+        # define a custom substitution matrix
+        # when aligning to N we don't want to penalize for mismatches
+        # since N represents an unknown base we need to decode
+        alphabet = "ACGTN"
+        matrix = substitution_matrices.Array(alphabet, dims=2)
+        for base1 in alphabet:
+            for base2 in alphabet:
+                if base1 == base2:
+                    matrix[base1, base2] = 1  # matches score 1
+                elif "N" in (base1, base2):
+                    matrix[base1, base2] = 0  # mismatches with 'N' score 0
+                else:
+                    matrix[base1, base2] = -1  # other mismatches score -1
+
         # assign the aligner
         self.aligner = PairwiseAligner(
             match_score=1,
@@ -724,6 +695,7 @@ class BioAlignmentLibraryDecoder(LibraryDecoder):
             mode="global",
             end_open_gap_score=0,
             end_extend_gap_score=0,
+            substitution_matrix=matrix,
         )
 
         self._bb_callers: dict[str, BuildingBlockSetTagCaller] = {
@@ -763,7 +735,7 @@ class BioAlignmentLibraryDecoder(LibraryDecoder):
         _tmp_alignment = self.aligner.align("AGCT", "AGCT")[0]
         _inverse_indices(_tmp_alignment.sequences, _tmp_alignment.coordinates)
 
-    def call_barcode(self, library_call: ValidLibraryCall) -> DecodedBarcode | FailedDecode:
+    def call_barcode(self, library_call: ValidLibraryCall) -> DecodedDELCompound | FailedDecode:
         """
         Given a library call, decode the read
 
@@ -774,7 +746,7 @@ class BioAlignmentLibraryDecoder(LibraryDecoder):
 
         Returns
         -------
-        DecodedBarcode
+        DecodedDELCompound
         """
         _alignments = self.aligner.align(library_call.sequence.sequence, self._barcode_reference)
 
@@ -817,7 +789,23 @@ class BioAlignmentLibraryDecoder(LibraryDecoder):
                         + 1
                     ]
                 )
-            return DecodedBarcode(
+
+            # check umi length
+            if (_umi is not None) and (
+                len(_umi) < self.library.barcode_schema.get_section_length("umi")
+            ):
+                warnings.warn(
+                    f"UMI length {len(_umi)} is shorter than expected "
+                    f"{self.library.barcode_schema.get_section_length('umi')}; "
+                    f"This is likely the result of a major gap in an otherwise "
+                    f"perfect (decodable) the alignment. "
+                    f"This may indicate a problem with missing or extra barcode "
+                    f"sections in your library definition.",
+                    stacklevel=1,
+                )
+                return UMIMatchTooShort()
+
+            return DecodedDELCompound(
                 library=library_call.library,
                 building_blocks=[val.building_block for val in bb_calls.values()],
                 umi=_umi,
@@ -826,7 +814,7 @@ class BioAlignmentLibraryDecoder(LibraryDecoder):
         return BuildingBlockLookupFailed()
 
 
-# TODO for some reason, this is needed to prevent when running as a CMD,
+# TODO for some reason, this is needed to prevent crash when running as a CMD,
 #  but not in a python interpreter... not sure why?
 sys.setrecursionlimit(3000)
 

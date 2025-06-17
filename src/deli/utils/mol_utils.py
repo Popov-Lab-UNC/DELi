@@ -1,6 +1,6 @@
 """utility functions related to molecules"""
 
-from typing import Literal, Optional, Union, overload
+from typing import Literal, Union, overload
 
 from rdkit import Chem
 from rdkit.Chem.MolStandardize.rdMolStandardize import LargestFragmentChooser
@@ -17,10 +17,10 @@ def to_mol(smi: Molable, fail_on_error: Literal[False]) -> Chem.Mol: ...
 
 
 @overload
-def to_mol(smi: Molable, fail_on_error: Literal[True]) -> Optional[Chem.Mol]: ...
+def to_mol(smi: Molable, fail_on_error: Literal[True]) -> Chem.Mol | None: ...
 
 
-def to_mol(smi: Molable, fail_on_error: bool = True) -> Optional[Chem.Mol]:
+def to_mol(smi: Molable, fail_on_error: bool = True) -> Chem.Mol | None:
     """
     Given an object, attempt to convert it to a Chem.Mol object
 

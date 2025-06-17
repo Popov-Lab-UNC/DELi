@@ -2,9 +2,15 @@
 
 from .barcode import BarcodeSchema, BuildingBlockBarcodeSection
 from .building_block import BaseBuildingBlock, BuildingBlock, BuildingBlockSet, MaskedBuildingBlock
-from .compound import LowMemDELCompound
-from .enumerator import DELEnumerator
-from .library import DELCollection, DELibrary
+from .compound import (
+    Compound,
+    DELCompound,
+    EnumeratedDELCompound,
+    LowMemDELCompound,
+    LowMemEnumeratedDELCompound,
+    SmilesMixin,
+)
+from .library import DELibrary, DELibraryCollection, Library, LibraryCollection
 from .selection import SectionCondition, Selection, SequencedSelection
 from .umi import Umi
 
@@ -13,8 +19,9 @@ __all__ = [
     "BarcodeSchema",
     "BuildingBlockBarcodeSection",
     "DELibrary",
-    "DELCollection",
-    "DELEnumerator",
+    "Library",
+    "DELibraryCollection",
+    "LibraryCollection",
     "BaseBuildingBlock",
     "BuildingBlock",
     "MaskedBuildingBlock",
@@ -24,4 +31,9 @@ __all__ = [
     "SequencedSelection",
     "Selection",
     "LowMemDELCompound",
+    "Compound",
+    "DELCompound",
+    "EnumeratedDELCompound",
+    "LowMemEnumeratedDELCompound",
+    "SmilesMixin",
 ]

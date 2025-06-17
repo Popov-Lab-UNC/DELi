@@ -3,11 +3,8 @@
 import ast
 import configparser
 import datetime
-import enum
 import os
-import pickle
 import sys
-from collections import defaultdict
 from pathlib import Path
 
 import click
@@ -16,7 +13,6 @@ import yaml
 
 from deli.analysis.analysis_report_gen import generate_report
 from deli.analysis.cube_class import DELi_Cube
-
 from deli.configure import (
     DeliDataDirError,
     get_deli_config,
@@ -26,14 +22,9 @@ from deli.configure import (
     validate_deli_data_dir,
 )
 from deli.decode import (
-    DecodeStatistics,
     DecodingRunner,
-    DecodingRunnerResults,
-    DELCollectionCounter,
-    build_decoding_report,
 )
-from deli.dels import Selection
-from deli.dels.enumerator import DELEnumerator
+from deli.dels.library import Library
 
 
 def _timestamp() -> str:
@@ -207,13 +198,7 @@ def click_set_deli_data_dir(path, update_config):
         print(f"to set the deli data directory, run '{_command}'")
 
 
-@cli.group()
-def decode():
-    """Decode command group"""
-    pass
-
-
-@decode.command(name="run")
+@cli.command(name="decode")
 @click.argument("decode-file", type=click.Path(exists=True), required=True)
 @click.option(
     "--out-dir",
@@ -237,9 +222,7 @@ def decode():
 @click.option(
     "--save-failed", is_flag=True, help="Save failed decoding results to a separate file"
 )
-@click.option(
-    "--save-degen", is_flag=True, help="Save decoding degen counters instead of cube files"
-)
+@click.option("--save-counter", is_flag=True, help="Save raw decoding counters as JSON file")
 @click.option("--debug", is_flag=True, help="Enable debug mode")
 @click.option("--disable-logging", is_flag=True, help="Turn off DELi logging")
 @click.option("--skip-report", is_flag=True, help="Skip generating the decoding report at the end")
@@ -258,7 +241,7 @@ def run_decode(
     prefix,
     tqdm,
     save_failed,
-    save_degen,
+    save_counter,
     debug,
     disable_logging,
     skip_report,
@@ -298,14 +281,14 @@ def run_decode(
     runner.logger.debug(f"Saving decode statistics to {statistics_out_path}")
     results.write_decode_statistics(statistics_out_path)
 
-    if save_degen:
-        degen_out_path = os.path.join(out_dir, f"{prefix}_counters.pkl")
-        runner.logger.debug(f"Saving cube to {degen_out_path}")
-        pickle.dump(results.degen, open(degen_out_path, "wb"))
-    else:
-        cube_out_path = os.path.join(out_dir, f"{prefix}_cube.csv")
-        runner.logger.debug(f"Saving cube to {cube_out_path}")
-        results.write_cube(cube_out_path)
+    cube_out_path = os.path.join(out_dir, f"{prefix}_cube.csv")
+    runner.logger.debug(f"Saving cube to {cube_out_path}")
+    results.write_cube(cube_out_path)
+
+    if save_counter:
+        counter_out_path = os.path.join(out_dir, f"{prefix}_counter.json.gz")
+        runner.logger.debug(f"Saving counter to {counter_out_path}")
+        runner.degen.to_json(counter_out_path, compress=True)
 
     if not skip_report:
         report_out_path = os.path.join(out_dir, f"{prefix}_report.html")
@@ -335,260 +318,8 @@ def enumerate_(library_file, out_path, tqdm):
 
     _start = datetime.datetime.now()
 
-    enumerator = DELEnumerator.load(library_file)
-    enumerator.enumerate_to_csv_file(output_file, use_tqdm=tqdm)
-
-
-@decode.group()
-def statistics():
-    """Decode statistics command group"""
-    pass
-
-
-@statistics.command(name="merge")
-@click.argument("statistic-files", type=click.Path(exists=True), required=True, nargs=-1)
-@click.option(
-    "--counter-file",
-    type=click.Path(exists=True),
-    required=False,
-    help="counter file to extract corrected degen counts from",
-)
-@click.option(
-    "-o",
-    "--out-path",
-    type=click.STRING,
-    required=False,
-    default="merged_decoding_statistics.json",
-    help="location to save merged statistics file",
-)
-def merge_statistics_file(statistic_files, counter_file, out_path):
-    """
-    Merge multiple decode statistics files into one
-
-    WARNING: Merging statistics files from different decode runs that use
-    UMI corrected counts will result in incorrect counts, as the UMIs are
-    not stored in the statistics file. In this case, you should use
-    the --save-degen option during decoding, merge the counter files
-    and then pass the merged counter file to this function.
-
-    STATISTICS is a list of paths to decode statistics files to merge.
-    """
-    merged_statistics = DecodeStatistics.from_file(statistic_files[0])
-    for statistic_file in statistic_files[1:]:
-        loaded_statistics = DecodeStatistics.from_file(statistic_file)
-        merged_statistics += loaded_statistics
-
-    # if a counter file is provided, use it to set the degen count
-    if counter_file:
-        loaded_counter: DELCollectionCounter = pickle.load(open(counter_file, "rb"))
-        _updated_num_seqs_degen_per_lib = {
-            lib_id: sum([del_counter.get_degen_count() for del_counter in lib_counters.values()])
-            for lib_id, lib_counters in loaded_counter.del_counter.items()
-        }
-
-        merged_statistics.num_seqs_degen_per_lib = defaultdict(
-            int, _updated_num_seqs_degen_per_lib
-        )
-
-    merged_statistics.to_file(out_path)
-
-
-@decode.group()
-def counter():
-    """Decode degen command group"""
-    pass
-
-
-@counter.command(name="merge")
-@click.argument("counter-files", type=click.Path(exists=True), required=True, nargs=-1)
-@click.option(
-    "-o",
-    "--out-path",
-    type=click.STRING,
-    required=False,
-    default="merged_counter.pkl",
-    help="location to save merged counter file",
-)
-def merge_counter_file(counter_files, out_path):
-    """
-    Merge multiple decode counters into one
-
-    WARNING: If using umi, you must need to merge these counter to get
-    accurate umi corrected counts.
-
-    COUNTER-FILES is a list of paths to decode counter pickles to merge.
-    """
-    merged_counter = pickle.load(open(counter_files[0], "rb"))
-    for counter_file in counter_files[1:]:
-        loaded_counter = pickle.load(open(counter_file, "rb"))
-        merged_counter += loaded_counter
-    pickle.dump(merged_counter, open(out_path, "wb"))
-
-
-@decode.group()
-def report():
-    """Decode report command group"""
-    pass
-
-
-@report.command("merge")
-@click.argument("decode-file", type=click.Path(exists=True, dir_okay=False), required=True)
-@click.argument("statistic-files", nargs=-1, type=click.Path(exists=True, dir_okay=False))
-@click.option(
-    "-o",
-    "--out-path",
-    type=click.STRING,
-    required=False,
-    default="merged_decoding_report.html",
-    help="location to dave merged report",
-)
-def merge(decode_file, statistic_files, out_path):
-    """
-    Given decode settings and set of decode stats, merge into a single report
-
-    Should only be used to merge stats generated from the same decode experiment
-    Helpful for parallelization stuff
-
-    DECODE is the path to a YAML file describing the decoding run.
-    STATISTICS is a list of paths to decode statistics files to merge.
-    """
-    # decode_settings = DecodingSettings.from_file(decode_file)
-    selection_info = Selection.from_yaml(decode_file)
-
-    loaded_statistics: list[DecodeStatistics] = [
-        DecodeStatistics.from_file(p) for p in statistic_files
-    ]
-    merged_stats = sum(loaded_statistics, DecodeStatistics())
-
-    build_decoding_report(
-        selection=selection_info,
-        stats=merged_stats,
-        out_path=out_path,
-    )
-
-
-@report.command(name="generate")
-@click.argument("decode-file", type=click.Path(exists=True, dir_okay=False), required=True)
-@click.argument("statistic-file", type=click.Path(exists=True, dir_okay=False), required=True)
-@click.option(
-    "-o",
-    "--out-path",
-    type=click.STRING,
-    required=False,
-    default="./",
-    help="path to save generated report",
-)
-def generate(decode_file, statistic_file, out_path):
-    """
-    Generate a decoding report from a decode run config and statistic file
-
-    DECODE is the path to a YAML file describing the decoding experiment.
-    STATISTIC is the path to a decode statistics file to use for the report.
-    """
-    # decode_settings = DecodingSettings.from_file(decode_file)
-    selection_info = Selection.from_yaml(decode_file)
-    loaded_statistic = DecodeStatistics.from_file(statistic_file)
-
-    build_decoding_report(
-        selection=selection_info,
-        stats=loaded_statistic,
-        out_path=out_path,
-    )
-
-
-@cli.group(name="cube")
-def cube():
-    """Cube command group"""
-    pass
-
-
-class FileType(enum.StrEnum):
-    """Enum for file types"""
-
-    CSV = "csv"
-    TSV = "tsv"
-
-
-@cube.command(name="from-counter")
-@click.argument("counter-file", type=click.Path(exists=True, dir_okay=False), required=True)
-@click.argument("decode-file", type=click.Path(exists=True, dir_okay=False), required=True)
-@click.option(
-    "-o",
-    "--out-path",
-    type=click.Path(dir_okay=False),
-    required=False,
-    default=None,
-    help="path to save cube file",
-)
-@click.option(
-    "--file-format",
-    "-f",
-    type=click.Choice(["csv", "tsv"]),
-    required=False,
-    default="csv",
-    help="format of the cube file; will append file type to path if not present",
-)
-@click.option(
-    "--enumerate-smiles",
-    "-e",
-    is_flag=True,
-    help="Enumerate the SMILES of the compounds; WARNING: can have dramatic effect on runtime",
-)
-@click.option(
-    "--include-library-id", is_flag=True, help="Include the Library ID column in the cube file"
-)
-@click.option(
-    "--include-bb-id", is_flag=True, help="Include the building block ID columns in the cube file"
-)
-@click.option(
-    "--include-bb-smi",
-    is_flag=True,
-    help="Include the building block SMILES columns in the cube file",
-)
-@click.option(
-    "--exclude-raw-counts", is_flag=True, help="Exclude the raw counts columns in the cube file"
-)
-def cube_from_counter(
-    counter_file,
-    decode_file,
-    out_path,
-    enumerate_smiles,
-    file_format,
-    include_library_id,
-    include_bb_id,
-    include_bb_smi,
-    exclude_raw_counts,
-):
-    """
-    Generate a cube file from a counter pickle
-
-    COUNTER_FILE is the path to a counter pickle file to use for the cube.
-    DECODE_FILE is the path to the decode YAML file used to generate the counters.
-
-    Note: Enumerating the SMILES of the compounds can have a dramatic increase on runtime.
-    """
-    loaded_counter: DELCollectionCounter = pickle.load(open(counter_file, "rb"))
-    selection = Selection.from_yaml(decode_file)
-
-    runner_results = DecodingRunnerResults(selection=selection, degen=loaded_counter)
-
-    if out_path is None:
-        _out_path = f"{selection.selection_id}_cube.{file_format}"
-    else:
-        _out_path = out_path
-        if not _out_path.endswith(f".{file_format}"):
-            _out_path += f".{file_format}"
-
-    runner_results.write_cube(
-        out_path=_out_path,
-        file_format=file_format,
-        include_library_id_col=include_library_id,
-        include_bb_id_cols=include_bb_id,
-        include_bb_smi_cols=include_bb_smi,
-        include_raw_count_col=not exclude_raw_counts,
-        enumerate_smiles=enumerate_smiles,
-    )
-
+    enumerator = Library.load(library_file)
+    enumerator.enumerate_to_file(output_file, separator=",", use_tqdm=tqdm)
 
 
 @cli.command(name="analyze")

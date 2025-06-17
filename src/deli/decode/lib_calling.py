@@ -6,7 +6,7 @@ from typing import Optional, TypeAlias, Union
 from cutadapt.adapters import BackAdapter, FrontAdapter, MultipleAdapters, SingleMatch
 from dnaio import SequenceRecord
 
-from deli.dels import DELCollection, DELibrary
+from deli.dels import DELibrary, DELibraryCollection
 
 from .calls import FailedCall, ValidCall
 from .demultiplex import Demultiplexer
@@ -147,7 +147,7 @@ class LibraryCaller(Demultiplexer, abc.ABC):
 
     def __init__(
         self,
-        library_collection: DELCollection,
+        library_collection: DELibraryCollection,
         error_rate: Union[float, int],
         min_overlap: Optional[int] = None,
     ):
@@ -156,7 +156,7 @@ class LibraryCaller(Demultiplexer, abc.ABC):
 
         Parameters
         ----------
-        library_collection: DELCollection
+        library_collection: DELibraryCollection
             the library collection to demultiplex on
         error_rate: Union[float, int]
             the max error rate for any match
@@ -217,9 +217,13 @@ class LibraryCaller(Demultiplexer, abc.ABC):
             the trim slice and the called DEL
         """
         called_lib = self.library_collection.get_library(match.adapter.name)
+        # a padding of 20 is added to the trim region to allow some leway later alignment
         retain_region = slice(
-            max(0, match.rstart - called_lib.barcode_schema.get_length_before_library()),
-            min(len(sequence), match.rstop + called_lib.barcode_schema.get_length_after_library()),
+            max(0, match.rstart - called_lib.barcode_schema.get_length_before_library() - 20),
+            min(
+                len(sequence),
+                match.rstop + called_lib.barcode_schema.get_length_after_library() + 20,
+            ),
         )
         return retain_region, called_lib
 
@@ -242,7 +246,7 @@ class SingleReadLibraryCaller(LibraryCaller):
 
     def __init__(
         self,
-        library_collection: DELCollection,
+        library_collection: DELibraryCollection,
         error_rate: Union[float, int] = 0.1,
         min_overlap: Optional[int] = None,
         revcomp: bool = False,
@@ -252,7 +256,7 @@ class SingleReadLibraryCaller(LibraryCaller):
 
         Parameters
         ----------
-        library_collection: DELCollection
+        library_collection: DELibraryCollection
             the library collection to demultiplex on
         error_rate: Union[float, int]
             the max error rate for any match
@@ -354,7 +358,7 @@ class SingleReadDuplexLibraryCaller(SingleReadLibraryCaller):
 
     def __init__(
         self,
-        library_collection: DELCollection,
+        library_collection: DELibraryCollection,
         error_rate: Union[float, int] = 0.1,
         min_overlap: int = 3,
         revcomp: bool = False,
@@ -365,7 +369,7 @@ class SingleReadDuplexLibraryCaller(SingleReadLibraryCaller):
 
         Parameters
         ----------
-        library_collection: DELCollection
+        library_collection: DELibraryCollection
             the library collection to demultiplex on
         error_rate: Union[float, int]
             the max error rate for any match

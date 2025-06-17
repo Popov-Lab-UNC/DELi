@@ -5,7 +5,7 @@ import os
 import warnings
 from typing import List, Literal, Optional, Self, overload
 
-from deli.configure import get_deli_config, DeliDataLoadable, accept_deli_data_name
+from deli.configure import DeliDataLoadable, accept_deli_data_name, get_deli_config
 from deli.utils.mol_utils import to_mol
 
 
@@ -25,7 +25,7 @@ class BaseBuildingBlock(abc.ABC):
     @abc.abstractmethod
     def is_mask(self) -> bool:
         """
-        check if building block is a masked building block or not
+        Check if building block is a masked building block or not
 
         Returns
         -------
@@ -35,7 +35,7 @@ class BaseBuildingBlock(abc.ABC):
 
     def is_real(self) -> bool:
         """
-        check if building block is a real (not null or mask) building block or not
+        Check if building block is a real (not null or mask) building block or not
 
         Returns
         -------

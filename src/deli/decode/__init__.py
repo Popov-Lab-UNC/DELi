@@ -1,6 +1,6 @@
 """init for decoding module"""
 
-from .decoder import DecodedBarcode, DecodeStatistics, FailedDecode
+from .decoder import DecodedDELCompound, DecodeStatistics, FailedDecode
 from .degen import DELCollectionCounter, DELCollectionIdCounter, DELCollectionIdUmiCounter
 from .report import build_decoding_report
 from .runner import DecodingRunner, DecodingRunnerResults, DecodingSettings
@@ -8,7 +8,7 @@ from .runner import DecodingRunner, DecodingRunnerResults, DecodingSettings
 
 __all__ = [
     "FailedDecode",
-    "DecodedBarcode",
+    "DecodedDELCompound",
     "DecodeStatistics",
     "DecodingRunner",
     "DecodingSettings",

@@ -1,25 +1,36 @@
-import pandas as pd
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import seaborn as sns
 from matplotlib_venn import venn2, venn3
-from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
-from sklearn.dummy import DummyRegressor, DummyClassifier
-from sklearn.model_selection import train_test_split, KFold
-from sklearn.metrics import accuracy_score, r2_score, confusion_matrix
+from PIL import ImageDraw
 from rdkit import Chem
 from rdkit.Chem import AllChem, Draw
 from rdkit.Chem.Draw import rdMolDraw2D
-import numpy as np
+from sklearn.dummy import DummyClassifier, DummyRegressor
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from sklearn.metrics import accuracy_score, confusion_matrix, r2_score
+from sklearn.model_selection import KFold
 from tqdm import tqdm
-import seaborn as sns
-from PIL import ImageDraw, ImageFont
+
 from deli.analysis.poly_o import PolyO
 
+
 class DELi_Cube:
-    def __init__(self, data: pd.DataFrame, id_col: str, indexes: dict, control_cols: dict = None, lib_size: int = None, raw_indexes: dict = None):
+    def __init__(
+        self,
+        data: pd.DataFrame,
+        id_col: str,
+        indexes: dict,
+        control_cols: dict = None,
+        lib_size: int = None,
+        raw_indexes: dict = None,
+    ):
         """
         Initialize the DELi_Cube object with the provided data, indexes, and control columns.
 
-        Parameters:
+        Parameters
+        ----------
             data (pd.DataFrame): The DataFrame containing the data.
             id_col (str): The column name for the ID column.
             indexes (dict): A dictionary mapping experimental IDs to index ranges.
@@ -44,22 +55,34 @@ class DELi_Cube:
         self.lib_size = lib_size
         self.raw_indexes = raw_indexes
 
-        if not all(col in self.data.columns for col in ['ID_A', 'ID_B', 'ID_C']):
+        if not all(col in self.data.columns for col in ["ID_A", "ID_B", "ID_C"]):
             first_row_id = self.data[self.id_col].iloc[0]
-            parts_count = len(first_row_id.split('-'))
+            parts_count = len(first_row_id.split("-"))
 
             if parts_count == 2:
-                new_cols = self.data[self.id_col].str.split('-', expand=True)
-                new_cols.columns = ['ID_A', 'ID_B']
-                self.data = pd.concat([self.data.iloc[:, :self.data.columns.get_loc(self.id_col) + 1], new_cols, self.data.iloc[:, self.data.columns.get_loc(self.id_col) + 1:]], axis=1)
+                new_cols = self.data[self.id_col].str.split("-", expand=True)
+                new_cols.columns = ["ID_A", "ID_B"]
+                self.data = pd.concat(
+                    [
+                        self.data.iloc[:, : self.data.columns.get_loc(self.id_col) + 1],
+                        new_cols,
+                        self.data.iloc[:, self.data.columns.get_loc(self.id_col) + 1 :],
+                    ],
+                    axis=1,
+                )
             elif parts_count == 3:
-                new_cols = self.data[self.id_col].str.split('-', expand=True)
-                new_cols.columns = ['ID_A', 'ID_B', 'ID_C']
-                self.data = pd.concat([self.data.iloc[:, :self.data.columns.get_loc(self.id_col) + 1], new_cols, self.data.iloc[:, self.data.columns.get_loc(self.id_col) + 1:]], axis=1)
+                new_cols = self.data[self.id_col].str.split("-", expand=True)
+                new_cols.columns = ["ID_A", "ID_B", "ID_C"]
+                self.data = pd.concat(
+                    [
+                        self.data.iloc[:, : self.data.columns.get_loc(self.id_col) + 1],
+                        new_cols,
+                        self.data.iloc[:, self.data.columns.get_loc(self.id_col) + 1 :],
+                    ],
+                    axis=1,
+                )
             else:
                 raise ValueError("DEL_ID must be split into 2 or 3 parts.")
-
-
 
     def SD_min(self) -> tuple:
         """
@@ -68,16 +91,21 @@ class DELi_Cube:
         thus if we evaluate our NSC_max we can determine if the minimum sampling depth is met.
         DOI: https://doi.org/10.1177/2472555218757718
 
-        Returns:
+        Returns
+        -------
             tuple: (NSC_max_dict, SD_min_dict, sampling_depth_dict) where:
             - NSC_max_dict (dict): Dictionary with the highest NSC value for each experiment.
             - SD_min_dict (dict): Dictionary with the minimum sampling depth required for each experiment.
             - sampling_depth_dict (dict): Dictionary with the total sampling depth for each experiment.
         """
         if self.lib_size is None:
-            raise ValueError("Library size must be provided during initialization to run SD_min method.")
+            raise ValueError(
+                "Library size must be provided during initialization to run SD_min method."
+            )
         if self.raw_indexes is None:
-            raise ValueError("Raw indexes must be provided during initialization to run SD_min method.")
+            raise ValueError(
+                "Raw indexes must be provided during initialization to run SD_min method."
+            )
 
         NSC_max_dict = {}
         SD_min_dict = {}
@@ -89,10 +117,10 @@ class DELi_Cube:
 
             exp_row_sum = self.data[columns].sum(axis=1)
             exp_NSC = exp_row_sum / total_sampling_depth
-            
+
             exp_NSC_max = round(exp_NSC.max(), 2)
             NSC_max_dict[f"{exp_name}_NSC_max"] = exp_NSC_max
-            
+
             SD_min_dict[f"{exp_name}_SD_min"] = 10 / exp_NSC_max
             sampling_depth_dict[f"{exp_name}_sampling_depth"] = total_sampling_depth
 
@@ -104,13 +132,18 @@ class DELi_Cube:
         for all library members.
         DOI: http://dx.doi.org/10.1002/anie.201410736
 
-        Returns:
+        Returns
+        -------
             pd.DataFrame: DataFrame with NSC values for each library member.
         """
         if self.lib_size is None:
-            raise ValueError("Library size must be provided during initialization to run NSC_values method.")
+            raise ValueError(
+                "Library size must be provided during initialization to run NSC_values method."
+            )
         if self.raw_indexes is None:
-            raise ValueError("Raw indexes must be provided during initialization to run NSC_values method.")
+            raise ValueError(
+                "Raw indexes must be provided during initialization to run NSC_values method."
+            )
 
         for exp_name, columns in self.raw_indexes.items():
             row_sum = self.data[columns].sum(axis=1)
@@ -123,23 +156,27 @@ class DELi_Cube:
             self.data[f"{exp_name}_NSC"] = exp_NSC
 
         return self.data
-    
+
     def NSC_enrichment_intervals(self, nsc_df: pd.DataFrame) -> pd.DataFrame:
         """
         Calculate normalized sequence count intervals assuming a Poisson distribution.
 
-        Parameters:
+        Parameters
+        ----------
             nsc_df (pd.DataFrame): DataFrame returned from NSC_values method.
 
-        Returns:
+        Returns
+        -------
             pd.DataFrame: DataFrame with NSC enrichment intervals for each library member.
         """
         if self.lib_size is None:
-            raise ValueError("Library size must be provided during initialization to run NSC_enrichment_intervals method.")
-        
+            raise ValueError(
+                "Library size must be provided during initialization to run NSC_enrichment_intervals method."
+            )
+
         if not isinstance(nsc_df, pd.DataFrame):
             raise ValueError("Input must be a DataFrame returned from NSC_values method.")
-        
+
         df = nsc_df.copy()
         for exp_name in self.indexes.keys():
             mean_seq_count = df[f"{exp_name}_sum"].sum(axis=0) / self.lib_size
@@ -154,12 +191,15 @@ class DELi_Cube:
 
         DOI: https://doi.org/10.1021/acsomega.3c02152
 
-        Returns:
+        Returns
+        -------
             pd.DataFrame: DataFrame with maximum likelihood enrichment ratio for each library member.
         """
         if self.control_cols is None:
-            raise ValueError("Control columns must be provided during initialization to run maximum_likelihood_enrichment_ratio method.")
-        
+            raise ValueError(
+                "Control columns must be provided during initialization to run maximum_likelihood_enrichment_ratio method."
+            )
+
         df = self.data.copy()
 
         for exp_name, columns in self.indexes.items():
@@ -174,34 +214,34 @@ class DELi_Cube:
                 control_total = df[control_col].sum()
                 selection_total = df[columns].sum(axis=1).sum()
 
-                df[f"{exp_name}_MLE"] = (
-                    (control_total / selection_total) *
-                    (((df[columns].sum(axis=1)) + 3/8) / (df[control_col] + 3/8))
+                df[f"{exp_name}_MLE"] = (control_total / selection_total) * (
+                    ((df[columns].sum(axis=1)) + 3 / 8) / (df[control_col] + 3 / 8)
                 )
 
         self.data = df
         return self.data
 
-
- 
-   
     def z_score(self):
         """
         Calculate the normalized z-score (zn) for each experimental group compared to the control column.
 
-        The z-score is calculated using the observed count (C) and expected count (E), with 
+        The z-score is calculated using the observed count (C) and expected count (E), with
         standard deviation from a binomial distribution. The final zn is further normalized by sqrt(n).
 
         DOI: 10.1021/acscombsci.8b00116
 
-        Raises:
+        Raises
+        ------
             ValueError: If control columns are missing or contain only zeros.
 
-        Returns:
+        Returns
+        -------
             pd.DataFrame: DataFrame with sum, average, and normalized z-score columns.
         """
         if not self.control_cols:
-            raise ValueError("Control columns must be provided during initialization to run z_score method.")
+            raise ValueError(
+                "Control columns must be provided during initialization to run z_score method."
+            )
 
         df = self.data.copy()
 
@@ -220,24 +260,34 @@ class DELi_Cube:
 
                 control_values = df[control_col]
                 if control_values.sum() == 0:
-                    raise ValueError(f"The control column '{control_col}' has a sum of zero. Calculation cannot be done.")
+                    raise ValueError(
+                        f"The control column '{control_col}' has a sum of zero. Calculation cannot be done."
+                    )
                 else:
                     # If there are non-zero control values, compute the expected count (E)
                     df[f"{exp_name}_E"] = control_values
 
                     # If there are zero values in the control column, replace them with the median of non-zero control values
-                    df[f"{exp_name}_E"] = df[f"{exp_name}_E"].replace(0, control_values[control_values > 0].median())
+                    df[f"{exp_name}_E"] = df[f"{exp_name}_E"].replace(
+                        0, control_values[control_values > 0].median()
+                    )
 
                 n = df[control_col].sum(axis=0)
 
                 if df[f"{exp_name}_C"].sum(axis=0) == 0 or n == 0:
-                    raise ValueError(f"Total sum for experiment '{exp_name}' or its control is zero, cannot compute z-score.")
+                    raise ValueError(
+                        f"Total sum for experiment '{exp_name}' or its control is zero, cannot compute z-score."
+                    )
 
                 # binomial standard deviation: σ = sqrt(E * (1 - p_i))
-                df[f"{exp_name}_sigma"] = np.sqrt(df[f"{exp_name}_E"] * (1 - (df[f"{exp_name}_E"] / n)))
+                df[f"{exp_name}_sigma"] = np.sqrt(
+                    df[f"{exp_name}_E"] * (1 - (df[f"{exp_name}_E"] / n))
+                )
 
                 # raw z-score: z = (C - E) / σ
-                df[f"{exp_name}_z_score"] = (df[f"{exp_name}_C"] - df[f"{exp_name}_E"]) / df[f"{exp_name}_sigma"]
+                df[f"{exp_name}_z_score"] = (df[f"{exp_name}_C"] - df[f"{exp_name}_E"]) / df[
+                    f"{exp_name}_sigma"
+                ]
 
                 # normalized z-score: zn = z / sqrt(n)
                 df[f"{exp_name}_norm_z_score"] = df[f"{exp_name}_z_score"] / np.sqrt(n)
@@ -255,11 +305,14 @@ class DELi_Cube:
         4. Computes the mean and standard deviation of the log-transformed control group.
         5. Calculates the log-transformed z-scores for the experimental group based on the control group's statistics.
 
-        Returns:
+        Returns
+        -------
             pd.DataFrame: DataFrame with additional columns for the log-transformed sums, averages, and z-scores for each experimental group.
         """
         if not self.control_cols:
-            raise ValueError("Control columns must be provided during initialization to run z_score_log_data method.")
+            raise ValueError(
+                "Control columns must be provided during initialization to run z_score_log_data method."
+            )
 
         df = self.data.copy()
 
@@ -283,10 +336,14 @@ class DELi_Cube:
                 control_values = df[control_col]
 
                 if control_values.sum() == 0:
-                    raise ValueError(f"The control column '{control_col}' has a sum of zero. Calculation cannot be done.")
+                    raise ValueError(
+                        f"The control column '{control_col}' has a sum of zero. Calculation cannot be done."
+                    )
 
                 df[f"{exp_name}_control_log"] = np.log1p(control_values)
-                df[f"{exp_name}_control_log"] = df[f"{exp_name}_control_log"].replace(0, np.log1p(control_values[control_values > 0].median()))
+                df[f"{exp_name}_control_log"] = df[f"{exp_name}_control_log"].replace(
+                    0, np.log1p(control_values[control_values > 0].median())
+                )
 
             # mean and standard deviation of the log-transformed control values
             df[f"{exp_name}_control_log_mean"] = df[f"{exp_name}_control_log"].mean()
@@ -295,29 +352,34 @@ class DELi_Cube:
             # log-transformed z-score while handling zero standard deviation
             df[f"{exp_name}_z_score_log"] = df.apply(
                 lambda row: (
-                    (row[f"{exp_name}_log"] - row[f"{exp_name}_control_log_mean"]) / row[f"{exp_name}_control_log_std"]
-                    if row[f"{exp_name}_control_log_std"] > 0 else np.nan
+                    (row[f"{exp_name}_log"] - row[f"{exp_name}_control_log_mean"])
+                    / row[f"{exp_name}_control_log_std"]
+                    if row[f"{exp_name}_control_log_std"] > 0
+                    else np.nan
                 ),
-                axis=1
+                axis=1,
             )
 
             # Handle any missing or problematic z-scores (i.e., divide by zero or invalid calculation)
             if df[f"{exp_name}_z_score_log"].isnull().any():
-                raise ValueError(f"Some log-transformed z-scores for experiment '{exp_name}' are invalid (NaN values).")
+                raise ValueError(
+                    f"Some log-transformed z-scores for experiment '{exp_name}' are invalid (NaN values)."
+                )
 
         self.data = df
         return self.data
 
-
-    
     def PolyO(self, feature_mode="disynthon") -> pd.DataFrame:
         """
         Calculate PolyO scores and update the DataFrame with the results.
 
-        Returns:
+        Returns
+        -------
             pd.DataFrame: The updated DataFrame with PolyO scores.
         """
-        polyo = PolyO(self.data, self.indexes, self.raw_indexes, self.lib_size, feature_mode=feature_mode)
+        polyo = PolyO(
+            self.data, self.indexes, self.raw_indexes, self.lib_size, feature_mode=feature_mode
+        )
         polyo.calculate_polyOraw()
         polyo.find_Ccpd()
         polyo.calculate_Cread()
@@ -331,11 +393,14 @@ class DELi_Cube:
         Normalize specified columns by subtracting the control column in the DataFrame,
         ensuring no values go below zero.
 
-        Returns:
+        Returns
+        -------
             pd.DataFrame: The DataFrame with normalized columns.
         """
         if self.control_cols is None:
-            raise ValueError("Control columns must be provided during initialization to run normalize method.")
+            raise ValueError(
+                "Control columns must be provided during initialization to run normalize method."
+            )
 
         normalized_df = self.data.copy()
 
@@ -346,13 +411,13 @@ class DELi_Cube:
                 raise ValueError(f"Control column for {exp_name} not provided.")
 
             if isinstance(control_col, list):
-                if not control_col: 
+                if not control_col:
                     raise ValueError(f"Control column for {exp_name} is an empty list.")
                 control_col = control_col[0]
 
             if control_col not in normalized_df.columns:
                 raise ValueError(f"Control column '{control_col}' not found in the DataFrame")
-            
+
             print(f"Normalizing {exp_name} with columns: {columns}")
 
             # Use a temporary DataFrame for normalization
@@ -362,79 +427,86 @@ class DELi_Cube:
             normalized_df[f"{exp_name}_avg"] = normalized_df[columns].mean(axis=1)
             # Collect control columns to drop after normalization
             control_cols_to_drop.add(control_col)
-            raw_col = control_col.replace('corrected', 'raw')
+            raw_col = control_col.replace("corrected", "raw")
             if raw_col in normalized_df.columns:
                 control_cols_to_drop.add(raw_col)
 
         # Drop all control columns after normalization
-        #normalized_df.drop(columns=list(control_cols_to_drop), inplace=True, axis=1)
+        # normalized_df.drop(columns=list(control_cols_to_drop), inplace=True, axis=1)
 
         self.data = normalized_df
         return self.data
-
 
     def disynthonize(self, df: pd.DataFrame = None, synthon_ids: list = None) -> tuple:
         """
         Generate disynthon columns and count data for each experimental group.
 
-        Parameters:
+        Parameters
+        ----------
             df (pd.DataFrame, optional): The DataFrame containing the data. Defaults to self.data.
             synthon_ids (list, optional): List of synthon column names. Defaults to ['ID_A', 'ID_B', 'ID_C'].
 
-        Returns:
+        Returns
+        -------
             tuple: A tuple containing the updated DataFrame and a dictionary mapping experiment names to disynthon count columns.
         """
         if df is None:
             df = self.data
 
         if synthon_ids is None:
-            synthon_ids = ['ID_A', 'ID_B', 'ID_C']
+            synthon_ids = ["ID_A", "ID_B", "ID_C"]
 
         if len(synthon_ids) not in [2, 3]:
             raise ValueError("synthon_ids must contain exactly two or three elements.")
-        
+
         missing_cols = [col for col in synthon_ids if col not in df.columns]
         if missing_cols:
             raise ValueError(f"Missing synthon columns: {', '.join(missing_cols)}")
-        
+
         new_cols = {}
-        new_cols['AB'] = df[synthon_ids[0]] + '-' + df[synthon_ids[1]]
+        new_cols["AB"] = df[synthon_ids[0]] + "-" + df[synthon_ids[1]]
         if len(synthon_ids) == 3:
-            new_cols['AC'] = df[synthon_ids[0]] + '-' + df[synthon_ids[2]]
-            new_cols['BC'] = df[synthon_ids[1]] + '-' + df[synthon_ids[2]]
+            new_cols["AC"] = df[synthon_ids[0]] + "-" + df[synthon_ids[2]]
+            new_cols["BC"] = df[synthon_ids[1]] + "-" + df[synthon_ids[2]]
 
         col_order = list(df.columns)
-        if 'DEL_ID' in col_order:
-            del_idx = col_order.index('DEL_ID') + 1  
+        if "DEL_ID" in col_order:
+            del_idx = col_order.index("DEL_ID") + 1
             for col_name, col_values in reversed(new_cols.items()):
                 df.insert(del_idx, col_name, col_values)
         else:
             for col_name, col_values in new_cols.items():
-                df[col_name] = col_values  
+                df[col_name] = col_values
 
         exp_dict = {}
 
         for exp_id, index_range in self.indexes.items():
-            ab_count = df.groupby('AB')[index_range].sum().reset_index()
-            ab_count.columns = ['AB'] + [f'count_AB_{exp_id}_{idx}' for idx in index_range]
+            ab_count = df.groupby("AB")[index_range].sum().reset_index()
+            ab_count.columns = ["AB"] + [f"count_AB_{exp_id}_{idx}" for idx in index_range]
 
             if len(synthon_ids) == 3:
-                ac_count = df.groupby('AC')[index_range].sum().reset_index()
-                ac_count.columns = ['AC'] + [f'count_AC_{exp_id}_{idx}' for idx in index_range]
+                ac_count = df.groupby("AC")[index_range].sum().reset_index()
+                ac_count.columns = ["AC"] + [f"count_AC_{exp_id}_{idx}" for idx in index_range]
 
-                bc_count = df.groupby('BC')[index_range].sum().reset_index()
-                bc_count.columns = ['BC'] + [f'count_BC_{exp_id}_{idx}' for idx in index_range]
+                bc_count = df.groupby("BC")[index_range].sum().reset_index()
+                bc_count.columns = ["BC"] + [f"count_BC_{exp_id}_{idx}" for idx in index_range]
 
-            df = df.merge(ab_count, on='AB', how='left')
+            df = df.merge(ab_count, on="AB", how="left")
             if len(synthon_ids) == 3:
-                df = df.merge(ac_count, on='AC', how='left')
-                df = df.merge(bc_count, on='BC', how='left')
+                df = df.merge(ac_count, on="AC", how="left")
+                df = df.merge(bc_count, on="BC", how="left")
 
             for idx in index_range:
-                exp_dict[f'AB_{exp_id}'] = exp_dict.get(f'AB_{exp_id}', []) + [f'count_AB_{exp_id}_{idx}']
+                exp_dict[f"AB_{exp_id}"] = exp_dict.get(f"AB_{exp_id}", []) + [
+                    f"count_AB_{exp_id}_{idx}"
+                ]
                 if len(synthon_ids) == 3:
-                    exp_dict[f'AC_{exp_id}'] = exp_dict.get(f'AC_{exp_id}', []) + [f'count_AC_{exp_id}_{idx}']
-                    exp_dict[f'BC_{exp_id}'] = exp_dict.get(f'BC_{exp_id}', []) + [f'count_BC_{exp_id}_{idx}']
+                    exp_dict[f"AC_{exp_id}"] = exp_dict.get(f"AC_{exp_id}", []) + [
+                        f"count_AC_{exp_id}_{idx}"
+                    ]
+                    exp_dict[f"BC_{exp_id}"] = exp_dict.get(f"BC_{exp_id}", []) + [
+                        f"count_BC_{exp_id}_{idx}"
+                    ]
 
         for count_cols in exp_dict.values():
             for col in count_cols:
@@ -443,13 +515,23 @@ class DELi_Cube:
         self.data = df
         return df, exp_dict
 
-
-    def get_top_disynthons(self, disynthon_data: pd.DataFrame, exp_name1: str, comparison_type: str = 'control', exp_name2: str = None, control_name: str = None, comparison_metric: str = 'avg', top_count: int = 20, output_dir: str = '.') -> None:
+    def get_top_disynthons(
+        self,
+        disynthon_data: pd.DataFrame,
+        exp_name1: str,
+        comparison_type: str = "control",
+        exp_name2: str = None,
+        control_name: str = None,
+        comparison_metric: str = "avg",
+        top_count: int = 20,
+        output_dir: str = ".",
+    ) -> None:
         """
         Plots a bar chart comparing enrichment between two experimental sets or a single experiment vs control based on a specified metric.
         Creates a separate plot for each synthon type (e.g., AB, BC, AC).
 
-        Parameters:
+        Parameters
+        ----------
             disynthon_data (pd.DataFrame): The DataFrame containing disynthon data.
             exp_name1 (str): The name of the first experiment.
             comparison_type (str): The type of comparison ('control', 'exp2', or 'none').
@@ -462,31 +544,31 @@ class DELi_Cube:
         if exp_name1 not in self.indexes:
             raise ValueError(f"Experiment '{exp_name1}' not found in the indexes.")
 
-        if comparison_type == 'exp2':
+        if comparison_type == "exp2":
             if not exp_name2:
                 raise ValueError("exp_name2 must be provided for comparison_type 'exp2'.")
             if exp_name2 not in self.indexes:
                 raise ValueError(f"Experiment '{exp_name2}' not found in the indexes.")
 
-        elif comparison_type == 'control':
+        elif comparison_type == "control":
             if not control_name:
                 raise ValueError("control_name must be provided for comparison_type 'control'.")
             if control_name not in self.control_cols:
                 raise ValueError(f"Control column '{control_name}' not found in the DataFrame.")
 
-        elif comparison_type not in ['control', 'exp2', 'none']:
+        elif comparison_type not in ["control", "exp2", "none"]:
             raise ValueError("comparison_type must be either 'control', 'exp2', or 'none'.")
 
-        if comparison_metric not in ['sum', 'avg']:
+        if comparison_metric not in ["sum", "avg"]:
             raise ValueError("Comparison metric must be either 'sum' or 'avg'.")
 
         synthon_ids = []
-        if any(col.startswith('AB') for col in disynthon_data.columns):
-            synthon_ids.append('AB')
-        if any(col.startswith('BC') for col in disynthon_data.columns):
-            synthon_ids.append('BC')
-        if any(col.startswith('AC') for col in disynthon_data.columns):
-            synthon_ids.append('AC')
+        if any(col.startswith("AB") for col in disynthon_data.columns):
+            synthon_ids.append("AB")
+        if any(col.startswith("BC") for col in disynthon_data.columns):
+            synthon_ids.append("BC")
+        if any(col.startswith("AC") for col in disynthon_data.columns):
+            synthon_ids.append("AC")
 
         if not synthon_ids:
             raise ValueError("No valid synthon columns found in the DataFrame.")
@@ -498,48 +580,56 @@ class DELi_Cube:
 
             index_cols1 = self.indexes[exp_name1]
             grouped_counts1 = disynthon_data.groupby(synthon)[index_cols1].sum().reset_index()
-            grouped_counts1['exp'] = exp_name1
+            grouped_counts1["exp"] = exp_name1
 
-            if comparison_metric == 'avg':
-                grouped_counts1['metric'] = grouped_counts1[index_cols1].mean(axis=1)
+            if comparison_metric == "avg":
+                grouped_counts1["metric"] = grouped_counts1[index_cols1].mean(axis=1)
             else:
-                grouped_counts1['metric'] = grouped_counts1[index_cols1].sum(axis=1)
+                grouped_counts1["metric"] = grouped_counts1[index_cols1].sum(axis=1)
 
             grouped_counts2 = pd.DataFrame()
 
-            if comparison_type == 'exp2':
+            if comparison_type == "exp2":
                 if exp_name2:
                     index_cols2 = self.indexes[exp_name2]
-                    grouped_counts2 = disynthon_data.groupby(synthon)[index_cols2].sum().reset_index()
-                    grouped_counts2['exp'] = exp_name2
+                    grouped_counts2 = (
+                        disynthon_data.groupby(synthon)[index_cols2].sum().reset_index()
+                    )
+                    grouped_counts2["exp"] = exp_name2
 
-                    if comparison_metric == 'avg':
-                        grouped_counts2['metric'] = grouped_counts2[index_cols2].mean(axis=1)
+                    if comparison_metric == "avg":
+                        grouped_counts2["metric"] = grouped_counts2[index_cols2].mean(axis=1)
                     else:
-                        grouped_counts2['metric'] = grouped_counts2[index_cols2].sum(axis=1)
+                        grouped_counts2["metric"] = grouped_counts2[index_cols2].sum(axis=1)
 
-            elif comparison_type == 'control':
+            elif comparison_type == "control":
                 if control_name:
                     index_cols2 = self.control_cols[control_name]
-                    grouped_counts2 = disynthon_data.groupby(synthon)[index_cols2].sum().reset_index()
-                    grouped_counts2['exp'] = control_name
+                    grouped_counts2 = (
+                        disynthon_data.groupby(synthon)[index_cols2].sum().reset_index()
+                    )
+                    grouped_counts2["exp"] = control_name
 
-                    if comparison_metric == 'avg':
-                        grouped_counts2['metric'] = grouped_counts2[index_cols2].mean(axis=1)
+                    if comparison_metric == "avg":
+                        grouped_counts2["metric"] = grouped_counts2[index_cols2].mean(axis=1)
                     else:
-                        grouped_counts2['metric'] = grouped_counts2[index_cols2].sum(axis=1)
+                        grouped_counts2["metric"] = grouped_counts2[index_cols2].sum(axis=1)
 
-            elif comparison_type == 'none':
+            elif comparison_type == "none":
                 grouped_counts2 = grouped_counts1
 
             if not grouped_counts2.empty:
-                merged_counts = grouped_counts1.merge(grouped_counts2, on=synthon, suffixes=('_exp1', '_exp2'))
+                merged_counts = grouped_counts1.merge(
+                    grouped_counts2, on=synthon, suffixes=("_exp1", "_exp2")
+                )
 
-                if comparison_type != 'none':
-                    merged_counts['diff'] = merged_counts['metric_exp1'] - merged_counts['metric_exp2']
-                    top_disynthons = merged_counts.nlargest(top_count, 'diff')
+                if comparison_type != "none":
+                    merged_counts["diff"] = (
+                        merged_counts["metric_exp1"] - merged_counts["metric_exp2"]
+                    )
+                    top_disynthons = merged_counts.nlargest(top_count, "diff")
                 else:
-                    top_disynthons = merged_counts.nlargest(top_count, 'metric_exp1')
+                    top_disynthons = merged_counts.nlargest(top_count, "metric_exp1")
 
                 enrichment_results.append(top_disynthons)
 
@@ -553,27 +643,47 @@ class DELi_Cube:
 
                 width = 0.35
 
-                if comparison_type == 'none':
-                    ax.bar(x, final_results['metric_exp1'], width, label=exp_name1, color='skyblue')
+                if comparison_type == "none":
+                    ax.bar(
+                        x, final_results["metric_exp1"], width, label=exp_name1, color="skyblue"
+                    )
                     ax.set_xticks(x)
                     ax.set_xticklabels(x_labels, rotation=90, fontsize=12)
                     ax.set_xlabel(f"{synthon} Disynthon")
                     ax.set_ylabel("Enrichment")
-                    ax.set_title(f"Top {top_count} {synthon} Disynthons: {exp_name1}", fontsize=14, fontweight='bold')
+                    ax.set_title(
+                        f"Top {top_count} {synthon} Disynthons: {exp_name1}",
+                        fontsize=14,
+                        fontweight="bold",
+                    )
                     ax.legend()
 
                 else:
                     x1 = [pos - width / 2 for pos in x]
                     x2 = [pos + width / 2 for pos in x]
 
-                    ax.bar(x1, final_results['metric_exp1'], width, label=exp_name1, color='skyblue')
-                    ax.bar(x2, final_results['metric_exp2'], width, label=exp_name2 if comparison_type == 'exp2' else control_name + '_control', color='orange')
+                    ax.bar(
+                        x1, final_results["metric_exp1"], width, label=exp_name1, color="skyblue"
+                    )
+                    ax.bar(
+                        x2,
+                        final_results["metric_exp2"],
+                        width,
+                        label=exp_name2
+                        if comparison_type == "exp2"
+                        else control_name + "_control",
+                        color="orange",
+                    )
 
                     ax.set_xticks(x)
                     ax.set_xticklabels(x_labels, rotation=90, fontsize=12)
                     ax.set_xlabel(f"{synthon} Disynthon")
                     ax.set_ylabel("Enrichment")
-                    ax.set_title(f"Top {top_count} {synthon} Disynthons: {exp_name1}{' vs ' + (exp_name2 if comparison_type == 'exp2' else control_name + '_control') if comparison_type != 'none' else ''}", fontsize=14, fontweight='bold')
+                    ax.set_title(
+                        f"Top {top_count} {synthon} Disynthons: {exp_name1}{' vs ' + (exp_name2 if comparison_type == 'exp2' else control_name + '_control') if comparison_type != 'none' else ''}",
+                        fontsize=14,
+                        fontweight="bold",
+                    )
                     ax.legend()
 
                 plt.tight_layout()
@@ -591,51 +701,75 @@ class DELi_Cube:
         with corrected indexes, renaming based on experiment IDs and adding an average column for each experiment.
         Ensures that '_sum' columns are present for each experiment and calculates them if missing.
 
-        Returns:
+        Returns
+        -------
             pd.DataFrame: The Spotfire-friendly DataFrame.
         """
         df = self.data.copy()
-        smiles_index = df.columns.get_loc('SMILES')
-        cols_to_keep = df.columns[:smiles_index + 1].tolist() + [col for col in df.columns[smiles_index + 1:] if any(pattern in col for pattern in ['_sum', '_NSC', '_MLE', '_z_score', '_norm_z_score', "_PolyO_score"])]
+        smiles_index = df.columns.get_loc("SMILES")
+        cols_to_keep = df.columns[: smiles_index + 1].tolist() + [
+            col
+            for col in df.columns[smiles_index + 1 :]
+            if any(
+                pattern in col
+                for pattern in [
+                    "_sum",
+                    "_NSC",
+                    "_MLE",
+                    "_z_score",
+                    "_norm_z_score",
+                    "_PolyO_score",
+                ]
+            )
+        ]
 
         for exp_name, index_range in self.indexes.items():
-            sum_col_name = f'{exp_name}_sum'
+            sum_col_name = f"{exp_name}_sum"
             if sum_col_name not in df.columns:
                 df[sum_col_name] = df[index_range].sum(axis=1)
                 cols_to_keep.append(sum_col_name)
 
         # Round relevant columns
         for col in cols_to_keep:
-            if any(pattern in col for pattern in ['_sum', '_NSC', '_MLE', '_z_score', '_norm_z_score', "_PolyO_score"]):
+            if any(
+                pattern in col
+                for pattern in [
+                    "_sum",
+                    "_NSC",
+                    "_MLE",
+                    "_z_score",
+                    "_norm_z_score",
+                    "_PolyO_score",
+                ]
+            ):
                 df[col] = df[col].round(2)
 
         spotfire_df = df[cols_to_keep]
 
         for exp_name, index_range in self.indexes.items():
             for column in index_range:
-                spotfire_df.rename(columns={column: f'{exp_name}_{column}'}, inplace=True)
-            avg_col_name = f'{exp_name}_avg'
+                spotfire_df.rename(columns={column: f"{exp_name}_{column}"}, inplace=True)
+            avg_col_name = f"{exp_name}_avg"
             if avg_col_name not in spotfire_df.columns:
                 spotfire_df[avg_col_name] = df[index_range].mean(axis=1).round(2)
 
         return spotfire_df
 
-    
     def trisynthon_overlap(self, output_dir=None, normalized_data=None, threshold=0.0):
         """
         Create overlap diagrams for tri-synth experiments using normalized data and corrected indexes.
 
-        Parameters:
+        Parameters
+        ----------
             normalized_data (pd.DataFrame, optional): The DataFrame containing normalized data.
                If None, it defaults to using self.data.
             threshold (float): The threshold for filtering counts. Default is 0.0.
         """
-       
         if normalized_data is None:
             normalized_data = self.data
 
         if output_dir is None:
-            output_dir = '.'
+            output_dir = "."
 
         valid_experiments = 0  # Track how many experiments have at least two valid indices
 
@@ -644,43 +778,57 @@ class DELi_Cube:
             num_valid_indices = len(valid_indices)
 
             if num_valid_indices < 2:
-                print(f"Skipping experiment '{exp_name}' - not enough valid indices ({num_valid_indices} found).")
+                print(
+                    f"Skipping experiment '{exp_name}' - not enough valid indices ({num_valid_indices} found)."
+                )
                 continue
             elif num_valid_indices < len(indices):
-                print(f"Warning: Experiment '{exp_name}' has missing indices. Proceeding with {num_valid_indices} valid indices.")
+                print(
+                    f"Warning: Experiment '{exp_name}' has missing indices. Proceeding with {num_valid_indices} valid indices."
+                )
 
             valid_experiments += 1
 
             filtered_data = normalized_data[
-                (normalized_data[valid_indices[0]] > threshold) |
-                (normalized_data[valid_indices[1]] > threshold)
+                (normalized_data[valid_indices[0]] > threshold)
+                | (normalized_data[valid_indices[1]] > threshold)
             ]
 
-            set_a = set(filtered_data[filtered_data[valid_indices[0]] > threshold]['DEL_ID'])
-            set_b = set(filtered_data[filtered_data[valid_indices[1]] > threshold]['DEL_ID'])
+            set_a = set(filtered_data[filtered_data[valid_indices[0]] > threshold]["DEL_ID"])
+            set_b = set(filtered_data[filtered_data[valid_indices[1]] > threshold]["DEL_ID"])
 
             plt.figure(figsize=(8, 6))
             if num_valid_indices == 3:
-                set_c = set(filtered_data[filtered_data[valid_indices[2]] > threshold]['DEL_ID'])
-                venn3([set_a, set_b, set_c], set_labels=(valid_indices[0], valid_indices[1], valid_indices[2]))
-                plt.title(f'Overlap Diagram for {exp_name} (Three Indices)')
+                set_c = set(filtered_data[filtered_data[valid_indices[2]] > threshold]["DEL_ID"])
+                venn3(
+                    [set_a, set_b, set_c],
+                    set_labels=(valid_indices[0], valid_indices[1], valid_indices[2]),
+                )
+                plt.title(f"Overlap Diagram for {exp_name} (Three Indices)")
             else:
                 venn2([set_a, set_b], set_labels=(valid_indices[0], valid_indices[1]))
-                plt.title(f'Overlap Diagram for {exp_name} (Two Indices)')
+                plt.title(f"Overlap Diagram for {exp_name} (Two Indices)")
 
-            plt.savefig(f'{output_dir}/{exp_name}_overlap_diagram.png')
+            plt.savefig(f"{output_dir}/{exp_name}_overlap_diagram.png")
             plt.close()
 
         if valid_experiments == 0:
-            raise ValueError("No experiments had at least two valid indices. Cannot generate overlap diagrams.")
+            raise ValueError(
+                "No experiments had at least two valid indices. Cannot generate overlap diagrams."
+            )
 
-
-
-    def disynthon_overlap(self, output_dir: str = None, disynthon_data: pd.DataFrame = None, disynth_exp_dict: dict = None, threshold: float = 0.0) -> None:
+    def disynthon_overlap(
+        self,
+        output_dir: str = None,
+        disynthon_data: pd.DataFrame = None,
+        disynth_exp_dict: dict = None,
+        threshold: float = 0.0,
+    ) -> None:
         """
         Create overlap diagrams for disynth experiments using normalized data and corrected indexes.
 
-        Parameters:
+        Parameters
+        ----------
             output_dir (str, optional): The directory to save the overlap diagrams. Defaults to the current directory.
             disynthon_data (pd.DataFrame, optional): The DataFrame containing disynthon data. Defaults to None.
             disynth_exp_dict (dict, optional): A dictionary mapping experiment names to the corresponding corrected index columns. Defaults to None.
@@ -692,14 +840,13 @@ class DELi_Cube:
                 'AB_NSP2_2034': ['count_AB_corrected_index7', 'count_AB_corrected_index8', 'count_AB_corrected_index9'],
             }
         """
-        
         if disynthon_data is None or disynth_exp_dict is None:
             raise ValueError("disynthon_data and disynth_exp_dict must be provided.")
 
         disynthon_data = disynthon_data.copy()
 
         if output_dir is None:
-            output_dir = '.'
+            output_dir = "."
 
         valid_experiments = 0  # Track number of valid experiments
 
@@ -709,19 +856,25 @@ class DELi_Cube:
             num_valid_indices = len(valid_indices)
 
             if num_valid_indices < 2:
-                print(f"Skipping experiment '{exp_name}' - not enough valid indices ({num_valid_indices} found).")
+                print(
+                    f"Skipping experiment '{exp_name}' - not enough valid indices ({num_valid_indices} found)."
+                )
                 continue
             elif num_valid_indices < len(indices):
-                print(f"Warning: Experiment '{exp_name}' has missing indices. Proceeding with {num_valid_indices} valid indices.")
+                print(
+                    f"Warning: Experiment '{exp_name}' has missing indices. Proceeding with {num_valid_indices} valid indices."
+                )
 
             valid_experiments += 1
 
             mask = disynthon_data[valid_indices].gt(threshold).any(axis=1)
             filtered_data = disynthon_data[mask]
 
-            disynthon_type = exp_name.split('_')[0]
+            disynthon_type = exp_name.split("_")[0]
             if disynthon_type not in filtered_data.columns:
-                print(f"Skipping experiment '{exp_name}' - column '{disynthon_type}' not found in the DataFrame.")
+                print(
+                    f"Skipping experiment '{exp_name}' - column '{disynthon_type}' not found in the DataFrame."
+                )
                 continue
 
             set_a = set(filtered_data[filtered_data[valid_indices[0]] > threshold][disynthon_type])
@@ -729,23 +882,35 @@ class DELi_Cube:
 
             plt.figure(figsize=(8, 6))
             if num_valid_indices == 3:
-                set_c = set(filtered_data[filtered_data[valid_indices[2]] > threshold][disynthon_type])
-                venn3([set_a, set_b, set_c], set_labels=(valid_indices[0], valid_indices[1], valid_indices[2]))
-                plt.title(f'Venn Diagram for {exp_name} (Three Indices) \n Threshold = {threshold}', fontsize=16)
+                set_c = set(
+                    filtered_data[filtered_data[valid_indices[2]] > threshold][disynthon_type]
+                )
+                venn3(
+                    [set_a, set_b, set_c],
+                    set_labels=(valid_indices[0], valid_indices[1], valid_indices[2]),
+                )
+                plt.title(
+                    f"Venn Diagram for {exp_name} (Three Indices) \n Threshold = {threshold}",
+                    fontsize=16,
+                )
             else:
                 venn2([set_a, set_b], set_labels=(valid_indices[0], valid_indices[1]))
-                plt.title(f'Venn Diagram for {exp_name} (Two Indices) \n Threshold = {threshold}', fontsize=16)
+                plt.title(
+                    f"Venn Diagram for {exp_name} (Two Indices) \n Threshold = {threshold}",
+                    fontsize=16,
+                )
 
-            plt.savefig(f'{output_dir}/{exp_name}_venn_diagram.png', bbox_inches='tight')
+            plt.savefig(f"{output_dir}/{exp_name}_venn_diagram.png", bbox_inches="tight")
             plt.close()
 
         if valid_experiments == 0:
-            raise ValueError("No experiments had at least two valid indices. Cannot generate overlap diagrams.")
-
+            raise ValueError(
+                "No experiments had at least two valid indices. Cannot generate overlap diagrams."
+            )
 
     def ml_fingerprints_to_RF(self, output_dir: str = None) -> None:
         """
-        Trains a Random Forest regressor and a Dummy regressor on trisynthon SMILES fingerprints 
+        Trains a Random Forest regressor and a Dummy regressor on trisynthon SMILES fingerprints
         to predict the average normalized enrichment using a subset of 100 molecules.
 
         The method performs the following steps:
@@ -755,10 +920,12 @@ class DELi_Cube:
         4. Evaluates the models using R² scores.
         5. Plots the true vs. predicted average enrichment for the last fold.
 
-        Parameters:
+        Parameters
+        ----------
             output_dir (str, optional): Directory to save the scatter plot. Defaults to None.
 
-        Returns:
+        Returns
+        -------
             None
         """
 
@@ -774,16 +941,18 @@ class DELi_Cube:
                 return None
 
         for exp_name, indices in self.indexes.items():
-            self.data[f'{exp_name}_average_enrichment'] = self.data[indices].mean(axis=1)
-            top_50 = self.data.nlargest(50, f'{exp_name}_average_enrichment')
+            self.data[f"{exp_name}_average_enrichment"] = self.data[indices].mean(axis=1)
+            top_50 = self.data.nlargest(50, f"{exp_name}_average_enrichment")
             remaining_data = self.data.drop(top_50.index)
             random_50 = remaining_data.sample(n=50, random_state=42)
             subset_data = pd.concat([top_50, random_50]).copy()
 
-            subset_data['fingerprints'] = [smiles_to_fingerprint(smiles) for smiles in tqdm(subset_data['SMILES'])]
-            subset_data.dropna(subset=['fingerprints'], inplace=True)
-            X = np.array([list(fp) for fp in subset_data['fingerprints']])
-            y = subset_data[f'{exp_name}_average_enrichment']
+            subset_data["fingerprints"] = [
+                smiles_to_fingerprint(smiles) for smiles in tqdm(subset_data["SMILES"])
+            ]
+            subset_data.dropna(subset=["fingerprints"], inplace=True)
+            X = np.array([list(fp) for fp in subset_data["fingerprints"]])
+            y = subset_data[f"{exp_name}_average_enrichment"]
 
             rf_model = RandomForestRegressor(random_state=42)
             dummy_model = DummyRegressor(strategy="mean")
@@ -812,23 +981,40 @@ class DELi_Cube:
             avg_r2_dummy = np.mean(r2_dummy_scores)
 
             plt.figure(figsize=(8, 6))
-            plt.scatter(last_y_test, last_y_pred_rf, label=f"Random Forest (Last Fold R² = {r2_rf_scores[-1]:.2f})", alpha=0.7)
-            plt.scatter(last_y_test, last_y_pred_dummy, label=f"Dummy Regressor (Last Fold R² = {r2_dummy_scores[-1]:.2f})", alpha=0.7, marker='x')
-            plt.plot([min(last_y_test), max(last_y_test)], [min(last_y_test), max(last_y_test)], color='black', linestyle='--')
-            plt.title(f'{exp_name} RF Regression: K-Fold Avg R² = {avg_r2_rf:.2f}, Dummy = {avg_r2_dummy:.2f}')
-            plt.xlabel('True Average Enrichment')
-            plt.ylabel('Predicted Average Enrichment')
+            plt.scatter(
+                last_y_test,
+                last_y_pred_rf,
+                label=f"Random Forest (Last Fold R² = {r2_rf_scores[-1]:.2f})",
+                alpha=0.7,
+            )
+            plt.scatter(
+                last_y_test,
+                last_y_pred_dummy,
+                label=f"Dummy Regressor (Last Fold R² = {r2_dummy_scores[-1]:.2f})",
+                alpha=0.7,
+                marker="x",
+            )
+            plt.plot(
+                [min(last_y_test), max(last_y_test)],
+                [min(last_y_test), max(last_y_test)],
+                color="black",
+                linestyle="--",
+            )
+            plt.title(
+                f"{exp_name} RF Regression: K-Fold Avg R² = {avg_r2_rf:.2f}, Dummy = {avg_r2_dummy:.2f}"
+            )
+            plt.xlabel("True Average Enrichment")
+            plt.ylabel("Predicted Average Enrichment")
             plt.legend(loc="upper left")
 
             if output_dir is None:
-                output_dir = '.'
-            plt.savefig(f'{output_dir}/{exp_name}_RF_regression.png')
+                output_dir = "."
+            plt.savefig(f"{output_dir}/{exp_name}_RF_regression.png")
             plt.close()
-        
 
     def ml_fingerprints_to_classifier(self, threshold: int = 2, output_dir: str = None) -> None:
         """
-        Trains a Random Forest classifier and a Dummy classifier on trisynthon SMILES fingerprints 
+        Trains a Random Forest classifier and a Dummy classifier on trisynthon SMILES fingerprints
         to predict the enrichment status using a subset of 100 molecules.
 
         The method performs the following steps:
@@ -838,13 +1024,16 @@ class DELi_Cube:
         4. Evaluates the models using accuracy scores and confusion matrices.
         5. Plots the confusion matrices for the last fold.
 
-        Parameters:
+        Parameters
+        ----------
             threshold (int, optional): Threshold value for enrichment status. Defaults to 2.
             output_dir (str, optional): Directory to save the classifier image. Defaults to None.
 
-        Returns:
+        Returns
+        -------
             None
         """
+
         def smiles_to_fingerprint(smiles, radius=3, n_bits=2048):
             mol = Chem.MolFromSmiles(smiles)
             if mol:
@@ -857,16 +1046,20 @@ class DELi_Cube:
                 return None
 
         for exp_name, indices in self.indexes.items():
-            self.data[f'{exp_name}_average_enrichment'] = self.data[indices].mean(axis=1)
-            top_50 = self.data.nlargest(100, f'{exp_name}_average_enrichment')
+            self.data[f"{exp_name}_average_enrichment"] = self.data[indices].mean(axis=1)
+            top_50 = self.data.nlargest(100, f"{exp_name}_average_enrichment")
             remaining_data = self.data.drop(top_50.index)
             random_50 = remaining_data.sample(n=100, random_state=42)
             subset_data = pd.concat([top_50, random_50]).copy()
-            subset_data['fingerprints'] = [smiles_to_fingerprint(smiles) for smiles in tqdm(subset_data['SMILES'])]
-            subset_data.dropna(subset=['fingerprints'], inplace=True)
-            subset_data['target'] = (subset_data[f'{exp_name}_average_enrichment'] > threshold).astype(int)
-            X = np.array([list(fp) for fp in subset_data['fingerprints']])
-            y = subset_data['target']
+            subset_data["fingerprints"] = [
+                smiles_to_fingerprint(smiles) for smiles in tqdm(subset_data["SMILES"])
+            ]
+            subset_data.dropna(subset=["fingerprints"], inplace=True)
+            subset_data["target"] = (
+                subset_data[f"{exp_name}_average_enrichment"] > threshold
+            ).astype(int)
+            X = np.array([list(fp) for fp in subset_data["fingerprints"]])
+            y = subset_data["target"]
             rf_model = RandomForestClassifier(random_state=42)
             dummy_model = DummyClassifier(strategy="most_frequent")
             kf = KFold(n_splits=5, shuffle=True, random_state=42)
@@ -891,29 +1084,55 @@ class DELi_Cube:
 
             plt.figure(figsize=(12, 5))
             plt.subplot(1, 2, 1)
-            sns.heatmap(cm_rf, annot=True, fmt='d', cmap='Blues', xticklabels=["Not Enriched", "Enriched"], yticklabels=["Not Enriched", "Enriched"])
-            plt.title(f"{exp_name} Random Forest Classifier (Avg Acc = {avg_acc_rf:.2f}), Threshold = {threshold} \n"
-                  f"Last Fold Confusion Matrix Accuracy= {acc_rf_scores[-1]:.2f}")
-            plt.xlabel('Predicted')
-            plt.ylabel('True')
+            sns.heatmap(
+                cm_rf,
+                annot=True,
+                fmt="d",
+                cmap="Blues",
+                xticklabels=["Not Enriched", "Enriched"],
+                yticklabels=["Not Enriched", "Enriched"],
+            )
+            plt.title(
+                f"{exp_name} Random Forest Classifier (Avg Acc = {avg_acc_rf:.2f}), Threshold = {threshold} \n"
+                f"Last Fold Confusion Matrix Accuracy= {acc_rf_scores[-1]:.2f}"
+            )
+            plt.xlabel("Predicted")
+            plt.ylabel("True")
             plt.subplot(1, 2, 2)
-            sns.heatmap(cm_dummy, annot=True, fmt='d', cmap='Blues', xticklabels=["Not Enriched", "Enriched"], yticklabels=["Not Enriched", "Enriched"])
-            plt.title(f"{exp_name} Dummy Classifier (Avg Acc = {avg_acc_dummy:.2f}), Threshold = {threshold} \n"
-                  f"Last Fold Confusion Matrix Accuracy= {acc_dummy_scores[-1]:.2f}")
-            plt.xlabel('Predicted')
-            plt.ylabel('True')
+            sns.heatmap(
+                cm_dummy,
+                annot=True,
+                fmt="d",
+                cmap="Blues",
+                xticklabels=["Not Enriched", "Enriched"],
+                yticklabels=["Not Enriched", "Enriched"],
+            )
+            plt.title(
+                f"{exp_name} Dummy Classifier (Avg Acc = {avg_acc_dummy:.2f}), Threshold = {threshold} \n"
+                f"Last Fold Confusion Matrix Accuracy= {acc_dummy_scores[-1]:.2f}"
+            )
+            plt.xlabel("Predicted")
+            plt.ylabel("True")
             plt.tight_layout()
 
             if output_dir is None:
-                output_dir = '.'
-            plt.savefig(f'{output_dir}/{exp_name}_classifier.png')
+                output_dir = "."
+            plt.savefig(f"{output_dir}/{exp_name}_classifier.png")
             plt.close()
 
-    def gnn_classifier(self, threshold: int = 2, output_dir: str = ".", arch: str = "GAT", num_layers: int = 3, encoding: str = "embedding") -> None:
+    def gnn_classifier(
+        self,
+        threshold: int = 2,
+        output_dir: str = ".",
+        arch: str = "GAT",
+        num_layers: int = 3,
+        encoding: str = "embedding",
+    ) -> None:
         """
         Train a Graph Neural Network (GNN) classifier to predict the enrichment status of compounds.
 
-        Parameters:
+        Parameters
+        ----------
             threshold (int, optional): Threshold value for enrichment status, by default 2.
             output_dir (str, optional): Directory to save the classifier image, by default ".".
             arch (str, optional): GNN architecture (GAT or GCN), by default "GAT".
@@ -922,72 +1141,77 @@ class DELi_Cube:
         """
         try:
             from deli.analysis.analyzers.gnn_analyzer import GNNAnalyzer
+
             analyzer = GNNAnalyzer(self.data, self.indexes)
             analyzer.classify(
                 threshold=threshold,
                 output_dir=output_dir,
                 arch=arch,
                 num_layers=num_layers,
-                encoding=encoding
+                encoding=encoding,
             )
         except ImportError as e:
             raise ImportError("GNN classifier requires PyTorch") from e
 
-
-
-    def top_n_compounds(self, n: int = 20, metric: str = 'sum', output_dir: str = None) -> None:
+    def top_n_compounds(self, n: int = 20, metric: str = "sum", output_dir: str = None) -> None:
         """
         Display the top N compounds based on a specified metric and save the image to the specified directory.
 
-        Parameters:
+        Parameters
+        ----------
             n (int, optional): Number of top compounds to display. Defaults to 20.
             metric (str, optional): Metric to rank the compounds. Defaults to 'sum'.
             output_dir (str, optional): Directory to save the image. Defaults to None (current directory).
         """
-        if metric == 'avg':
+        if metric == "avg":
             for exp_name, index_range in self.indexes.items():
-                avg_col_name = f'{exp_name}_avg'
+                avg_col_name = f"{exp_name}_avg"
                 if avg_col_name not in self.data.columns:
                     self.data[avg_col_name] = self.data[index_range].mean(axis=1).round(2)
 
         for exp_name, indices in self.indexes.items():
             # Ensure the compound is present at least once in each replicate
             filtered_data = self.data[(self.data[indices] > 0).all(axis=1)]
-            top_n = filtered_data.nlargest(n, f'{exp_name}_{metric}')
-            mols = [Chem.MolFromSmiles(smiles) for smiles in top_n['SMILES']]
-            legends = [f"{row['DEL_ID']}\n\n{metric}: {row[f'{exp_name}_{metric}']:.2f}" for _, row in top_n.iterrows()]
-            
+            top_n = filtered_data.nlargest(n, f"{exp_name}_{metric}")
+            mols = [Chem.MolFromSmiles(smiles) for smiles in top_n["SMILES"]]
+            legends = [
+                f"{row['DEL_ID']}\n\n{metric}: {row[f'{exp_name}_{metric}']:.2f}"
+                for _, row in top_n.iterrows()
+            ]
+
             dopts = rdMolDraw2D.MolDrawOptions()
             dopts.legendFontSize = 20
 
             try:
-                img = Draw.MolsToGridImage(mols, molsPerRow=4, subImgSize=(200, 200), legends=legends, drawOptions=dopts)
+                img = Draw.MolsToGridImage(
+                    mols, molsPerRow=4, subImgSize=(200, 200), legends=legends, drawOptions=dopts
+                )
                 # Add filename as text on top
                 draw = ImageDraw.Draw(img)
-                file_name = f'{exp_name}_top_{n}_compounds.png'
+                file_name = f"{exp_name}_top_{n}_compounds.png"
                 draw.text((10, 10), file_name[:-4], fill="black")
             except AttributeError:
                 pass
 
             if output_dir is None:
-                output_dir = '.'
-            file_name = f'{exp_name}_top_{n}_compounds.png'
-            
+                output_dir = "."
+            file_name = f"{exp_name}_top_{n}_compounds.png"
+
             try:
-                img.save(f'{output_dir}/{file_name}')
+                img.save(f"{output_dir}/{file_name}")
             except AttributeError:
                 pass
-            
+
             # Optional notebook display - lazy import to avoid hard dependency on IPython/Jupyter
             try:
                 from IPython.display import display
+
                 print(f"Top {n} compounds for {exp_name} based on {metric}")
                 display(img)
             except ImportError:
                 pass
 
-
-    def positive_control_finder(self, positive_control_ID = None):
+    def positive_control_finder(self, positive_control_ID=None):
         """_summary_
 
         Parameters
@@ -995,13 +1219,12 @@ class DELi_Cube:
         positive_control_ID : _type_, optional
             _description_, by default None
         """
-        
         # if positive_control_ID is None:
         #     raise ValueError("Positive control ID must be provided.")
-        
+
         # if positive_control_ID not in self.data['DEL_ID'].values:
         #     raise ValueError("Positive control ID not found in the data.")
-        
+
         # if "A***-B***-C***" in self.data['DEL_ID'].values:
         #     print(f'Searching for Trisynthon with ID: {positive_control_ID}')
         #     positive_control_trisynthon = self.data[self.data['DEL_ID'] == positive_control_ID]
@@ -1017,22 +1240,14 @@ class DELi_Cube:
         #             print(f'Searching for BC Disynthon with ID: {positive_control_ID}')
         # elif "A***" in self.data['DEL_ID'].values:
         #     print(f'Searching for Monosynthon with ID: {positive_control_ID}')
-        # else: 
+        # else:
         #     print(f'ID incorrect format: {positive_control_ID}')
-        
 
-        
-        #A048-B080-C096
+        # A048-B080-C096
         pass
-
 
     def top_trisynthons_diff_from_competitor(self):
         pass
 
-
     def top_disynthons_diff_from_competitor(self):
         pass
-
-    
-
-
