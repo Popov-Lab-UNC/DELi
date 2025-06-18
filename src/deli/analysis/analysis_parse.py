@@ -120,7 +120,7 @@ def main():
             )
         if 'trisynthon_overlap' in flags and flags.get('trisynthon_overlap', False):
             trisynthon_dir = create_output_dir(os.path.join(output_dir, "trisynthon"))
-            cube.trisynthon_overlap(output_dir=trisynthon_dir, threshold=int(flags.get('trisynthon_threshold', 20)))
+            cube.trisynthon_overlap(output_dir=trisynthon_dir, threshold=int(flags.get('trisynthon_threshold', 0)))
         if 'disynthon_overlap' in flags and flags.get('disynthon_overlap', False):
             disynthon_dir = create_output_dir(os.path.join(output_dir, "disynthon"))
             cube.disynthon_overlap(output_dir=disynthon_dir, disynthon_data=disynthon_data, disynth_exp_dict=disynth_exp_dict, threshold=int(flags.get('disynthon_threshold', 20)))
@@ -150,7 +150,7 @@ def main():
             print("Report generation completed!")
             today_date = datetime.now().strftime("%Y%m%d")
             cube.data.to_csv(os.path.join(output_dir_base, f"cube_data_{today_date}.csv"), index=False)
-            print(f"Cube data saved to {os.path.join(output_dir_base, 'cube_data_{today_date}.csv')}")
+            print(f"Cube data saved to {os.path.join(output_dir_base, f"cube_data_{today_date}.csv")}")
 
 if __name__ == '__main__':
     main()
