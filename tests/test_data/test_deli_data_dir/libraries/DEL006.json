@@ -7,19 +7,19 @@
         "bb1": {
             "tag": "NNNNNNNN",
             "overhang": "ACG",
-            "error_correction": "8_4"
+            "error_correction": "hamming_1"
 
         },
         "bb2": {
             "tag": "NNNNNNNN",
             "overhang": "GAT",
-            "error_correction": "8_4"
+            "error_correction": "hamming_1"
 
         },
         "bb3": {
             "tag": "NNNNNNNN",
             "overhang": "TGC",
-            "error_correction": "8_4"
+            "error_correction": "hamming_1"
 
         },
         "pre-umi": {
