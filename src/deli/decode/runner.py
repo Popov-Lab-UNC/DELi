@@ -387,7 +387,7 @@ class DecodingRunnerResults:
                             if include_bb_smi_cols:
                                 _row += (
                                     f"{delimiter}"
-                                    f"{bb.smiles if (bb is not None and bb.smiles) else 'null'}"
+                                    f"{bb.smi if (bb is not None and bb.has_smiles()) else 'null'}"
                                 )
                         if enumerate_smiles:
                             try:

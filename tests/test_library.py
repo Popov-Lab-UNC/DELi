@@ -10,7 +10,6 @@ from deli.dels.library import DELibrary, DELibraryCollection, LibraryBuildError
 
 
 @pytest.mark.functional
-@pytest.mark.filterwarnings("ignore:missing 'smiles' column in header")
 def test_load_library():
     """Test loading a DELibrary"""
     del_library = DELibrary.load("DEL004")
@@ -28,20 +27,12 @@ def test_load_library():
 
 
 @pytest.mark.functional
-@pytest.mark.filterwarnings("ignore:missing 'smiles' column in header")
 def test_load_invalid_library():
     """Test loading a DELibrary"""
     with pytest.raises(
         LibraryBuildError, match="Number of library cycles does not match barcode schema cycles"
     ):
         DELibrary.load("DEL004_invalid")
-
-
-@pytest.mark.functional
-def test_load_library_no_smiles():
-    """Test loading a DELibrary without SMILES"""
-    with pytest.warns(UserWarning, match="missing 'smiles' column in header"):
-        DELibrary.load("DEL004")
 
 
 @pytest.mark.functional
@@ -52,14 +43,12 @@ def test_load_library_smiles():
 
 
 @pytest.fixture
-@pytest.mark.filterwarnings("ignore:missing 'smiles' column in header")
 def del_library1() -> DELibrary:
     """An example DEL to load"""
     return DELibrary.load("DEL004")
 
 
 @pytest.fixture
-@pytest.mark.filterwarnings("ignore:missing 'smiles' column in header")
 def del_library2() -> DELibrary:
     """An example DEL to load"""
     return DELibrary.load("DEL005")

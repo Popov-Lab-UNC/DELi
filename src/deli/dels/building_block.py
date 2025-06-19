@@ -19,7 +19,6 @@ class BaseBuildingBlock(abc.ABC):
 
     def __init__(self):
         self.bb_id = None
-        self.smiles = None
 
     @abc.abstractmethod
     def is_mask(self) -> bool:

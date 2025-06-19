@@ -563,7 +563,7 @@ class Library(DeliDataLoadable):
             ]
             for bb in compound.building_blocks:
                 row.append(bb.bb_id)
-                row.append(bb.smiles)
+                row.append(bb.smi)
 
             output_file.write(separator.join(row) + "\n")
 
@@ -694,18 +694,58 @@ class DELibrary(Library):
         dict[str, Any]
             argument to construct the DELibrary object
         """
-        existing_args = super().read_json(path)
-
         data = json.load(open(path))
 
-        existing_args.update(
-            {
-                "barcode_schema": BarcodeSchema.from_dict(data["barcode_schema"]),
-                "dna_barcode_on": data["dna_barcode_on"],
-            }
-        )
+        # load bb sets and check for hamming decoding
+        _observed_sets: list[tuple[int, TaggedBuildingBlockSet]] = list()
+        for i, bb_data in enumerate(data["bb_sets"]):
+            cycle = bb_data.get("cycle", None)
+            if cycle is None:
+                raise LibraryBuildError(
+                    f"build block sets require a cycle number;set at index {i} lacks a cycle"
+                )
+            bb_set_name = bb_data.get("bb_set_name", None)
+            file_path = bb_data.get("bb_set_path", None)
+            if file_path is None and bb_set_name is None:
+                raise LibraryBuildError(
+                    f"either 'bb_set_name' or 'bb_set_path' must be provided "
+                    f"for a building block set;"
+                    f"set in index {i} lacks a both"
+                )
+            if file_path is None:
+                file_path = bb_set_name
+            if bb_set_name is None:
+                bb_set_name = os.path.basename(file_path).split(".")[0]
+            _observed_sets.append((cycle, TaggedBuildingBlockSet.load(file_path)))
 
-        return existing_args
+        # check for right order of sets
+        _bb_cycles = [_[0] for _ in _observed_sets]
+        if _bb_cycles != list(range(1, len(_observed_sets) + 1)):
+            raise LibraryBuildError(
+                f"building block sets must be in consecutive ascending "
+                f"order starting from 1 (1, 2, 3...); "
+                f"observed order: '{_bb_cycles}'"
+            )
+
+        bb_sets: list[TaggedBuildingBlockSet] = [_[1] for _ in _observed_sets]
+        bb_set_ids = set([bb_set.bb_set_id for bb_set in bb_sets] + ["scaffold"])
+
+        if "reactions" in data.keys():
+            reaction_workflow = ReactionWorkflow.load_from_json_list(data["reactions"], bb_set_ids)
+        else:
+            reaction_workflow = None
+
+        # get library id from path
+        library_id = Path(path).stem.replace(" ", "_")
+
+        return {
+            "library_id": library_id,
+            "bb_sets": bb_sets,
+            "reaction_workflow": reaction_workflow,
+            "scaffold": data.get("scaffold"),
+            "barcode_schema": BarcodeSchema.from_dict(data["barcode_schema"]),
+            "dna_barcode_on": data["dna_barcode_on"],
+        }
 
     def iter_bb_barcode_sections_and_sets(
         self,

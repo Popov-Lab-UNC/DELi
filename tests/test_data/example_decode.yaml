@@ -17,4 +17,4 @@ decode_settings:
     min_library_overlap: 8
     revcomp: YES
     bb_calling_approach: "bio"
-    use_hamming: YES
+    disable_error_correction: NO
