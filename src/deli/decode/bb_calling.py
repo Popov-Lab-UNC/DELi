@@ -493,8 +493,9 @@ class BuildingBlockSetTagCaller:
                 self.error_corrector = HammingDistHashMap(
                     distance_cutoff=_dist,
                     bb_set=self.building_block_set,
-                    asymmetrical="asymmetric"
-                    in self.building_block_tag_section.error_correction_mode,
+                    asymmetrical=(
+                        "asymmetric" in self.building_block_tag_section.error_correction_mode
+                    ),
                 )
             elif self.building_block_tag_section.error_correction_mode.startswith(
                 "levenshtein_dist"
@@ -503,8 +504,9 @@ class BuildingBlockSetTagCaller:
                 self.error_corrector = LevenshteinDistHashMap(
                     distance_cutoff=_dist,
                     bb_set=self.building_block_set,
-                    asymmetrical="asymmetric"
-                    in self.building_block_tag_section.error_correction_mode,
+                    asymmetrical=(
+                        "asymmetric" in self.building_block_tag_section.error_correction_mode
+                    ),
                 )
             else:
                 try:
