@@ -3,6 +3,7 @@
 from typing import Literal, Union, overload
 
 from rdkit import Chem
+from rdkit.Chem import Mol
 from rdkit.Chem.MolStandardize.rdMolStandardize import LargestFragmentChooser
 from rdkit.rdBase import BlockLogs
 
@@ -10,6 +11,79 @@ from rdkit.rdBase import BlockLogs
 _LARGEST_FRAGMENT_CHOOSER = LargestFragmentChooser(preferOrganic=True)
 
 Molable = Union[str, Chem.Mol]
+
+
+class ChemicalObjectError(Exception):
+    """raised if there is an issue with chemical objects"""
+
+
+class SmilesMixin:
+    """
+    Mixin for Compound objects that are expected to have a fully enumerated SMILES
+
+    This class is used as the main way to check if a compound can be used
+    in downstream applications that require a SMILES strings.
+    """
+
+    _smiles: None | str = None
+    _mol: None | Mol = None
+
+    def has_smiles(self) -> bool:
+        """Returns True if the compound has a non-null SMILES string"""
+        return self._smiles is not None
+
+    @property
+    def smi(self) -> str:
+        """The enumerated SMILES of the compound"""
+        if self._smiles is not None:
+            return self._smiles
+        else:
+            raise ChemicalObjectError(f"{self.__class__.__name__} object missing SMILES string")
+
+    @smi.setter
+    def smi(self, value):
+        """Cannot set the SMILES for a compound, once created it is immutable"""
+        raise ChemicalObjectError(
+            f"Cannot set SMILES for {self.__class__.__name__} object directly; "
+            f"SMILES can only be set at initialization"
+        )
+
+    @smi.deleter
+    def smi(self):
+        """Cannot delete the SMILES for a compound, once created it is immutable"""
+        raise ChemicalObjectError(f"Cannot delete SMILES for {self.__class__.__name__} object")
+
+    @property
+    def mol(self) -> Mol:
+        """The RDKit Mol object for the compound; will cache it after first access"""
+        if self._mol is None:
+            if self._smiles is not None:
+                try:
+                    _mol = to_mol(self._smiles, fail_on_error=True)
+                    self._mol = _mol
+                except ValueError as e:
+                    raise ChemicalObjectError(
+                        f"Cannot create RDKit Mol from SMILES: {self._smiles}"
+                    ) from e
+            else:
+                raise ChemicalObjectError(
+                    f"{self.__class__.__name__} object missing SMILES string, "
+                    f"cannot generate mol attribute"
+                )
+        return self._mol
+
+    @mol.setter
+    def mol(self, value):
+        """No support for setting mol directly; any modification should be done outside DELi"""
+        raise ChemicalObjectError(
+            f"Cannot change `mol` for {self.__class__.__name__} object directly; "
+            f"Derived from `smi` which can only be set at initialization\n"
+        )
+
+    @mol.deleter
+    def mol(self):
+        """Delete the cache of the Mol object (if cached)"""
+        self._mol = None
 
 
 @overload

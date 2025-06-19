@@ -1,4 +1,4 @@
-"""sequence alignment functions"""
+"""observed_seq alignment functions"""
 
 from .align import (
     Aligner,

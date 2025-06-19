@@ -14,8 +14,8 @@ from tqdm import tqdm
 
 from deli._logging import get_dummy_logger, get_logger
 from deli.dels import DELibrary, DELibraryCollection, Selection, SequencedSelection
+from deli.dels.library import EnumerationRunError
 
-from ..dels.library import EnumerationRunError
 from .decoder import DecodedDELCompound, DecodeStatistics, DELCollectionDecoder
 from .degen import DELCollectionCounter, DELCollectionIdCounter, DELCollectionIdUmiCounter
 from .report import build_decoding_report
@@ -46,7 +46,7 @@ class DecodingSettings(dict):
         max_read_length: int | None = None,
         min_read_length: int | None = None,
         read_type: Literal["single", "paired"] = "single",
-        use_hamming: bool = True,
+        disable_error_correction: bool = False,
         umi_clustering: bool = False,
         umi_min_distance: int = 2,
     ):
@@ -97,11 +97,9 @@ class DecodingSettings(dict):
         bb_calling_approach: Literal["alignment"], default = "alignment"
             the algorithm to use for bb_calling
             right now only "alignment" mode is supported
-        use_hamming: bool, default = True
-            enable (`True`) or disable (`False`) hamming decoding
-            only used if a library specifies tags as hamming encoded
-            Note: if hamming encoded libraries are given, and `use_hamming` is
-            `False`, the hamming decoding will not occur, even though it is possible
+        disable_error_correction: bool, default = False
+            disable error correction for barcode sections
+            that can be error corrected
         umi_clustering: bool, default = False
             when doing degeneration, consider two similar UMIs to be the same
             similarity is based on levenshtein distance and `umi_min_distance`
@@ -118,7 +116,7 @@ class DecodingSettings(dict):
             max_read_length=max_read_length,
             min_read_length=min_read_length,
             bb_calling_approach=bb_calling_approach,
-            use_hamming=use_hamming,
+            disable_error_correction=disable_error_correction,
             umi_clustering=umi_clustering,
             umi_min_distance=umi_min_distance,
         )
@@ -452,7 +450,7 @@ class DecodingRunner:
             get_dummy_logger() if disable_logging else get_logger(self.run_id, debug=debug)
         )
 
-        self.selection = selection
+        self.selection: SequencedSelection = selection
         self.decode_settings = (
             decode_settings if decode_settings is not None else DecodingSettings()
         )
@@ -469,7 +467,7 @@ class DecodingRunner:
             max_read_length=self.decode_settings.get("max_read_length", None),
             min_read_length=self.decode_settings.get("min_read_length", None),
             read_type=self.decode_settings.get("read_type", "single"),
-            use_hamming=self.decode_settings.get("use_hamming", True),
+            disable_error_correction=self.decode_settings.get("disable_error_correction", False),
         )
 
         _has_umi = all(
@@ -508,7 +506,7 @@ class DecodingRunner:
         save_failed_to: str | PathLike | None, default = None
             if provided, will save failed reads to this directory
             file will be named <selection_id>_decode_failed.tsv
-            will include the read_id, the sequence, the quality chain,
+            will include the read_id, the observed_seq, the quality chain,
             and reason failed
         use_tqdm: bool, default = False
             turn on a tqdm tracking bar
@@ -535,7 +533,7 @@ class DecodingRunner:
 
         # write header to the failed reads CSV
         if fail_csv_file is not None:
-            fail_csv_file.write("read_id\tsequence\tquality\treason_failed\tlib_call\n")
+            fail_csv_file.write("read_id\tobserved_seq\tquality\treason_failed\tlib_call\n")
 
         # look through all sequences in the selection
         for i, seq_record in enumerate(
@@ -633,7 +631,7 @@ class DecodingRunner:
         runner.
 
         The exception to this is when 'ignore_decode_seqs' is set to `True`.
-        In this case, the sequence files used will always be the one provided
+        In this case, the observed_seq files used will always be the one provided
         to the function and the decode file sequences will be ignored.
 
         NOTE: it is best practice to add the sequences to the decode file.
@@ -648,9 +646,9 @@ class DecodingRunner:
             path to load experiment from
         fastq_files: list[str | PathLike], default = None
             list of paths to fastq files to decode
-            if `None`, will use the sequence files from the decode file
+            if `None`, will use the observed_seq files from the decode file
         ignore_decode_seqs: bool, default = False
-            if true, will ignore the sequence files in the decode file
+            if true, will ignore the observed_seq files in the decode file
             in this case, the `fastq_files` parameter must be provided
         debug: bool, default = False
             if true, will enable debug logging

@@ -1,7 +1,14 @@
 """DNA barcode classes and functions"""
 
 from .barcode import BarcodeSchema, BuildingBlockBarcodeSection
-from .building_block import BaseBuildingBlock, BuildingBlock, BuildingBlockSet, MaskedBuildingBlock
+from .building_block import (
+    BaseBuildingBlock,
+    BuildingBlock,
+    BuildingBlockSet,
+    MaskedBuildingBlock,
+    TaggedBuildingBlock,
+    TaggedBuildingBlockSet,
+)
 from .compound import (
     Compound,
     DELCompound,
@@ -24,6 +31,8 @@ __all__ = [
     "LibraryCollection",
     "BaseBuildingBlock",
     "BuildingBlock",
+    "TaggedBuildingBlock",
+    "TaggedBuildingBlockSet",
     "MaskedBuildingBlock",
     "BuildingBlockSet",
     "Umi",
