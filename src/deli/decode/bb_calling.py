@@ -136,7 +136,7 @@ class QuaternaryHammingDecoder(BaseQuaternaryHamming, ErrorCorrector):
         QuaternaryHammingDecoder
         """
         _config = get_deli_config()
-        _true_order, _custom_order = _config.get_hamming_order(name)
+        _true_order, _custom_order = _config.get_hamming_code(name)
 
         _true_order_nums = [int(_[1:]) for _ in _true_order.split(",")]
         _custom_order_nums = [int(_[1:]) for _ in _custom_order.split(",")]

@@ -6,11 +6,25 @@ import shutil
 import pytest
 
 from deli.decode import DecodingRunner, DecodingRunnerResults
+from deli.decode.bb_calling import HashMapCollisionError
 from deli.decode.runner import DecodingRunParsingError
 
 
 DECODE_FILE = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "test_data", "example_decode.yaml")
+)
+DECODE_FILE_ERR_CORRECT = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "test_data", "example_decode_error_correction.yaml")
+)
+DECODE_FILE_ERR_DISABLE = os.path.abspath(
+    os.path.join(
+        os.path.dirname(__file__), "test_data", "example_decode_error_correction_disable.yaml"
+    )
+)
+DECODE_FILE_ERR_CORRECT_ASYM = os.path.abspath(
+    os.path.join(
+        os.path.dirname(__file__), "test_data", "example_decode_error_correction_asym.yaml"
+    )
 )
 NO_SEQ_DECODE_FILE = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "test_data", "example_decode_no_seqs.yaml")
@@ -48,6 +62,28 @@ def test_loading_decode_runner(tmpdir):
 
     with pytest.raises(DecodingRunParsingError, match="found neither"):
         DecodingRunner.from_file(NO_SEQ_DECODE_FILE)
+
+
+@pytest.mark.functional
+def test_loading_decoder_runner_error_corrections(tmpdir):
+    """Test loading a DecodingRunner with error corrections"""
+    # check that non-hamming 1 distance fails
+    with pytest.raises(HashMapCollisionError, match="collision detected"):
+        DecodingRunner.from_file(DECODE_FILE_ERR_CORRECT, disable_logging=True)
+
+    # check that disabling does not raise error
+    runner = DecodingRunner.from_file(
+        DECODE_FILE_ERR_DISABLE,
+        disable_logging=True,
+    )
+    assert isinstance(runner, DecodingRunner)
+
+    # check that asymmetric error correction works
+    runner = DecodingRunner.from_file(
+        DECODE_FILE_ERR_CORRECT_ASYM,
+        disable_logging=True,
+    )
+    assert isinstance(runner, DecodingRunner)
 
 
 @pytest.fixture
