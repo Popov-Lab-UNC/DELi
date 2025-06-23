@@ -3,3 +3,7 @@ james_notebooks
 .idea
 .venv
 research_data
+test-results
+dist
+notebooks
+data
