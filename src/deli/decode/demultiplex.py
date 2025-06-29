@@ -27,7 +27,7 @@ class Demultiplexer:
         self.adapters = adapters
 
     def _demultiplex(self, sequence: SequenceRecord) -> SingleMatch:
-        """Given a sequence, match it to the adapters"""
+        """Given a observed_seq, match it to the adapters"""
         return self.adapters.match_to(sequence.sequence)
 
     @staticmethod
@@ -46,16 +46,16 @@ class Demultiplexer:
         Parameters
         ----------
         match1: tuple[SequenceRecord, Optional[SingleMatch]]
-            the first sequence and its match
+            the first observed_seq and its match
             match can be `None` if no match is found
         match2: tuple[SequenceRecord, Optional[SingleMatch]]
-            the second sequence and its match
+            the second observed_seq and its match
             match can be `None` if no match is found
 
         Returns
         -------
         tuple[SequenceRecord, Optional[SingleMatch]]
-            the best scoring match and its accompanying sequence
+            the best scoring match and its accompanying observed_seq
         """
         if match1[1] is None:
             return match2

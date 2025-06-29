@@ -39,7 +39,7 @@ class Reaction:
 
         if self.rxn.GetNumProductTemplates() != 1:
             raise ReactionError(
-                "reaction must produce exactly one product; " "found {}".format(
+                "reaction must produce exactly one product; found {}".format(
                     self.rxn.GetNumProductTemplates()
                 )
             )
@@ -239,7 +239,7 @@ class ReactionStep:
 
     def __init__(self, step_id: int, reaction: Reaction, reactants: List[Reactant]):
         """
-        initialize a reaction step
+        Initialize a reaction step
 
         Parameters
         ----------

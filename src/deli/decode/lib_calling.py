@@ -45,7 +45,7 @@ class SingleLibraryCall(ValidLibraryCall):
         library: DELibrary
             the called library
         sequence: SequenceRecord
-            the sequence record trimmed to the just the matching region
+            the observed_seq record trimmed to the just the matching region
         """
         self.library = library
         self.sequence = sequence
@@ -69,9 +69,9 @@ class PairedLibraryCall(ValidLibraryCall):
         library: DELibrary
             the called library
         sequence: SequenceRecord
-            the sequence record trimmed to the just the matching region for fwd read
+            the observed_seq record trimmed to the just the matching region for fwd read
         sequence2: SequenceRecord
-            the sequence record trimmed to the just the matching region for rev read
+            the observed_seq record trimmed to the just the matching region for rev read
         """
         self.library = library
         self.sequence = sequence
@@ -103,9 +103,9 @@ class PairedLibraryCallAmbiguous(FailedLibraryCall):
         library_2: DELibrary
             the called library for the rev read
         sequence_1: SequenceRecord
-            the sequence record trimmed to the just the matching region for fwd read
+            the observed_seq record trimmed to the just the matching region for fwd read
         sequence_2: SequenceRecord
-            the sequence record trimmed to the just the matching region for rev read
+            the observed_seq record trimmed to the just the matching region for rev read
         """
         self.library_1 = library_1
         self.library_2 = library_2
@@ -131,7 +131,7 @@ class LibraryCallTooShort(FailedLibraryCall):
         library: DELibrary
             the called library for the read
         sequence: SequenceRecord
-            the sequence record trimmed to the just the matching region of the read
+            the observed_seq record trimmed to the just the matching region of the read
         """
         self.library = library
         self.sequence = sequence
@@ -202,14 +202,14 @@ class LibraryCaller(Demultiplexer, abc.ABC):
         self, sequence: SequenceRecord, match: SingleMatch
     ) -> tuple[slice, DELibrary]:
         """
-        Given a match and sequence, figure out the library call and return the trim slice
+        Given a match and observed_seq, figure out the library call and return the trim slice
 
         Parameters
         ----------
         sequence: SequenceRecord
-            the sequence record to get trim for
+            the observed_seq record to get trim for
         match: SingleMatch
-            the match for the sequence
+            the match for the observed_seq
 
         Returns
         -------
@@ -280,11 +280,11 @@ class SingleReadLibraryCaller(LibraryCaller):
         self, sequence: SequenceRecord
     ) -> tuple[SequenceRecord, Optional[SingleMatch]]:
         """
-        Determines the best sequence transformation and its match for a given read
+        Determines the best observed_seq transformation and its match for a given read
 
         Notes
         -----
-        Right now the only sequence modification that exists is `revcomp`
+        Right now the only observed_seq modification that exists is `revcomp`
 
         Parameters
         ----------
@@ -294,7 +294,7 @@ class SingleReadLibraryCaller(LibraryCaller):
         Returns
         -------
         tuple[SequenceRecord, Optional[SingleMatch]]
-            the best sequence transformation and its match
+            the best observed_seq transformation and its match
             match is `None` if no library match was found
         """
         match = self._demultiplex(sequence)

@@ -5,8 +5,6 @@ import math
 import re
 from typing import Optional, Self
 
-from deli.design.hamming import QuaternaryHammingDecoder
-
 
 class BarcodeSchemaError(Exception):
     """exception raised when a barcode schema is invalid"""
@@ -50,7 +48,7 @@ class BarcodeSection(abc.ABC):
 
     def get_dna_sequence(self) -> str:
         """
-        Get the full DNA sequence of the barcode section
+        Get the full DNA observed_seq of the barcode section
 
         Will substitute "N" for any variable nucleotides
         """
@@ -148,7 +146,7 @@ class BuildingBlockBarcodeSection(VariableBarcodeSection):
         section_name: str,
         section_tag: str,
         section_overhang: Optional[str] = None,
-        hamming_decoder: Optional[QuaternaryHammingDecoder] = None,
+        error_correction_mode: Optional[str] = None,
     ):
         """
         Initialize BuildingBlockBarcodeSection
@@ -163,20 +161,16 @@ class BuildingBlockBarcodeSection(VariableBarcodeSection):
         section_tag: str
             barcode section DNA tag
             use "N" for variable or regions
-        section_overhang: Optional[str]
+        section_overhang: Optional[str], default=None
             DNA of overhang directly after section tag
             leave as `None` if no overhang
-        hamming_decoder: Optional[QuaternaryHammingDecoder]
-            if the section tag is encoded with a hamming code,
-            the corresponding hamming decoder needed to decode the tags
+        error_correction_mode: Optional[str], default=None
+            the error correction mode for the building block tags in this section
+            See Error Correction docs for more information
         """
         super().__init__(section_name, section_tag, section_overhang)
         self.cycle_number = cycle_number
-        self.hamming_decoder = hamming_decoder
-
-    def is_hamming_encoded(self) -> bool:
-        """Return `True` if the barcode section is hamming encoded"""
-        return self.hamming_decoder is not None
+        self.error_correction_mode = error_correction_mode
 
 
 class UMIBarcodeSection(VariableBarcodeSection):
@@ -431,8 +425,6 @@ class BarcodeSchema:
             the data is also a dictionary, with three (3) possible keys
             - 'tag': the section DNA tag (required)
             - 'overhang': the section overhang tag (optional)
-            - 'hamming_decoder': the hamming decoder format to use
-                                 if the section is hamming encoded (optional)
 
         Returns
         -------
@@ -457,19 +449,14 @@ class BarcodeSchema:
                     )
                 )
             elif re.match(r"^bb[1-9][0-9]*$", section_name):
-                decoder = (
-                    QuaternaryHammingDecoder.load(section_info["hamming_decoder"])
-                    if section_info.get("hamming_decoder") is not None
-                    else None
-                )
                 _cycle_number = int(section_name[2:])
                 _sections.append(
                     BuildingBlockBarcodeSection(
                         cycle_number=_cycle_number,
                         section_name=section_name,
                         section_tag=section_info["tag"],
-                        section_overhang=section_info.get("overhang"),
-                        hamming_decoder=decoder,
+                        section_overhang=section_info.get("overhang", None),
+                        error_correction_mode=section_info.get("error_correction", None),
                     )
                 )
             elif re.match(r"^closing$", section_name):

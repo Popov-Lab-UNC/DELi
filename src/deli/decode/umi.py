@@ -16,12 +16,12 @@ class UMI:
         Parameters
         ----------
         umi_tag: str
-            the DNA sequence of the umi tag
+            the DNA observed_seq of the umi tag
         """
         self.umi_tag = umi_tag
 
     def __str__(self):
-        """Return the DNA sequence of the UMI as a string"""
+        """Return the DNA observed_seq of the UMI as a string"""
         return self.umi_tag
 
     def __len__(self):

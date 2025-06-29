@@ -9,7 +9,7 @@ from functools import reduce
 from itertools import product as iter_product
 from operator import mul
 from pathlib import Path
-from typing import Any, Generic, List, Literal, Optional, TypeVar, Union, overload
+from typing import Any, Generic, Literal, Optional, Sequence, TypeVar, Union, overload
 
 from tqdm import tqdm
 
@@ -17,7 +17,7 @@ from deli.configure import DeliDataLoadable, accept_deli_data_name
 from deli.utils import to_smi
 
 from .barcode import BarcodeSchema, BuildingBlockBarcodeSection
-from .building_block import BuildingBlock, BuildingBlockSet
+from .building_block import BuildingBlock, BuildingBlockSet, TaggedBuildingBlockSet
 from .compound import DELCompound, EnumeratedDELCompound
 from .reaction import ReactionError, ReactionVial, ReactionWorkflow
 
@@ -32,6 +32,9 @@ class EnumerationRunError(Exception):
     """error raised when a enumerator run fails"""
 
     pass
+
+
+BBSetType = TypeVar("BBSetType", bound=BuildingBlockSet)
 
 
 class Library(DeliDataLoadable):
@@ -53,7 +56,7 @@ class Library(DeliDataLoadable):
     def __init__(
         self,
         library_id: str,
-        bb_sets: List[BuildingBlockSet],
+        bb_sets: Sequence[BuildingBlockSet],
         reaction_workflow: Optional[ReactionWorkflow] = None,
         scaffold: Optional[str] = None,
     ):
@@ -64,7 +67,7 @@ class Library(DeliDataLoadable):
         ----------
         library_id : str
             name/id of the library
-        bb_sets : List[BuildingBlockSet]
+        bb_sets : Sequence[BuildingBlockSet]
             the sets of building-block used to build this library
             order in list should be order of synthesis
             must have length >= 2
@@ -149,7 +152,7 @@ class Library(DeliDataLoadable):
         """
         data = json.load(open(path))
 
-        # load bb sets (needed for reaction setup)
+        # load bb sets and check for hamming decoding
         _observed_sets: list[tuple[int, BuildingBlockSet]] = list()
         for i, bb_data in enumerate(data["bb_sets"]):
             cycle = bb_data.get("cycle", None)
@@ -169,7 +172,7 @@ class Library(DeliDataLoadable):
                 file_path = bb_set_name
             if bb_set_name is None:
                 bb_set_name = os.path.basename(file_path).split(".")[0]
-            _observed_sets.append((cycle, BuildingBlockSet.load(file_path, set_id=bb_set_name)))
+            _observed_sets.append((cycle, BuildingBlockSet.load(file_path)))
 
         # check for right order of sets
         _bb_cycles = [_[0] for _ in _observed_sets]
@@ -560,7 +563,7 @@ class Library(DeliDataLoadable):
             ]
             for bb in compound.building_blocks:
                 row.append(bb.bb_id)
-                row.append(bb.smiles)
+                row.append(bb.smi)
 
             output_file.write(separator.join(row) + "\n")
 
@@ -583,7 +586,7 @@ class DELibrary(Library):
         self,
         library_id: str,
         barcode_schema: BarcodeSchema,
-        bb_sets: List[BuildingBlockSet],
+        bb_sets: Sequence[TaggedBuildingBlockSet],
         reaction_workflow: Optional[ReactionWorkflow] = None,
         dna_barcode_on: Optional[str] = None,
         scaffold: Optional[str] = None,
@@ -597,7 +600,7 @@ class DELibrary(Library):
             name/id of the library
         barcode_schema : BarcodeSchema
             The barcode schema defining how the barcodes are designed
-        bb_sets : List[BuildingBlockSet]
+        bb_sets : Sequence[TaggedBuildingBlockSet]
             the sets of building-block used to build this library
             order in list should be order of synthesis
             must have length >= 2
@@ -622,6 +625,8 @@ class DELibrary(Library):
             reaction_workflow=reaction_workflow,
             scaffold=scaffold,
         )
+        self.bb_sets: Sequence[TaggedBuildingBlockSet] = bb_sets  # for type checker
+
         self.barcode_schema = barcode_schema
         self.dna_barcode_on = dna_barcode_on
 
@@ -689,22 +694,62 @@ class DELibrary(Library):
         dict[str, Any]
             argument to construct the DELibrary object
         """
-        existing_args = super().read_json(path)
-
         data = json.load(open(path))
 
-        existing_args.update(
-            {
-                "barcode_schema": BarcodeSchema.from_dict(data["barcode_schema"]),
-                "dna_barcode_on": data["dna_barcode_on"],
-            }
-        )
+        # load bb sets and check for hamming decoding
+        _observed_sets: list[tuple[int, TaggedBuildingBlockSet]] = list()
+        for i, bb_data in enumerate(data["bb_sets"]):
+            cycle = bb_data.get("cycle", None)
+            if cycle is None:
+                raise LibraryBuildError(
+                    f"build block sets require a cycle number;set at index {i} lacks a cycle"
+                )
+            bb_set_name = bb_data.get("bb_set_name", None)
+            file_path = bb_data.get("bb_set_path", None)
+            if file_path is None and bb_set_name is None:
+                raise LibraryBuildError(
+                    f"either 'bb_set_name' or 'bb_set_path' must be provided "
+                    f"for a building block set;"
+                    f"set in index {i} lacks a both"
+                )
+            if file_path is None:
+                file_path = bb_set_name
+            if bb_set_name is None:
+                bb_set_name = os.path.basename(file_path).split(".")[0]
+            _observed_sets.append((cycle, TaggedBuildingBlockSet.load(file_path)))
 
-        return existing_args
+        # check for right order of sets
+        _bb_cycles = [_[0] for _ in _observed_sets]
+        if _bb_cycles != list(range(1, len(_observed_sets) + 1)):
+            raise LibraryBuildError(
+                f"building block sets must be in consecutive ascending "
+                f"order starting from 1 (1, 2, 3...); "
+                f"observed order: '{_bb_cycles}'"
+            )
+
+        bb_sets: list[TaggedBuildingBlockSet] = [_[1] for _ in _observed_sets]
+        bb_set_ids = set([bb_set.bb_set_id for bb_set in bb_sets] + ["scaffold"])
+
+        if "reactions" in data.keys():
+            reaction_workflow = ReactionWorkflow.load_from_json_list(data["reactions"], bb_set_ids)
+        else:
+            reaction_workflow = None
+
+        # get library id from path
+        library_id = Path(path).stem.replace(" ", "_")
+
+        return {
+            "library_id": library_id,
+            "bb_sets": bb_sets,
+            "reaction_workflow": reaction_workflow,
+            "scaffold": data.get("scaffold"),
+            "barcode_schema": BarcodeSchema.from_dict(data["barcode_schema"]),
+            "dna_barcode_on": data["dna_barcode_on"],
+        }
 
     def iter_bb_barcode_sections_and_sets(
         self,
-    ) -> Iterator[tuple[BuildingBlockBarcodeSection, BuildingBlockSet]]:
+    ) -> Iterator[tuple[BuildingBlockBarcodeSection, TaggedBuildingBlockSet]]:
         """
         Iterate through building block sets and their respective barcode sections sections
 
@@ -724,7 +769,7 @@ class LibraryCollection(Generic[LibType]):
     base class for any class that holds a group of DEL libraries
     """
 
-    def __init__(self, libraries: list[LibType]):
+    def __init__(self, libraries: Sequence[LibType]):
         """
         Initialize a DELibrarySchemaGroup object
 
@@ -733,7 +778,7 @@ class LibraryCollection(Generic[LibType]):
         libraries: List[Library]
             libraries to include in the library schema group
         """
-        self.libraries: list[LibType] = libraries
+        self.libraries: Sequence[LibType] = libraries
         self._library_map = {lib.library_id: lib for lib in self.libraries}
 
         self.collection_size = sum([lib.library_size for lib in self.libraries])
@@ -817,7 +862,7 @@ class LibraryCollection(Generic[LibType]):
 class DELibraryCollection(LibraryCollection[DELibrary]):
     """base class for any class that holds a group of DEL libraries"""
 
-    def __init__(self, libraries: List[DELibrary]):
+    def __init__(self, libraries: Sequence[DELibrary]):
         """
         Initialize a DELibrarySchemaGroup object
 
@@ -827,6 +872,7 @@ class DELibraryCollection(LibraryCollection[DELibrary]):
             libraries to include in the library schema group
         """
         super().__init__(libraries)
+        self.libraries: Sequence[DELibrary] = libraries  # for type checker
 
         ### VALIDATE ###
         _tags: list[str] = []

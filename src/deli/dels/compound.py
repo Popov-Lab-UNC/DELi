@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Optional
 
 from rdkit.Chem import Mol
 
-from deli.utils import to_mol
+from deli.utils import SmilesMixin
 
 from .building_block import BuildingBlock
 
@@ -283,64 +283,6 @@ class LowMemDELCompound(LowMemCompound):
             "library_id": self.library_id,
             "building_blocks_ids": self.building_blocks_ids,
         }
-
-
-class SmilesMixin:
-    """
-    Mixin for Compound objects that are expected to have a fully enumerated SMILES
-
-    This class is used as the main way to check if a compound can be used
-    in downstream applications that require a SMILES strings.
-    """
-
-    compound_id: str
-    _smiles: str
-    _mol: None | Mol
-
-    @property
-    def smi(self) -> str:
-        """The enumerated SMILES of the compound"""
-        return self._smiles
-
-    @smi.setter
-    def smi(self, value):
-        """Cannot set the SMILES for a compound, once created it is immutable"""
-        raise DELCompoundException(
-            f"Cannot set SMILES for {self.__class__.__name__} object directly; "
-            f"SMILES can only be set at initialization"
-        )
-
-    @smi.deleter
-    def smi(self):
-        """Cannot delete the SMILES for a compound, once created it is immutable"""
-        raise DELCompoundException(f"Cannot delete SMILES for {self.__class__.__name__}; object")
-
-    @property
-    def mol(self) -> Mol:
-        """The RDKit Mol object for the compound; will cache it after first access"""
-        if self._mol is None:
-            try:
-                _mol = to_mol(self._smiles, fail_on_error=True)
-                self._mol = _mol
-            except ValueError as e:
-                raise DELCompoundException(
-                    f"Cannot create RDKit Mol from SMILES for "
-                    f"compound {self.compound_id}: {self._smiles}"
-                ) from e
-        return self._mol
-
-    @mol.setter
-    def mol(self, value):
-        """No support for setting mol directly; any modification should be done outside DELi"""
-        raise DELCompoundException(
-            f"Cannot change `mol` for {self.__class__.__name__} object directly; "
-            f"Derived from `smi` which can only be set at initialization\n"
-        )
-
-    @mol.deleter
-    def mol(self):
-        """Delete the cache of the Mol object (if cached)"""
-        self._mol = None
 
 
 class LowMemEnumeratedDELCompound(LowMemDELCompound, SmilesMixin):

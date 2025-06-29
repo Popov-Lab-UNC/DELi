@@ -8,7 +8,7 @@ import yaml
 
 from deli.dna import SequenceGlobReader, SequenceReader
 
-from .library import DELibrary, DELibraryCollection
+from .library import DELibrary, DELibraryCollection, Library, LibraryCollection
 
 
 class SectionCondition:
@@ -77,7 +77,7 @@ class Selection:
 
     def __init__(
         self,
-        library_collection: DELibraryCollection,
+        library_collection: LibraryCollection,
         date_ran: datetime | None = None,
         target_id: str | None = None,
         selection_condition: str | None = None,
@@ -89,7 +89,7 @@ class Selection:
 
         Parameters
         ----------
-        library_collection: DELibraryCollection
+        library_collection: LibraryCollection
             the library collection used in the selection
         date_ran: datetime | None
             the date the selection was run, defaults to now if None
@@ -102,7 +102,7 @@ class Selection:
         additional_info: str | None
             any additional information about the selection, defaults to None if not provided
         """
-        self.library_collection = library_collection
+        self.library_collection: LibraryCollection = library_collection
         self.selection_id = selection_id if selection_id else "Unknown"
         self.date_ran = date_ran
 
@@ -127,8 +127,10 @@ class Selection:
         Selection
             the Selection object created from the dictionary
         """
+        lib_collection = LibraryCollection([Library.load(lib) for lib in data["libraries"]])
+
         return cls(
-            library_collection=data["library_collection"],
+            library_collection=lib_collection,
             date_ran=datetime.fromisoformat(data["date_ran"])
             if data.get("date_ran") is not None
             else None,
@@ -153,20 +155,11 @@ class Selection:
         Selection
         """
         data = yaml.safe_load(open(path, "r"))
-        data["library_collection"] = DELibraryCollection(
-            [DELibrary.load(lib) for lib in data["libraries"]]
-        )
-
         return cls.from_dict(data)
 
-    def to_dict(self, ignore_library_collection: bool = False) -> dict:
+    def to_json_str(self) -> dict:
         """
-        Convert the Selection object to a dictionary.
-
-        Parameters
-        ----------
-        ignore_library_collection: bool, default = False
-            whether to ignore the library collection in the output dictionary, defaults to False
+        Convert the Selection object to a dictionary of JSON serializable objects.
 
         Returns
         -------
@@ -178,9 +171,8 @@ class Selection:
             "selection_condition": self.selection_condition,
             "selection_id": self.selection_id,
             "additional_info": self.selection_condition.additional_info,
+            "libraries": [lib.library_id for lib in self.library_collection.libraries],
         }
-        if not ignore_library_collection:
-            _data["library_collection"] = self.library_collection
         return _data
 
     def get_run_date_as_str(self) -> str:
@@ -234,12 +226,15 @@ class SequencedSelection(Selection):
             selection_id=selection_id,
             additional_info=additional_info,
         )
+        self.library_collection: DELibraryCollection = library_collection  # for type checking
         self.sequence_files = sequence_files
 
         if len(self.sequence_files) < 1:
-            raise ValueError("A SequencedSelection must have at least 1 sequence file; found 0")
+            raise ValueError(
+                "A SequencedSelection must have at least 1 observed_seq file; found 0"
+            )
 
-        # validate sequence files
+        # validate observed_seq files
         SequenceGlobReader(self.sequence_files)
 
     @classmethod
@@ -257,8 +252,9 @@ class SequencedSelection(Selection):
         Selection
             the Selection object created from the dictionary
         """
+        lib_collection = DELibraryCollection([DELibrary.load(lib) for lib in data["libraries"]])
         return cls(
-            library_collection=data["library_collection"],
+            library_collection=lib_collection,
             sequence_files=data.get("sequence_files", []),
             date_ran=datetime.fromisoformat(data["date_ran"]),
             target_id=data.get("target_id"),
@@ -267,30 +263,25 @@ class SequencedSelection(Selection):
             additional_info=data.get("additional_info"),
         )
 
-    def to_dict(self, ignore_library_collection: bool = False) -> dict:
+    def to_json_str(self) -> dict:
         """
         Convert the Selection object to a dictionary.
-
-        Parameters
-        ----------
-        ignore_library_collection: bool, default = False
-            whether to ignore the library collection in the output dictionary, defaults to False
 
         Returns
         -------
         dict
         """
-        _data = super().to_dict(ignore_library_collection)
+        _data = super().to_json_str()
         _data["sequence_files"] = self.sequence_files
         return _data
 
     def get_sequence_reader(self) -> SequenceReader:
         """
-        Get a sequence reader for the selection's sequence files.
+        Get a observed_seq reader for the selection's observed_seq files.
 
         Returns
         -------
         SequenceReader
-            a SequenceReader object for the selection's sequence files
+            a SequenceReader object for the selection's observed_seq files
         """
         return SequenceGlobReader(self.sequence_files)
