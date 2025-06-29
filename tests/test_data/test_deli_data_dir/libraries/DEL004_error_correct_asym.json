@@ -7,17 +7,17 @@
         "bb1": {
             "tag": "NNNNN",
             "overhang": "GT",
-            "error_correction": "hamming_dist_asymmetrical_1"
+            "error_correction": "levenshtein_dist:1,asymmetrical"
         },
         "bb2": {
             "tag": "NNNNN",
             "overhang": "GA",
-            "error_correction": "hamming_dist_asymmetrical_1"
+            "error_correction": "levenshtein_dist:1,asymmetrical"
         },
         "bb3": {
             "tag": "NNNNN",
             "overhang": "TT",
-            "error_correction": "hamming_dist_asymmetrical_1"
+            "error_correction": "levenshtein_dist:1,asymmetrical"
         },
         "pre-umi": {
             "tag": "AATGCCAGTACG"

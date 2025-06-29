@@ -138,16 +138,13 @@ class QuaternaryHammingDecoder(BaseQuaternaryHamming, ErrorCorrector):
         _config = get_deli_config()
         _true_order, _custom_order = _config.get_hamming_code(name)
 
-        _true_order_nums = [int(_[1:]) for _ in _true_order.split(",")]
-        _custom_order_nums = [int(_[1:]) for _ in _custom_order.split(",")]
-
-        if 0 in _true_order_nums:
+        if 0 in _true_order:
             _has_extra_parity = True
         else:
             _has_extra_parity = False
-            _custom_order_nums = [_ - 1 for _ in _true_order_nums]
+            _custom_order = [_ - 1 for _ in _true_order]
 
-        return cls(parity_map=_custom_order_nums, has_extra_parity=_has_extra_parity)
+        return cls(parity_map=_custom_order, has_extra_parity=_has_extra_parity)
 
     def correct_sequence(self, observed_seq: str) -> str | None:
         """
@@ -250,14 +247,32 @@ class HashMapErrorCorrector(ErrorCorrector, abc.ABC):
         """
         Initialize a HashMapErrorCorrector
 
-        This type of error corrector will build a hashmap where every single tag
-        building block set is mapped to all neighbors of distance
-        `distance_cutoff` away, using some distance metric.
+        This works by taking each building block tag, creating all its neighbors within a given
+        distance,
+        and mapping them to the building block itself. This way, a query can be looked up and
+        "corrected"
+        to its original building block tag in constant time.
 
-        If your building block set has tags that all have a distance of 3 or more
-        between them, then be 100% accurate. If during building, a pair of tags
-        has a distance of two or lower, building will fail. You can override this
-        with `ignore_collision=True` but could cause data processing errors
+        There are some assumptions made here though. First, it assumes that there are no
+        collisions. That
+        is, no two building blocks have the same tag or the same neighbors within the given
+        distance.
+        If this is the case, we cannot determine with 100% certainty which building block is
+        the correct
+        original tag. Building the hash map will fail if a collision is detected by default.
+
+        However, you can set `asymmetrical=True` to allow the hash map to return the best,
+        non-ambiguous match instead, thus when building collisions are ignored in favor of
+         saving
+        the closest tag. Ties are ambiguous, so the hash map will return None.
+
+        Hamming3 or Levenshtein3 distance schemes guarantee all tags
+        have a min distance between them (in this case 3), thus the distance cutoff is
+        also known:
+        (min_distance - 1) / 2. In this case it is easier to construct the hash map by
+        using this info.
+        Only use asymmetrical when you are sure that the tags follow a known distance
+        encoding scheme.
 
         Parameters
         ----------
@@ -460,7 +475,14 @@ class HammingDistHashMap(HashMapErrorCorrector):
 
 
 class BuildingBlockSetTagCaller:
-    """Calls building blocks given a tag query and building block set"""
+    """
+    Calls building blocks given a tag query and building block set
+
+    BuildingBlockCallers can attempt to correct errors in the tag query
+    based on knowledge they have about the building block set and how
+    it was generated (if that info is given). See the docs on
+    "Error Correction" for more details on how this works.
+    """
 
     def __init__(
         self,
@@ -483,42 +505,122 @@ class BuildingBlockSetTagCaller:
         """
         self.building_block_tag_section = building_block_tag_section
         self.building_block_set = building_block_set
+        self._validate_error_corrector(disable_error_correction)
 
+    def _validate_error_corrector(self, disable_error_correction: bool):
+        """
+        Validate that the error corrector is set and has a valid method
+
+        There are currently 3 error correction strings that can be parsed:
+        - "hamming_dist:<distance>" for Hamming distance based error correction
+        - "levenshtein_dist:<distance>" for Levenshtein distance based error correction
+        - "hamming_code:<name>" for a QuaternaryHammingDecoder that has been loaded
+        from the config file
+
+        "hamming_dist_<distance>" and "levenshtein_dist_<distance>" will create hashmaps
+        for rapid error correction, while "<name>" will load a pre-defined
+         QuaternaryHammingDecoder.
+
+        Note distance for the hamming_dist and levenshtein_dist modes refers to
+        the maximum distance
+        for neighbors. So a distance of 1 means that the error corrector will
+        look for matches among
+        all hamming/levenshtein neighbors that are 1 away from the given tag.
+
+        "hamming_dist_<distance>" and "levenshtein_dist_<distance>" also have an
+         asymmetric mode that
+        can be triggered by adding "asymmetric" after the distance separated by a ',':
+        e.g. "hamming_dist:1,asymmetric".
+        """
         self.error_corrector: ErrorCorrector | None = None
-        if (self.building_block_tag_section.error_correction_mode is not None) and (
-            not disable_error_correction
-        ):
-            if self.building_block_tag_section.error_correction_mode.startswith("hamming_dist"):
-                _dist = int(self.building_block_tag_section.error_correction_mode.split("_")[-1])
-                self.error_corrector = HammingDistHashMap(
-                    distance_cutoff=_dist,
-                    bb_set=self.building_block_set,
-                    asymmetrical=(
-                        "asymmetric" in self.building_block_tag_section.error_correction_mode
-                    ),
+
+        # if disable_error_correction is True, do not set an error corrector
+        if disable_error_correction:
+            return
+        # if no error correction mode is set, do not set an error corrector
+        elif self.building_block_tag_section.error_correction_mode is None:
+            return
+        # else parse the error corrector
+        else:
+            # parse out the type and info from the error correction mode
+            try:
+                _correction_type, _correction_info = (
+                    self.building_block_tag_section.error_correction_mode.split(":")
                 )
-            elif self.building_block_tag_section.error_correction_mode.startswith(
-                "levenshtein_dist"
-            ):
-                _dist = int(self.building_block_tag_section.error_correction_mode.split("_")[-1])
-                self.error_corrector = LevenshteinDistHashMap(
-                    distance_cutoff=_dist,
-                    bb_set=self.building_block_set,
-                    asymmetrical=(
-                        "asymmetric" in self.building_block_tag_section.error_correction_mode
-                    ),
-                )
-            else:
-                try:
-                    self.error_corrector = QuaternaryHammingDecoder.load(
-                        name=self.building_block_tag_section.error_correction_mode
+            except ValueError as e:
+                if ":" not in self.building_block_tag_section.error_correction_mode:
+                    raise ErrorCorrectorException(
+                        f"error correction mode "
+                        f"{self.building_block_tag_section.error_correction_mode} "
+                        f"for barcode section {self.building_block_tag_section.section_name} "
+                        f"does not have a valid format; missing ':', should be '<type>:<info>'"
+                    ) from e
+                else:
+                    raise ErrorCorrectorException(
+                        f"error correction mode "
+                        f"{self.building_block_tag_section.error_correction_mode} "
+                        f"for barcode section {self.building_block_tag_section.section_name} "
+                        f"has too many reserved ':' characters,  should be '<type>:<info>'"
+                    ) from e
+            if _correction_type in ["hamming_dist", "levenshtein_dist"]:
+                # collect info
+                _splits = _correction_info.split(",")
+                _dist_str = _splits[0]
+                if len(_splits) == 1:
+                    _asymmetrical = False
+                elif len(_splits) == 2:
+                    _asymmetrical = True
+                else:
+                    raise ErrorCorrectorException(
+                        f"error correction mode "
+                        f"{self.building_block_tag_section.error_correction_mode} "
+                        f"for barcode section {self.building_block_tag_section.section_name} "
+                        f"has unrecognized information: {_splits[2:]}"
                     )
+                # check for valid integer
+                try:
+                    _dist = int(_splits[0])
+                except ValueError as e:
+                    raise ErrorCorrectorException(
+                        f"error correction mode "
+                        f"{self.building_block_tag_section.error_correction_mode} "
+                        f"for barcode section {self.building_block_tag_section.section_name} "
+                        f"does not have a valid <distance> for {_correction_info}; "
+                        f"should be an integer"
+                    ) from e
+
+                if _correction_type == "hamming_dist":
+                    self.error_corrector = HammingDistHashMap(
+                        distance_cutoff=_dist,
+                        bb_set=self.building_block_set,
+                        asymmetrical=_asymmetrical,
+                    )
+                elif _correction_type == "levenshtein_dist":
+                    self.error_corrector = LevenshteinDistHashMap(
+                        distance_cutoff=_dist,
+                        bb_set=self.building_block_set,
+                        asymmetrical=_asymmetrical,
+                    )
+                else:
+                    raise RuntimeError("UNREACHABLE; Raise issue if observed at runtime")
+            elif _correction_type == "hamming_code":
+                try:
+                    self.error_corrector = QuaternaryHammingDecoder.load(name=_correction_info)
                 except DELiConfigError as e:
                     raise ErrorCorrectorException(
                         f"cannot find an error corrector that matched the mode "
                         f"{self.building_block_tag_section.error_correction_mode} "
-                        f"for barcode section {self.building_block_tag_section.section_name}"
+                        f"for barcode section "
+                        f"{self.building_block_tag_section.section_name}"
                     ) from e
+            else:
+                raise ErrorCorrectorException(
+                    f"error correction mode "
+                    f"{self.building_block_tag_section.error_correction_mode} "
+                    f"for barcode section {self.building_block_tag_section.section_name} "
+                    f"has unrecognized error correction type '{_correction_type}'; "
+                    f"see docs for valid error correction types"
+                )
 
     def call_building_block(self, tag: str) -> BuildingBlockCall:
         """
