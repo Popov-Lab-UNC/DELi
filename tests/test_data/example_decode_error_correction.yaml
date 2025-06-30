@@ -9,7 +9,7 @@ sequence_files:
   - "./test_data/example.fastq"
 
 libraries:
-    - "DEL004"
+    - "DEL004_error_correct"
     - "DEL005"
 
 decode_settings:

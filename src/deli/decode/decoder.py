@@ -40,9 +40,9 @@ class DecodeStatistics:
     num_seqs_degen_per_lib: defaultdict[str, int]
         the number of sequences degened per library
     num_failed_too_short: int
-        the number of decoded failed because sequence read was too short
+        the number of decoded failed because observed_seq read was too short
     num_failed_too_long: int
-        the number of decoded failed because sequence read was too long
+        the number of decoded failed because observed_seq read was too long
     num_failed_library_call: int
         the number of decoded failed because the library was not called
     num_failed_library_match_too_short: int
@@ -312,7 +312,7 @@ class DELCollectionDecoder:
         bb_calling_approach: Literal["alignment", "bio"] = "bio",
         max_read_length: int | None = None,
         min_read_length: int | None = None,
-        use_hamming: bool = True,
+        disable_error_correction: bool = False,
         decode_statistics: DecodeStatistics | None = None,
     ):
         """
@@ -359,11 +359,9 @@ class DELCollectionDecoder:
         bb_calling_approach: Literal["alignment"], default = "alignment"
             the algorithm to use for bb_calling
             right now only "alignment" mode is supported
-        use_hamming: bool, default = True
-            enable (`True`) or disable (`False`) hamming decoding
-            only used if a library specifies tags as hamming encoded
-            Note: if hamming encoded libraries are given, and `use_hamming` is
-            `False`, the hamming decoding will not occur, even though it is possible
+        disable_error_correction: bool, default = False
+            disable error correction for any barcode section
+            capable of it
         decode_statistics: DecodeStatistics or None, default = None
             the statistic tracker for the decoding run
             if None, will initialize a new, empty statistic object
@@ -404,7 +402,7 @@ class DELCollectionDecoder:
                 library.library_id: DynamicAlignmentLibraryDecoder(
                     library,
                     decode_statistics=decode_statistics,
-                    use_hamming=use_hamming,
+                    disable_error_correction=disable_error_correction,
                     alignment_algorithm=alignment_algorithm,
                 )
                 for library in library_collection.libraries
@@ -414,7 +412,7 @@ class DELCollectionDecoder:
                 library.library_id: BioAlignmentLibraryDecoder(
                     library,
                     decode_statistics=self.decode_statistics,
-                    use_hamming=use_hamming,
+                    disable_error_correction=disable_error_correction,
                 )
                 for library in library_collection.libraries
             }
@@ -438,7 +436,7 @@ class DELCollectionDecoder:
 
     def decode_read(self, sequence: SequenceRecord) -> DecodedDELCompound | FailedDecode:
         """
-        Given a sequence read, decode its barcode
+        Given a observed_seq read, decode its barcode
 
         """
         # check lengths
@@ -476,7 +474,7 @@ class LibraryDecoder(abc.ABC):
         self,
         library: DELibrary,
         decode_statistics: DecodeStatistics | None = None,
-        use_hamming: bool = True,
+        disable_error_correction: bool = False,
     ):
         """
         Initialize the LibraryDecoder
@@ -488,11 +486,11 @@ class LibraryDecoder(abc.ABC):
         decode_statistics: DecodeStatistics or `None`, default = `None`
             the statistic tracker for the decoding run
             if `None` will initialize a new, empty statistic object
-        use_hamming: bool, default True
-            using hamming correction
-            only used for barcodes with hamming encoded parts
+        disable_error_correction: bool, default False
+            disable error correction for any barcode section
+            capable of it
         """
-        self.use_hamming = use_hamming
+        self.disable_error_correction = disable_error_correction
         self.library = library
 
         self.decode_statistics: DecodeStatistics
@@ -520,7 +518,7 @@ class DynamicAlignmentLibraryDecoder(LibraryDecoder):
         library: DELibrary,
         decode_statistics: DecodeStatistics | None = None,
         alignment_algorithm: Literal["semi", "hybrid"] = "semi",
-        use_hamming: bool = True,
+        disable_error_correction: bool = False,
     ):
         """
         Initialize the DynamicAlignmentLibraryDecoder
@@ -536,12 +534,14 @@ class DynamicAlignmentLibraryDecoder(LibraryDecoder):
             the type alignment algorithm to use
             semi is a semi global and hybrid is a hybrid semi global alignment
             see aligning docs for more details
-        use_hamming: bool, default True
-            using hamming correction
-            only used for barcodes with hamming encoded parts
+        disable_error_correction: bool, default False
+            disable error correction for any barcode section
+            capable of it
         """
         super().__init__(
-            library=library, decode_statistics=decode_statistics, use_hamming=use_hamming
+            library=library,
+            decode_statistics=decode_statistics,
+            disable_error_correction=disable_error_correction,
         )
 
         # assign the aligner
@@ -560,7 +560,7 @@ class DynamicAlignmentLibraryDecoder(LibraryDecoder):
             bb_section.section_name: BuildingBlockSetTagCaller(
                 building_block_tag_section=bb_section,
                 building_block_set=bb_set,
-                use_hamming=self.use_hamming,
+                disable_error_correction=self.disable_error_correction,
             )
             for bb_section, bb_set in self.library.iter_bb_barcode_sections_and_sets()
         }
@@ -652,7 +652,7 @@ class BioAlignmentLibraryDecoder(LibraryDecoder):
         self,
         library: DELibrary,
         decode_statistics: DecodeStatistics | None = None,
-        use_hamming: bool = True,
+        disable_error_correction: bool = False,
     ):
         """
         Initialize the DynamicAlignmentLibraryDecoder
@@ -664,12 +664,14 @@ class BioAlignmentLibraryDecoder(LibraryDecoder):
         decode_statistics: DecodeStatistics or `None`, default = `None`
             the statistic tracker for the decoding run
             if `None` will initialize a new, empty statistic object
-        use_hamming: bool, default True
-            using hamming correction
-            only used for barcodes with hamming encoded parts
+        disable_error_correction: bool, default False
+            disable error correction for any barcode section
+            capable of it
         """
         super().__init__(
-            library=library, decode_statistics=decode_statistics, use_hamming=use_hamming
+            library=library,
+            decode_statistics=decode_statistics,
+            disable_error_correction=disable_error_correction,
         )
 
         # define a custom substitution matrix
@@ -702,7 +704,7 @@ class BioAlignmentLibraryDecoder(LibraryDecoder):
             bb_section.section_name: BuildingBlockSetTagCaller(
                 building_block_tag_section=bb_section,
                 building_block_set=bb_set,
-                use_hamming=self.use_hamming,
+                disable_error_correction=self.disable_error_correction,
             )
             for bb_section, bb_set in self.library.iter_bb_barcode_sections_and_sets()
         }

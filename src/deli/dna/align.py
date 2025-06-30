@@ -1,4 +1,4 @@
-"""DNA sequence alignment"""
+"""DNA observed_seq alignment"""
 
 import abc
 from typing import no_type_check
@@ -18,9 +18,9 @@ class Alignment:
         Parameters
         ----------
         seq1: str
-            the top sequence in the alignment (index 0)
+            the top observed_seq in the alignment (index 0)
         seq2: str
-            the bottom sequence in the alignment (index 1)
+            the bottom observed_seq in the alignment (index 1)
         alignment: list[tuple[int, int]]
             the alignment as a list of tuples, each containing the index of from
             the two aligned sequences that match as that step.
@@ -135,9 +135,9 @@ class SemiGlobalAlignment(Alignment):
         Parameters
         ----------
         seq1: str
-            the top sequence in the alignment (index 0)
+            the top observed_seq in the alignment (index 0)
         seq2: str
-            the bottom sequence in the alignment (index 1)
+            the bottom observed_seq in the alignment (index 1)
         alignment: list[tuple[int, int]]
             the alignment as a list of tuples, each containing the index of from
             the two aligned sequences that match as that step.
@@ -172,9 +172,9 @@ class HybridSemiGlobalAlignment(SemiGlobalAlignment):
         Parameters
         ----------
         seq1: str
-            the top sequence in the alignment (index 0)
+            the top observed_seq in the alignment (index 0)
         seq2: str
-            the bottom sequence in the alignment (index 1)
+            the bottom observed_seq in the alignment (index 1)
         alignment: list[tuple[int, int]]
             the alignment as a list of tuples, each containing the index of from
             the two aligned sequences that match as that step.
@@ -211,14 +211,14 @@ class Aligner(abc.ABC):
     @abc.abstractmethod
     def align(self, seq1: str, seq2: str) -> Alignment:
         """
-        align two sequences
+        Align two sequences
 
         Parameters
         ----------
         seq1: str
-            the top sequence in the alignment (index 0)
+            the top observed_seq in the alignment (index 0)
         seq2: str
-            the bottom sequence in the alignment (index 1)
+            the bottom observed_seq in the alignment (index 1)
         """
         raise NotImplementedError
 
@@ -241,9 +241,9 @@ class SemiGlobalAligner(Aligner):
         Parameters
         ----------
         seq1: str
-            sequence to be aligned
+            observed_seq to be aligned
         seq2: str
-            sequence to align to
+            observed_seq to align to
 
         Returns
         -------
@@ -290,11 +290,11 @@ class HybridSemiGlobalAligner(Aligner):
         table directions.
 
         To avoid the aligner decided that a full gap between the two sequences
-        is optimal, only the first sequence has not penalties for gaps.
-        The second sequence will have all gaps penalized.
+        is optimal, only the first observed_seq has not penalties for gaps.
+        The second observed_seq will have all gaps penalized.
 
         This makes the Hyprid approach far better at aligning a small
-        region to a much larger sequence. For example, for trying to find
+        region to a much larger observed_seq. For example, for trying to find
         the adapter in region in a larger read (whicih is why cutadpat uses it)
 
         For the above reason, this should really only be used when demultiplexing
@@ -304,9 +304,9 @@ class HybridSemiGlobalAligner(Aligner):
         Parameters
         ----------
         seq1: str
-            sequence to be aligned
+            observed_seq to be aligned
         seq2: str
-            sequence to align to
+            observed_seq to align to
 
         Returns
         -------
@@ -331,7 +331,7 @@ def _hybrid_semi_global_align(
 
     This is heavily drawn from cutadapt.
     It is not a full semi-global alignment,
-    it will only ignore penalties for gaps in the top sequence.
+    it will only ignore penalties for gaps in the top observed_seq.
     This is because if it ignored both, the algorithm
     would always prefer a complete misalignment:
     -----GCGC
@@ -339,7 +339,7 @@ def _hybrid_semi_global_align(
 
     This approach is better for alignments required for
     demultiplexing, as it prioritizes better matches
-    earlier on in the sequence to the adapter tag
+    earlier on in the observed_seq to the adapter tag
 
     Note: this should not be called directly
     """
@@ -513,7 +513,7 @@ def _get_alignment_lookups(
     """
     Generate a mapping between the index of seq1 to seq2 index and vice versa
 
-    in the case of gaps, will use the most recent real index of the other sequence
+    in the case of gaps, will use the most recent real index of the other observed_seq
 
     For example, the alignment:
     AG-CCA--

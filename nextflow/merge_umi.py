@@ -80,7 +80,7 @@ with open(f"./{selection.selection_id}_cube.csv", "w") as f:
             for _, bb in zip_longest(range(_max_cycle_size), compound_data["bb_ids"]):
                 _row += f",{bb if bb is not None else 'null'}"
                 if args.include_bb_smi:
-                    _row += f",{bb.smiles if (bb is not None and bb.smiles) else 'null'}"
+                    _row += f",{bb.smi if (bb is not None and bb.has_smiles()) else 'null'}"
                 if args.enumerate_smiles:
                     try:
                         _smi = (

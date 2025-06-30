@@ -113,7 +113,7 @@ class _DeliConfig:
         bb_mask: str,
         nuc_2_int: dict[str, int],
         deli_data_dir: Optional[Path] = None,
-        hamming_codes: Optional[dict[str, tuple[str, str]]] = None,
+        hamming_codes: Optional[dict[str, tuple[list[int], list[int]]]] = None,
     ):
         # process deli data director
         self._deli_data_dir: Path | None = None
@@ -122,7 +122,7 @@ class _DeliConfig:
         self._bb_mask: str = bb_mask
         self._nuc_2_int: dict[str, int] = nuc_2_int
 
-        self.hamming_codes: dict[str, tuple[str, str]]
+        self.hamming_codes: dict[str, tuple[list[int], list[int]]]
         if hamming_codes is not None:
             self.hamming_codes = hamming_codes
         else:
@@ -287,35 +287,54 @@ class _DeliConfig:
             _deli_data_dir_path = None
 
         # extract all hamming codes from the config
-        _codes: dict[str, tuple[str, str]] = {}
+        _codes: dict[str, tuple[list[int], list[int]]] = {}
         for section in config.sections():
             if section.startswith("deli.hamming."):
                 name = section.split(".")[-1]
                 try:
                     hamming_order = config.get(section, "hamming_order")
-                    custom_order = config.get(section, "custom_order")
-
-                    _true_order_nums = [int(_[1:]) for _ in hamming_order.split(",")]
-                    if (_true_order_nums != sorted(_true_order_nums)) or (
-                        _true_order_nums[0] not in {0, 1}
-                    ):
-                        raise DELiConfigError(
-                            f"invalid hamming order '{hamming_order}' in section '{section}'; "
-                            f"see DELi hamming docs for details about how to define "
-                            f"hamming code order"
-                        )
-                    _real_order_nums = [int(_[1:]) for _ in custom_order.split(",")]
-                    if len(_real_order_nums) != len(_true_order_nums):
-                        raise DELiConfigError(
-                            f"hamming section '{section}' has a parity "
-                            f"length mismatch; see DELi hamming docs for details"
-                        )
-                    _codes[name] = (hamming_order, custom_order)
                 except configparser.NoOptionError as e:
                     raise DELiConfigError(
-                        f"missing 'hamming_order' or 'custom_order' option in "
-                        f"hamming section '{section}'"
+                        f"missing 'hamming_order' option in hamming section '{section}'"
                     ) from e
+                try:
+                    custom_order = config.get(section, "custom_order")
+                except configparser.NoOptionError as e:
+                    raise DELiConfigError(
+                        f"missing 'custom_order' option in hamming section '{section}'"
+                    ) from e
+
+                try:
+                    _true_order_nums = [int(_[1:]) for _ in hamming_order.split(",")]
+                except ValueError as e:
+                    raise DELiConfigError(
+                        f"invalid hamming order tokens in '{hamming_order}' of section "
+                        f"'{section}'; see DELi hamming docs for details about how to "
+                        f"define hamming code order"
+                    ) from e
+                if (_true_order_nums != sorted(_true_order_nums)) or (
+                    _true_order_nums[0] not in {0, 1}
+                ):
+                    raise DELiConfigError(
+                        f"invalid hamming order '{hamming_order}' in section '{section}'; "
+                        f"see DELi hamming docs for details about how to define "
+                        f"hamming code order"
+                    )
+
+                try:
+                    _real_order_nums = [int(_[1:]) for _ in custom_order.split(",")]
+                except ValueError as e:
+                    raise DELiConfigError(
+                        f"invalid custom order tokens in '{custom_order}' of section "
+                        f"'{section}'; see DELi hamming docs for details about how to "
+                        f"define custom order"
+                    ) from e
+                if len(_real_order_nums) != len(_true_order_nums):
+                    raise DELiConfigError(
+                        f"hamming section '{section}' has a parity "
+                        f"length mismatch; see DELi hamming docs for details"
+                    )
+                _codes[name] = (_true_order_nums, _real_order_nums)
 
         return cls(
             deli_data_dir=_deli_data_dir_path,
@@ -324,7 +343,7 @@ class _DeliConfig:
             hamming_codes=_codes,
         )
 
-    def get_hamming_code(self, name: str) -> tuple[str, str]:
+    def get_hamming_code(self, name: str) -> tuple[list[int], list[int]]:
         """
         Get the hamming code order and custom order for a given name
 
@@ -335,8 +354,8 @@ class _DeliConfig:
 
         Returns
         -------
-        tuple[str, str]
-            (hamming_order, custom_order)
+        tuple[list[int], list[int]]
+            (hamming_order ints, custom_order ints)
         """
         try:
             return self.hamming_codes[name]
@@ -501,7 +520,7 @@ def _build_default_hamming_code_strings(
         )
         _codes[f"{i}_4"] = (_hamming_code_str, _hamming_code_str)
         if include_extra_parity:
-            _codes[f"{i+1}_5"] = ("p0," + _hamming_code_str, "p0," + _hamming_code_str)
+            _codes[f"{i + 1}_5"] = ("p0," + _hamming_code_str, "p0," + _hamming_code_str)
     return _codes
 
 
