@@ -4,7 +4,7 @@ Enumeration
 
 DELi includes support for enumerating DNA-encoded libraries (DELs).
 All it requires is that your libraries files have the necessary reaction information
-and that your building block sets have a SMILES column. See :ref:`<define-dels>`
+and that your building block sets have a SMILES column. See :ref:`the defining DELs docs <define-dels>`
 for more info on how to define these files.
 
 .. note::
@@ -23,7 +23,7 @@ Careful consideration should be taken about when and how to enumerate a library.
 Enumeration with DELi
 ---------------------
 DELi provides enumeration functionality through the ``Library`` class.
-Object of this class can be enumerated using the ``enumerate`` method:
+Objects of this class can be enumerated using the ``enumerate`` method:
 
 .. code-block:: python
 
@@ -56,6 +56,9 @@ You can also just drop failed compounds by setting ``drop_failed=True``:
         assert type(compound) is EnumeratedDELCompound
         smi = compound.smi
         mol = compound.mol
+
+``fail_on_error`` and ``drop_failed`` are mutually exclusive, so only one of them can be True or DELi will
+throw an exception.
 
 Enumerating to a file
 ---------------------
@@ -91,13 +94,13 @@ the IDs of the building blocks to use:
 .. code-block:: python
 
     bb_cycle1 = library.bb_sets[0].get_bb_by_id("BB_1")
-    bb_cycle1 = library.bb_sets[1].get_bb_by_id("BB_1")
-    bb_cycle1 = library.bb_sets[2].get_bb_by_id("BB_1")
+    bb_cycle2 = library.bb_sets[1].get_bb_by_id("BB_234")
+    bb_cycle3 = library.bb_sets[2].get_bb_by_id("BB_624")
 
     compound_a = library.enumerate_by_bbs([bb_cycle1, bb_cycle2, bb_cycle3])
     compound_b = library.enumerate_by_bb_ids(["BB_1", "BB_234", "BB_624"])
 
-    assert compound_a.smi == compound_b.smi
+    assert compound_a.smi == compound_b.smi  # will be True
 
 This can be useful if you only want a handful or specific subset of the DEL to be
 enumerated.
@@ -105,4 +108,5 @@ enumerated.
 Command-Line Interface
 ----------------------
 DELi's CLI include a command for enumerating DELs from a library file: ``deli enumerate``.
-All you need to do is provide the path to a library JSON file. See the :ref:`deli-enumeration-cli-docs` for more info.
+All you need to do is provide the path to a library JSON file. See the :ref:`CLI docs <deli-enumeration-cli-docs>`
+for more info.

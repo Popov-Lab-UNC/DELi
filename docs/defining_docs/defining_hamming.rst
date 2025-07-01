@@ -1,3 +1,5 @@
+.. _defining_hamming-docs:
+
 Defining Hamming Codes
 ======================
 

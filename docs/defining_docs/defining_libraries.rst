@@ -32,17 +32,17 @@ Below is and example of a library json file
             "bb1": {
                 "tag": "NNNNNNNN",
                 "overhang": "ACG",
-                "hamming": "8_4"
+                "error_correction": "levenshtein_dist:1,asymmetrical"
             },
             "bb2": {
                 "tag": "NNNNNNNN",
                 "overhang": "GAT",
-                "hamming": "8_4"
+                "error_correction": "hamming_dist:1"
             },
             "bb3": {
                 "tag": "NNNNNNNN",
                 "overhang": "TGC",
-                "hamming": "8_4"
+                "error_correction": "hamming_code:8_4"
             },
             "pre-umi": {
                 "tag": "AATGCCAGTACG"
@@ -156,26 +156,11 @@ The DNA info dictionary can have the following elements:
   should be included if the section actually has an overhang. Overhangs are the regions used to promote
   DNA ligation and must be static, even in a variable section. That means it should be a string
   of nucleic acids (A, T, C, G)
-- ``hamming``: the hamming code used for this section. This is an optional region and should only
-  be included for a variable section that was built to have a set hamming distance between barcode
-  sections. This is often done for the building block sections. DELi has the ability to use the hamming
-  encoding to correct single SNP errors. DELi supports two versions of hamming
-  decoding: 'code' mode and 'random' mode. The 'code' mode is used for when the DNA sequences in the
-  barcode set are built using a single valid hamming code, thus the codes can be decoded using a single
-  hamming matrix. The DELi design module implements hamming encoding using this approach. This mode
-  is specified by using the code name that define the matrix. These matrixes are defined in the
-  ``.deli`` config file. The formate for a matrix is to define the hamming parity order used in the
-  code (custom order) and the associated full code in the "traditional" hamming order
-  (p1, p2, d1, p3, d2, d3, d4, p4 ...). Most code are named after their size, and the number of
-  parity bits they hold, for example 8_4 means the section is 8 long and the code has 4 parity bits.
-  The 'random' mode is used for when the DNA sequences in the barcode set are built
-  "at random" using an unknown or multiple hamming matrices. This mode is enabled by just using the
-  key word "random" for the hamming element. "random" mode will by default work with any hamming encoded
-  set, even those with one matrix. However, it has a far larger memory overhead (though it is not much
-  slower thanks to python's dictionary implementation).
-  .. note::
-  The DELi roadmap includes adding support for a prefix tree implementation, which would allow for
-  beyond single SNP correction. This would use the keywork "tree" for the hamming element.
+- ``error_correction``: the error correction mode used for this section. This is an optional region and should only
+  be included for a variable section that was built to be error corrected.
+  This is often done for the building block sections.
+  DELi support several modes of error correction, for details on how to specify them for sections,
+  see the :ref:`error correction docs <error-correction-docs>`.
 
 When it comes to barcode sections, some section names are reserved, and possibly required, by DELi.
 These are:

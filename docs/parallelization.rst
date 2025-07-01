@@ -3,7 +3,7 @@ Parallelization in DELi
 =======================
 
 DELi as a package does not implement any type of parallelization.
-It is design to run on a single CPU core.
+It is designed to run on a single CPU core.
 This is in part because most analysis methods are quick enough that no
 parallelization is needed.
 
@@ -13,15 +13,15 @@ processes are `embarrassingly parallel <https://en.wikipedia.org/wiki/Embarrassi
 This means it's better to just run separate jobs on your system than to let python do it for you.
 
 There are a few hiccups to overcome. For example in decoding you need to break up you fastq file
-into chunk, and at the end the UMI corrected counters need to all be loaded at once to get the
+into chunks, and at the end the UMI corrected counters need to all be loaded at once to get the
 right counts (others the same UMIs could be double counted). For enumeration you need to
 figure out how to split the library building block up into subsets so each job enumerates only
 part of the library.
 
-These are not always trivial issues, but also not very hard to write a script to overcome.
+These are not always trivial issues, but it is also not very hard to write a script to handle them.
 To help show how this works, DELi has some example scripts using `Nextflow <https://www.nextflow.io/>`_
 to parallelize decoding. The DELi team will continue to provide example Nextflow scripts for
-future tasks as well, as Nextflow works well with HPC system (which most academic labs are
+future tasks as well, as Nextflow works well with HPC systems (which most academic labs are
 limited too) *and* a cloud environment since it is file based.
 
 Running parallel decoding with Nextflow

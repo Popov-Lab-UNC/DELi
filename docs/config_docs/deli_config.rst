@@ -39,6 +39,8 @@ This section has only one key: ``bb_mask``. This is the token DELi will use when
 building blocks. This happens during things like Di/Monosynthon ID creation, where specific
 cycles are aggregated (and then masked). The default is "###".
 
+. _deli-config-hamming-section
+
 ``deli.hamming``
 ^^^^^^^^^^^^^^^^
 This section has one key: ``nuc_2_int``. This is the mapping of nucleotide to integer values
@@ -55,3 +57,8 @@ The hamming section also has an infinite number of sub sections, with each being
 specific hamming matrix. These follow the naming convention ``deli.hamming.<NAME>``. They
 each have to keys to fill out: ``hamming_order`` and ``custom_order``. You can read more about
 how this works in the :ref:`custom hamming docs <deli-custom-hamming-docs>`.
+
+.. warning::
+    The ":" character is reserved for the :ref:`error correction parser <error-correction-docs>`,
+    thus DELi will not allow the use of it in the names of hamming matrices. If you try to use it,
+    DELi will raise a ``DELiConfigError``.
