@@ -79,6 +79,7 @@ optional = true
 
 [tool.poetry.group.docs.dependencies]
 sphinx = "^7.1.2"
+sphinx_rtd_theme = "^1.2.0"
 
 [tool.poetry.group.notebook]
 optional = true
