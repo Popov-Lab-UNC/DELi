@@ -4,12 +4,10 @@ build:
   os: ubuntu-22.04
   tools:
     python: "3.11"
-
-python:
-  install:
-    - method: poetry
-      groups:
-        - docs
+  jobs:
+    post_install:
+      - pip install poetry
+      - VIRTUAL_ENV=$READTHEDOCS_VIRTUALENV_PATH poetry install --with docs
 
 sphinx:
   configuration: docs/conf.py
