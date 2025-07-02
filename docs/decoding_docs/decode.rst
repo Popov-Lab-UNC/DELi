@@ -17,3 +17,13 @@ start decoding.
 If you want to decode via the Python API you can use the ``DecodingRunner`` class. You can
 get even more control over the decoding process by using if you want. Refer to the decoding
 module API documentation for more details.
+
+
+.. toctree::
+    :maxdepth: 2
+
+    algorithm
+    error_correction
+    decoding_outcomes
+    decoding_output
+    decoding_file

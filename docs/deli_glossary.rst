@@ -1,8 +1,8 @@
+.. _deli-glossary-ref:
+
 =============
 DELi Glossary
 =============
-
-.. _deli-glossary-ref:
 There are a handful of "jargony" terms that are used throughout the DEL
 literature and thus, DELi's documentation.
 Sadly, these terms are not very standardized.
@@ -27,7 +27,7 @@ The template for a given DNA Barcode;
 some nucleotides will be abstracted as “N” since they will vary
 from barcode to barcode. All DELs have a single barcode schema
 
-.. image:: .\images\del_barcode_glossary.png
+.. image:: _static/del_barcode_glossary.png
    :align: center
    :alt: DEL Barcode Schema
 

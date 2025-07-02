@@ -78,6 +78,7 @@ for a set of 5,000 tags. This scales linearly with the number of tags, so for 10
     Given the size of the barcodes, the error rate of sequencing/PCR, and the size of the building block tags, it is unlikely to
     observe more than 2 errors in a specific building block tag, so in practice a max distance of 2 is often sufficient.
 
+.. _asymmetrical-mode:
 Asymmetrical Mode
 ~~~~~~~~~~~~~~~~~
 While the default behavior of the hashmap error correction is to fail if it detects a collision, this is not always desired
@@ -135,7 +136,7 @@ The currently supported method keys are:
 ``hamming_dist``
 ^^^^^^^^^^^^^^^^
 hamming_dist takes a single argument, the distance cutoff to use for the hashmap.
-You can also add ``asymmetrical`` as an optional argument to enable :ref:`asymmetrical building <#asymmetrical-mode>`.
+You can also add ``asymmetrical`` as an optional argument to enable :ref:`asymmetrical building <asymmetrical-mode>`.
 For example, to use a hamming distance of 2 with asymmetrical mode enabled, you would set the value to
 ``hamming_dist:2,asymmetrical``. If you wanted to use a hamming distance of 1 without asymmetrical mode,
 you would set the value to ``hamming_dist:1``.

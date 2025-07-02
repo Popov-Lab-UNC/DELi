@@ -41,6 +41,8 @@ cycles are aggregated (and then masked). The default is "###".
 
 . _deli-config-hamming-section
 
+.. _deli-config-hamming-section:
+
 ``deli.hamming``
 ^^^^^^^^^^^^^^^^
 This section has one key: ``nuc_2_int``. This is the mapping of nucleotide to integer values

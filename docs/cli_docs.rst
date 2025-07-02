@@ -17,7 +17,7 @@ Create a default DELi configuration file
 
 PATH is the path to the deli config directory to initialize. If not
 provided, defaults to ~/.deli
-::
+.. code-block:: text
     Usage: deli config init [OPTIONS] [PATH]
 
     Options:
@@ -37,7 +37,7 @@ PATH is the path to the deli data directory to initialize.
 NOTE: fix-missing will not overwrite existing sub-directories, while
 overwrite will. 'overwrite' will also add any missing sub-directories, but
 also replace existing ones.
-::
+.. code-block:: text
     Usage: deli data init [OPTIONS] [PATH]
 
     Options:
@@ -54,7 +54,7 @@ PATH is the path to the deli data directory to set.
 NOTE: if not using --update-config, you will need to set the DELI_DATA_DIR
 environment variable manually; the command required will be printed after
 running.
-::
+.. code-block:: text
     Usage: deli data set [OPTIONS] PATH
 
     Options:
@@ -62,11 +62,11 @@ running.
     --help               Show this message and exit.
 
 ``deli data which``
-^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^
 Print the current DELi data directory.
 If the DELi data directory is not set, will print a message and exit with a
 non-zero status code.
-::
+.. code-block:: text
     Usage: deli data which [OPTIONS]
 
     Options:
@@ -77,7 +77,7 @@ Decoding
 --------
 ``deli decode`` is used to take a decoding experiment and fastq file from a DEL
 selection and run decoding.
-::
+.. code-block:: text
     Usage: deli decode [OPTIONS] DECODE_FILE [FASTQ_FILES]...
 
       Run decoding on a given fastq file of DEL sequences
@@ -107,7 +107,7 @@ Enumeration
 -----------
 ``deli enumerate`` is used to enumerate a DEL library to generate all possible compounds
 and write them to a file.
-::
+.. code-block:: text
     Usage: deli enumerate [OPTIONS] LIBRARY_FILE
 
       Enumerates compounds from a given library
