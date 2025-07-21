@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "DELi"
-version = "0.1.0a0"
+version = "0.1.0"
 description = "DNA encoded library sequence analysis software with custom library design support"
 authors = [
     "James Wellnitz <wellnitz.james@gmail.com>",
@@ -95,12 +95,12 @@ url = "https://download.pytorch.org/whl/cpu"
 priority = "explicit"
 
 
-[tool.poetry.extras]
-ml = ["torch", "torchvision", "torchaudio", "pytorch-lightning", "torch-geometric"]
-
 [[tool.poetry.source]]
 name = "PyPI"
 priority = "primary"
+
+[tool.poetry.extras]
+ml = ["torch", "torchvision", "torchaudio", "pytorch-lightning", "torch-geometric"]
 
 [build-system]
 requires = ["poetry-core"]
