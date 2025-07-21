@@ -9,6 +9,15 @@ This directory is the root source for all DELi files, and when configured, DELi 
 look for files here by default. This also allows you to reference libraries and building block
 sets by name instead of full path.
 
+This feature is not required to use DELi, but it is highly recommended to help with managing files
+related to your DELs. If you have 100 DELs that could be 300 build block sets. That is 400 files for needed
+to configure DELi (and frankly to just manage your DELs in general). The DELi Data Directory help make this a
+bit more organized and avoid issues with file paths and references.
+
+.. note::
+    On installation, DELi will not create a default DELi Data Directory anywhere in your filesystem.
+    If you want to use the DELi Data Directory, you will need to create one yourself.
+
 Creating a DELi Data Directory
 ------------------------------
 A valid DELi Data Directory must have the following sub folders:

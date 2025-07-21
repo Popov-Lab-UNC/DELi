@@ -82,7 +82,7 @@ selection and run decoding.
 
       Run decoding on a given fastq file of DEL sequences
 
-      DECODE is the path to a YAML file describing the decoding run settings.
+      DECODE is the path to a :ref:`YAML file describing the decoding run settings <decoding-run-file-docs>`.
       FASTQ_FILES is a path, list of paths or glob of FASTQ files to decode.
 
       NOTE: if the DECODE file contains a `selection` field, it will be used to

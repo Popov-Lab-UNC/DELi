@@ -4,10 +4,12 @@ DELi Configuration
 ==================
 
 DELi uses a ``.deli`` config file to control some of its more advanced settings.
-On installation with pip, a ``.deli`` file should be created in your home directory.
-If not, you can create one yourself using ``deli config init``. A valid DELi config file
-is required for DELi to run *or* be imported. DELi will raise a ``DELiConfigError`` if
-it detects something wrong with the config file.
+To avoid arbitrary code execution, DELi does not initialize the config file when
+installed via ``pip``. Instead it will create one the first time you every use DELi
+(and it will raise a warning to let you know it did so).
+You can also create one yourself using ``deli config init``.
+A valid DELi config file is required for DELi to run *or* be imported.
+DELi will raise a ``DELiConfigError`` if it detects something wrong with the config file.
 
 .. note::
     Any settings that might impact the outcome of a DELi command (like ``deli decode``)
