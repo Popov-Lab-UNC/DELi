@@ -7,6 +7,11 @@ Welcome to DELi's documentation!
 
 DELi is a Python library for working with DNA-encoded libraries (DELs).
 
+You can install DELi using pip:
+::
+    pip install del-informatics
+
+
 .. toctree::
    :maxdepth: 2
    :caption: Introduction
