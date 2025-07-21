@@ -9,7 +9,7 @@ on:
       - created
 
 jobs:
-  build-docs:
+  check-docs:
     runs-on: ubuntu-latest
 
     steps:
