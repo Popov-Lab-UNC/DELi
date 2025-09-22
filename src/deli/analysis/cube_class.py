@@ -251,46 +251,39 @@ class DELi_Cube:
             if control_cols is None:
                 raise ValueError(f"Missing control columns for experiment '{exp_name}'.")
 
-            # Compute observed count (C) as the sum across experimental columns
+            # single control column (NTC) per experiment
+            control_col = control_cols[0] if isinstance(control_cols, (list, tuple)) else control_cols
+            if control_col not in df.columns:
+                raise ValueError(f"Control column '{control_col}' is missing in data.")
+
+            # Observed counts in experiment per library member
             df[f"{exp_name}_C"] = df[columns].sum(axis=1)
 
-            for control_col in control_cols:
-                if control_col not in df.columns:
-                    raise ValueError(f"Control column '{control_col}' is missing in data.")
+            control_total = df[control_col].sum()
+            selection_total = df[columns].sum(axis=1).sum()
 
-                control_values = df[control_col]
-                if control_values.sum() == 0:
-                    raise ValueError(
-                        f"The control column '{control_col}' has a sum of zero. Calculation cannot be done."
-                    )
-                else:
-                    # If there are non-zero control values, compute the expected count (E)
-                    df[f"{exp_name}_E"] = control_values
-
-                    # If there are zero values in the control column, replace them with the median of non-zero control values
-                    df[f"{exp_name}_E"] = df[f"{exp_name}_E"].replace(
-                        0, control_values[control_values > 0].median()
-                    )
-
-                n = df[control_col].sum(axis=0)
-
-                if df[f"{exp_name}_C"].sum(axis=0) == 0 or n == 0:
-                    raise ValueError(
-                        f"Total sum for experiment '{exp_name}' or its control is zero, cannot compute z-score."
-                    )
-
-                # binomial standard deviation: σ = sqrt(E * (1 - p_i))
-                df[f"{exp_name}_sigma"] = np.sqrt(
-                    df[f"{exp_name}_E"] * (1 - (df[f"{exp_name}_E"] / n))
+            if control_total == 0 or selection_total == 0:
+                raise ValueError(
+                    f"Total sum for experiment '{exp_name}' or its control is zero, cannot compute z-score."
                 )
 
-                # raw z-score: z = (C - E) / σ
-                df[f"{exp_name}_z_score"] = (df[f"{exp_name}_C"] - df[f"{exp_name}_E"]) / df[
-                    f"{exp_name}_sigma"
-                ]
+            # Control frequency p_i with a tiny pseudocount (alpha) to prevent zero variance when control counts are zero,
+            alpha = 1e-12
+            p_i = (df[control_col] + alpha) / (control_total + alpha)
 
-                # normalized z-score: zn = z / sqrt(n)
-                df[f"{exp_name}_norm_z_score"] = df[f"{exp_name}_z_score"] / np.sqrt(n)
+            # Expected counts under control baseline, scaled to experimental depth
+            df[f"{exp_name}_E"] = selection_total * p_i
+
+            # Binomial standard deviation using experimental n and control-derived p_i
+            df[f"{exp_name}_sigma"] = np.sqrt(selection_total * p_i * (1 - p_i))
+
+            # raw z-score: z = (C - E) / σ (from SI in paper)
+            df[f"{exp_name}_z_score"] = (df[f"{exp_name}_C"] - df[f"{exp_name}_E"]) / df[
+                f"{exp_name}_sigma"
+            ]
+
+            # normalized z-score: zn = z / sqrt(n_exp_total) (from SI in paper)
+            df[f"{exp_name}_norm_z_score"] = df[f"{exp_name}_z_score"] / np.sqrt(selection_total)
 
         self.data = df
         return self.data
