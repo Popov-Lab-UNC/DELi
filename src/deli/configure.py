@@ -6,6 +6,7 @@ import functools
 import inspect
 import os
 import shutil
+import warnings
 from pathlib import Path
 from typing import Any, Callable, Literal, Optional, ParamSpec, Self, TypeVar, Union
 
@@ -56,11 +57,13 @@ def get_deli_config():
         elif (Path.home() / ".deli").exists():
             DELI_CONFIG = _DeliConfig.load_config(Path.home() / ".deli")
         else:
-            raise DELiConfigError(
-                "cannot find DELi config file; "
-                "Set the DELI_CONFIG environment variable to the path of the config file, "
-                "or use `deli config init` to create a default config in your home directory"
+            warnings.warn(
+                f"no DELi config file in home directory; "
+                f"creating default DELi config: {Path.home() / '.deli'}",
+                stacklevel=1,
             )
+            init_deli_config(Path.home() / ".deli", fail_on_exist=False)
+            DELI_CONFIG = _DeliConfig.load_config(Path.home() / ".deli")
 
         # take the data_dir from the environment variable if it exists
         _deli_data_dir = os.environ.get("DELI_DATA_DIR", None)

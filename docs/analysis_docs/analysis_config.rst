@@ -1,5 +1,9 @@
+.. _analysis-config-docs:
+
 Analysis Configuration
 =======================
+
+You can find an example of a DELi analysis configuration file `here <https://github.com/Popov-Lab-UNC/DELi/blob/main/examples/analysis/example_data/analysis_config_del3.yaml>`_.
 
 General Settings
 ----------------

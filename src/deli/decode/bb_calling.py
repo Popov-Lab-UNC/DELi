@@ -13,7 +13,7 @@ from .calls import FailedCall, ValidCall
 
 
 class ValidBuildingBlockCall(ValidCall):
-    """base class for all calls"""
+    """base class for all valid building block calls"""
 
     def __init__(self, building_block: TaggedBuildingBlock, score: Union[float, int]):
         self.building_block = building_block
@@ -21,7 +21,7 @@ class ValidBuildingBlockCall(ValidCall):
 
 
 class FailedBuildingBlockCall(FailedCall):
-    """call  was found"""
+    """Base class for all failed building block calls"""
 
     pass
 
