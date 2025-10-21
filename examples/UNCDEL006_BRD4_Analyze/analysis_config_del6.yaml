@@ -9,7 +9,6 @@ general:
 # The id_col is used to specify the identifier column. If DEL_ID is not specified, the first column will be used by default.
 
 id_col: "DEL_ID"
-# raw_index2	elution1_corrected_index2	raw_index3	elution1_corrected_index3	raw_index4	elution1_corrected_index4	raw_index6	corrected_index6	raw_index7	elution2_corrected_index7	raw_index8	elution2_corrected_index8	raw_index11	elution2_corrected_index11	raw_index13	corrected_index13
 
 indexes:
   elution1: ["elution1_corrected_index2", "elution1_corrected_index3", "elution1_corrected_index4"]
@@ -20,8 +19,8 @@ control_cols:
   elution2: ["corrected_D3index13"]
 
 raw_indexes:
-  elution1: ["raw_D3index1", "raw_D3index2", "raw_D3index3"]
-  elution2: ["raw_D3index4", "raw_D3index5", "raw_D3index6"]
+  elution1: ["raw_index2", "raw_index3", "raw_index4"]
+  elution2: ["raw_index7", "raw_index8", "raw_index11"]
 
 flags:
   SD_min: True
