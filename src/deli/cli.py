@@ -6,6 +6,15 @@ import datetime
 import os
 import sys
 from pathlib import Path
+import logging
+
+# Suppress RDKit warnings at module level
+try:
+    from rdkit import RDLogger
+    rd_logger = RDLogger.logger()
+    rd_logger.setLevel(RDLogger.ERROR)
+except ImportError:
+    pass
 
 import click
 import pandas as pd
@@ -336,7 +345,7 @@ def analyze(config):
     CONFIG is the path to the YAML configuration file.
     """
     print("Analysis started with config:", config)
-
+    
     def create_output_dir(output_dir):
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
@@ -362,6 +371,19 @@ def analyze(config):
     config = load_config(config)
     output_dir_base = config["general"].get("output_dir", "output")
     output_dir = create_dated_output_dir(output_dir_base, "analysis")
+    
+    # Set up log file to capture all output
+    log_file = os.path.join(output_dir, "deli.log")
+    log_file_handle = open(log_file, 'w')
+    
+    # Redirect stdout and stderr to log file
+    original_stdout = sys.stdout
+    original_stderr = sys.stderr
+    sys.stdout = log_file_handle
+    sys.stderr = log_file_handle
+    
+    print("Analysis started with config:", config)
+    print(f"Logging all output to: {log_file}")
 
     data_file = config["general"].get("data", "")
     if not data_file:
@@ -478,6 +500,8 @@ def analyze(config):
                 flags.get("top_hits_metric", "sum"),
                 output_dir=top_hits_dir,
             )
+        if flags.get("monosynthon_chemical_space", False):
+            cube.monosynthon_chemical_space(output_dir=output_dir)
         if flags.get("report", False):
             nsc_max_dict = nsc_max_dict if flags.get("SD_min", False) else None
             sd_min_dict = sd_min_dict if flags.get("SD_min", False) else None
@@ -495,3 +519,11 @@ def analyze(config):
                 os.path.join(output_dir_base, f"cube_data_{today_date}.csv"),
                 index=False,
             )
+    
+    # Cleanup: restore stdout/stderr and close log file
+    sys.stdout = original_stdout
+    sys.stderr = original_stderr
+    log_file_handle.close()
+    
+    print(f"Analysis completed! Check the log file at: {log_file}")
+    print(f"Results saved to: {output_dir}")

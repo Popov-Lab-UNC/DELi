@@ -142,6 +142,8 @@ def main():
         if 'top_hits' in flags:
             top_hits_dir = create_output_dir(os.path.join(output_dir, "top_hits"))
             cube.top_n_compounds(int(flags['top_hits']), flags.get('top_hits_metric', 'sum'), output_dir=top_hits_dir)
+        if 'monosynthon_chemical_space' in flags and flags.get('monosynthon_chemical_space', False):
+            cube.monosynthon_chemical_space(output_dir=output_dir)
         if 'report' in flags and flags.get('report', False):
             nsc_max_dict = nsc_max_dict if 'SD_min' in flags and flags.get('SD_min', False) else None
             sd_min_dict = sd_min_dict if 'SD_min' in flags and flags.get('SD_min', False) else None

@@ -7,3 +7,21 @@ test-results
 dist
 notebooks
 data
+
+# ignore all cache directories, DEL4/5/6 Output folders, and .yaml files
+cache/
+DEL4/
+DEL4_backup/
+DEL5/
+DEL6/
+*.yaml
+*.csv
+*_report.html
+*.pyc
+
+examples/analysis_examples/deli_notebook.ipynb
+
+# ignore Python cache
+__pycache__/
+*.pyc
+*.pyo

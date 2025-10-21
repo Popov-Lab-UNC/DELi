@@ -13,22 +13,35 @@ def encode_image_to_base64(image_path):
         return base64.b64encode(image_file.read()).decode("utf-8")
 
 
-def get_plot_files(directory):
+def get_plot_files(directory, file_extensions=[".png"]):
     """Retrieve base64-encoded plots from a given directory."""
     if os.path.exists(directory) and os.path.isdir(directory):
         return [
             encode_image_to_base64(os.path.join(directory, f))
             for f in os.listdir(directory)
-            if f.endswith(".png")
+            if any(f.endswith(ext) for ext in file_extensions)
         ]
+    return []
+
+def get_html_files(directory):
+    """Retrieve HTML files as text from a given directory."""
+    if os.path.exists(directory) and os.path.isdir(directory):
+        html_files = []
+        for f in os.listdir(directory):
+            if f.endswith(".html"):
+                with open(os.path.join(directory, f), 'r', encoding='utf-8') as file:
+                    html_files.append(file.read())
+        return html_files
     return []
 
 
 def get_experiment_info(indexes, control_cols):
     experiment_info = []
     for exp_name, columns in indexes.items():
+        # Handle case where control_cols is None or empty
+        control_columns = control_cols.get(exp_name, []) if control_cols else []
         experiment_info.append(
-            {"name": exp_name, "index": columns, "control_columns": control_cols.get(exp_name, [])}
+            {"name": exp_name, "index": columns, "control_columns": control_columns}
         )
     return experiment_info
 
@@ -48,10 +61,18 @@ def generate_report(
         "ml_fingerprints_to_RF_plots": os.path.join(analysis_dir, "ml_fingerprints_to_RF"),
         "ml_fingerprints_to_clf_plots": os.path.join(analysis_dir, "ml_fingerprints_to_clf"),
         "gnn_classifier_plots": os.path.join(analysis_dir, "gnn"),
+        "monosynthon_chemical_space_plots": os.path.join(analysis_dir, "clusters"),
     }
 
     # Convert plots to base64
-    plot_data = {key: get_plot_files(path) for key, path in plot_dirs.items()}
+    plot_data = {}
+    for key, path in plot_dirs.items():
+        if key == "monosynthon_chemical_space_plots":
+            # Handle HTML files for monosynthon plots
+            plot_data[key] = get_html_files(path)
+        else:
+            # Handle PNG files for other plots
+            plot_data[key] = get_plot_files(path, [".png"])
 
     experiment_info = get_experiment_info(indexes, control_cols)
 
@@ -69,20 +90,21 @@ def generate_report(
         for exp_name, value in sampling_depth_dict.items()
     ]
 
-    with resources.path("deli.templates", "analysis_report.html") as template_path:
-        template = jinja2.Template(open(template_path).read())
+    # Use the source template directly to ensure we get the latest version
+    template_path = os.path.join(os.path.dirname(__file__), "..", "templates", "analysis_report.html")
+    template = jinja2.Template(open(template_path).read())
 
-        rendered_html = template.render(
-            experiment_info=experiment_info,
-            sampling_depth_values=sampling_depth_values,
-            sampling_depth_only=sampling_depth_values_only,
-            **plot_data,  # Inject base64 plot data
-        )
+    rendered_html = template.render(
+        experiment_info=experiment_info,
+        sampling_depth_values=sampling_depth_values,
+        sampling_depth_only=sampling_depth_values_only,
+        **plot_data,  # Inject base64 plot data
+    )
 
-        # Save the report as an HTML file
-        output_file = os.path.join(base_dir, f"{today_date}_analysis_report.html")
-        with open(output_file, "w") as f:
-            f.write(rendered_html)
+    # Save the report as an HTML file
+    output_file = os.path.join(base_dir, f"{today_date}_analysis_report.html")
+    with open(output_file, "w") as f:
+        f.write(rendered_html)
 
     print(f"Report generated successfully: {output_file}")
 

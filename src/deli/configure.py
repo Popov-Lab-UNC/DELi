@@ -7,7 +7,8 @@ import inspect
 import os
 import shutil
 from pathlib import Path
-from typing import Any, Callable, Literal, Optional, ParamSpec, Self, TypeVar, Union
+from typing import Any, Callable, Literal, Optional, ParamSpec, TypeVar, Union
+from typing_extensions import Self
 
 
 P = ParamSpec("P")

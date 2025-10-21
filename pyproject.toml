@@ -1,22 +1,66 @@
-[tool.poetry]
-name = "DELi"
+[project]
+name = "deli"
 version = "0.1.0a0"
 description = "DNA encoded library sequence analysis software with custom library design support"
 authors = [
-    "James Wellnitz <wellnitz.james@gmail.com>",
-    "Brandon Novy",
-    "Travis Maxfield",
-    "Jason Lin"
+    {name = "James Wellnitz", email = "wellnitz.james@gmail.com"},
+    {name = "Brandon Novy"},
+    {name = "Travis Maxfield"},
+    {name = "Jason Lin"}
 ]
 maintainers = [
-    "James Wellnitz <wellnitz.james@gmail.com>"
+    {name = "James Wellnitz", email = "wellnitz.james@gmail.com"}
 ]
 readme = "README.md"
-repository = "https://github.com/Popov-Lab-UNC/DELi"
 classifiers = [
     "Natural Language :: English",
-    "Operating System :: OS Independent"
+    "Operating System :: OS Independent",
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Bio-Informatics"
 ]
+requires-python = ">=3.10,<4.0"
+dependencies = [
+    "click>=8.1.3",
+    "pyyaml==6.0.2",
+    "numba>=0.60.0",
+    "numpy<2.0",
+    "Levenshtein>=0.25.0",
+    "polars>=0.20.10",
+    "tqdm>=4.66.4",
+    "plotly>=5.20.0",
+    "Jinja2>=3.1.3",
+    "matplotlib>=3.9.3",
+    "scipy>=1.14.1",
+    "rdkit>=2024.9.5",
+    "pandas>=2.2.3",
+    "cutadapt==5.0",
+    "biopython==1.85",
+    "dnaio==1.2.3",
+    "seaborn>=0.12.2",
+    "scikit-learn>=1.4.2",
+    "matplotlib-venn==0.11.10",
+    "typing-extensions>=4.0.0"
+]
+
+[project.optional-dependencies]
+ml = [
+    "torch>=2.2.0",
+    "torchvision>=0.17.0",
+    "torchaudio>=2.2.0",
+    "pytorch-lightning>=2.0.0",
+    "torch-geometric==2.6.1"
+]
+
+[project.urls]
+Homepage = "https://github.com/Popov-Lab-UNC/DELi"
+Repository = "https://github.com/Popov-Lab-UNC/DELi"
+Issues = "https://github.com/Popov-Lab-UNC/DELi/issues"
+
+[project.scripts]
+deli = "deli.cli:cli"
+
+[tool.poetry]
 packages = [
     { include = "deli", from = "src" },
     { include = "deli/py.typed", from = "src" },
@@ -25,35 +69,8 @@ include = [
     { path = "src/deli/templates/*", format = ["sdist", "wheel"] }
 ]
 
-[tool.poetry.scripts]
-deli = "deli.cli:cli"
-
 [tool.poetry.dependencies]
-python = ">=3.11,<4.0"
-click = "^8.1.3"
-pyyaml = "6.0.2"
-numba = "^0.60.0"
-numpy = "<2.0"
-Levenshtein = "^0.25.0"
-polars = "^0.20.10"
-tqdm = "^4.66.4"
-plotly = "^5.20.0"
-Jinja2 = "^3.1.3"
-matplotlib = "^3.9.3"
-scipy = "^1.14.1"
-rdkit = "^2024.9.5"
-pandas = "^2.2.3"
-cutadapt = "5.0"
-biopython = "1.85"
-dnaio = "1.2.3"
-seaborn = "0.12.2"
-scikit-learn = "^1.4.2"
-matplotlib-venn = "0.11.10"
-torch = { version = ">=2.2.0", optional = true }
-torchvision = { version = ">=0.17.0", optional = true }
-torchaudio = { version = ">=2.2.0", optional = true }
-pytorch-lightning = { version = "^2.0.0", optional = true }
-torch-geometric = { version = "2.6.1", optional = true }
+python = ">=3.10,<4.0"
 
 [tool.poetry.group.dev]
 optional = true
@@ -94,8 +111,6 @@ url = "https://download.pytorch.org/whl/cpu"
 priority = "explicit"
 
 
-[tool.poetry.extras]
-ml = ["torch", "torchvision", "torchaudio", "pytorch-lightning", "torch-geometric"]
 
 [[tool.poetry.source]]
 name = "PyPI"

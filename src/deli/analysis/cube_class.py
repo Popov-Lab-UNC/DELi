@@ -1,3 +1,4 @@
+import os
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -790,7 +791,8 @@ class DELi_Cube:
             set_a = set(filtered_data[filtered_data[valid_indices[0]] > threshold]["DEL_ID"])
             set_b = set(filtered_data[filtered_data[valid_indices[1]] > threshold]["DEL_ID"])
 
-            plt.figure(figsize=(8, 6))
+            # Use consistent figure size/DPI and margins for uniform scaling
+            fig, ax = plt.subplots(figsize=(10, 6), dpi=150)
             if num_valid_indices == 3:
                 set_c = set(filtered_data[filtered_data[valid_indices[2]] > threshold]["DEL_ID"])
                 venn3(
@@ -802,6 +804,9 @@ class DELi_Cube:
                 venn2([set_a, set_b], set_labels=(valid_indices[0], valid_indices[1]))
                 plt.title(f"Overlap Diagram for {exp_name} (Two Indices)")
 
+            # Enforce equal aspect and fixed margins; avoid tight bbox to keep scale constant
+            ax.set_aspect('equal', adjustable='box')
+            fig.subplots_adjust(left=0.08, right=0.92, top=0.88, bottom=0.12)
             plt.savefig(f"{output_dir}/{exp_name}_overlap_diagram.png")
             plt.close()
 
@@ -873,7 +878,8 @@ class DELi_Cube:
             set_a = set(filtered_data[filtered_data[valid_indices[0]] > threshold][disynthon_type])
             set_b = set(filtered_data[filtered_data[valid_indices[1]] > threshold][disynthon_type])
 
-            plt.figure(figsize=(8, 6))
+            # Use consistent figure size/DPI and margins across disynthon plots
+            fig, ax = plt.subplots(figsize=(10, 6), dpi=150)
             if num_valid_indices == 3:
                 set_c = set(
                     filtered_data[filtered_data[valid_indices[2]] > threshold][disynthon_type]
@@ -893,7 +899,10 @@ class DELi_Cube:
                     fontsize=16,
                 )
 
-            plt.savefig(f"{output_dir}/{exp_name}_venn_diagram.png", bbox_inches="tight")
+            # Enforce equal aspect and fixed margins; avoid tight bbox to keep scale constant
+            ax.set_aspect('equal', adjustable='box')
+            fig.subplots_adjust(left=0.08, right=0.92, top=0.88, bottom=0.12)
+            plt.savefig(f"{output_dir}/{exp_name}_venn_diagram.png")
             plt.close()
 
         if valid_experiments == 0:
@@ -927,7 +936,10 @@ class DELi_Cube:
             if mol:
                 try:
                     Chem.SanitizeMol(mol)
-                    return AllChem.GetMorganFingerprintAsBitVect(mol, radius, nBits=n_bits)
+                    # Use modern MorganGenerator instead of deprecated functions
+                    from rdkit.Chem.rdFingerprintGenerator import GetMorganGenerator
+                    fpgen = GetMorganGenerator(radius=radius, fpSize=n_bits)
+                    return fpgen.GetFingerprint(mol)
                 except:
                     return None
             else:
@@ -1032,7 +1044,10 @@ class DELi_Cube:
             if mol:
                 try:
                     Chem.SanitizeMol(mol)
-                    return AllChem.GetMorganFingerprintAsBitVect(mol, radius, nBits=n_bits)
+                    # Use modern MorganGenerator instead of deprecated functions
+                    from rdkit.Chem.rdFingerprintGenerator import GetMorganGenerator
+                    fpgen = GetMorganGenerator(radius=radius, fpSize=n_bits)
+                    return fpgen.GetFingerprint(mol)
                 except:
                     return None
             else:
@@ -1244,3 +1259,163 @@ class DELi_Cube:
 
     def top_disynthons_diff_from_competitor(self):
         pass
+
+    def monosynthon_chemical_space(self, output_dir: str = None) -> None:
+        """
+        Create t-SNE chemical space visualizations for monosynthons (A, B, C) colored by average enrichment.
+        
+        Parameters
+        ----------
+            output_dir (str, optional): Directory to save the HTML files. Defaults to None.
+        """
+        try:
+            import plotly.express as px
+            import plotly.graph_objects as go
+            from sklearn.manifold import TSNE
+            from rdkit.Chem.rdFingerprintGenerator import GetMorganGenerator
+        except ImportError as e:
+            raise ImportError("monosynthon_chemical_space requires plotly and scikit-learn") from e
+        
+        if output_dir is None:
+            output_dir = "."
+        
+        # Create clusters directory
+        clusters_dir = os.path.join(output_dir, "clusters")
+        if not os.path.exists(clusters_dir):
+            os.makedirs(clusters_dir)
+        
+        def smiles_to_fingerprint(smiles, radius=3, n_bits=2048):
+            """Convert SMILES to Morgan fingerprint."""
+            mol = Chem.MolFromSmiles(smiles)
+            if mol:
+                try:
+                    Chem.SanitizeMol(mol)
+                    fpgen = GetMorganGenerator(radius=radius, fpSize=n_bits)
+                    return fpgen.GetFingerprint(mol)
+                except:
+                    return None
+            else:
+                return None
+        
+        # Process each monosynthon type (A, B, C)
+        for synthon_type in ["A", "B", "C"]:
+            synthon_col = f"ID_{synthon_type}"
+            
+            if synthon_col not in self.data.columns:
+                print(f"Skipping {synthon_type} - column {synthon_col} not found")
+                continue
+            
+            # Get unique monosynthons for this type
+            unique_synthons = self.data[synthon_col].unique()
+            
+            if len(unique_synthons) < 2:
+                print(f"Skipping {synthon_type} - not enough unique monosynthons ({len(unique_synthons)} found)")
+                continue
+            
+            # Calculate average enrichment for each monosynthon across all experiments
+            synthon_data = []
+            
+            for synthon in unique_synthons:
+                # Get all compounds with this monosynthon
+                synthon_compounds = self.data[self.data[synthon_col] == synthon]
+                
+                if len(synthon_compounds) == 0:
+                    continue
+                
+                # Calculate average enrichment across all experimental indexes
+                total_enrichment = 0
+                total_experiments = 0
+                
+                for exp_name, indexes in self.indexes.items():
+                    # Sum across replicates for this experiment
+                    exp_sum = synthon_compounds[indexes].sum(axis=1)
+                    # Average across compounds with this monosynthon
+                    avg_enrichment = exp_sum.mean()
+                    total_enrichment += avg_enrichment
+                    total_experiments += 1
+                
+                if total_experiments > 0:
+                    avg_enrichment = total_enrichment / total_experiments
+                    
+                    # Get a representative SMILES (first one found)
+                    representative_smiles = synthon_compounds["SMILES"].iloc[0]
+                    
+                    synthon_data.append({
+                        'synthon': synthon,
+                        'smiles': representative_smiles,
+                        'avg_enrichment': avg_enrichment,
+                        'count': len(synthon_compounds)
+                    })
+            
+            if len(synthon_data) < 2:
+                print(f"Skipping {synthon_type} - not enough valid monosynthons after processing")
+                continue
+            
+            # Convert to DataFrame
+            df_synthons = pd.DataFrame(synthon_data)
+            
+            # Generate fingerprints
+            print(f"Generating fingerprints for {len(df_synthons)} {synthon_type} monosynthons...")
+            df_synthons['fingerprint'] = [
+                smiles_to_fingerprint(smiles) for smiles in tqdm(df_synthons['smiles'])
+            ]
+            
+            # Remove any that failed fingerprint generation
+            df_synthons = df_synthons.dropna(subset=['fingerprint'])
+            
+            if len(df_synthons) < 2:
+                print(f"Skipping {synthon_type} - not enough valid fingerprints")
+                continue
+            
+            # Convert fingerprints to array for t-SNE
+            X = np.array([list(fp) for fp in df_synthons['fingerprint']])
+            
+            # Run t-SNE
+            print(f"Running t-SNE for {synthon_type} monosynthons...")
+            tsne = TSNE(n_components=2, random_state=42, perplexity=min(30, len(df_synthons)-1))
+            tsne_results = tsne.fit_transform(X)
+            
+            # Create plotly figure
+            fig = px.scatter(
+                x=tsne_results[:, 0],
+                y=tsne_results[:, 1],
+                color=df_synthons['avg_enrichment'],
+                hover_data={
+                    'synthon': df_synthons['synthon'],
+                    'avg_enrichment': df_synthons['avg_enrichment'],
+                    'count': df_synthons['count']
+                },
+                color_continuous_scale='viridis',
+                title=f"{synthon_type} Monosynthon Chemical Space",
+                labels={
+                    'x': 't-SNE 1',
+                    'y': 't-SNE 2',
+                    'color': 'Avg Enrichment'
+                }
+            )
+            
+            # Update hover template
+            fig.update_traces(
+                hovertemplate="<b>%{customdata[0]}</b><br>" +
+                             "Avg Enrichment: %{customdata[1]:.2f}<br>" +
+                             "Count: %{customdata[2]}<br>" +
+                             "<extra></extra>"
+            )
+            
+            # Update layout
+            fig.update_layout(
+                width=800,
+                height=600,
+                showlegend=False,
+                plot_bgcolor='white',
+                paper_bgcolor='white',
+                xaxis=dict(showticklabels=False, showgrid=False),
+                yaxis=dict(showticklabels=False, showgrid=False)
+            )
+            
+            # Save HTML file
+            output_file = os.path.join(clusters_dir, f"monosynthon_{synthon_type}_chemical_space.html")
+            fig.write_html(output_file)
+            print(f"Saved {synthon_type} monosynthon chemical space to {output_file}")
+        
+        print(f"Monosynthon chemical space visualizations saved to {clusters_dir}")
