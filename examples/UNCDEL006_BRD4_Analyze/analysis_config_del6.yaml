@@ -11,12 +11,12 @@ general:
 id_col: "DEL_ID"
 
 indexes:
-  elution1: ["elution1_corrected_index2", "elution1_corrected_index3", "elution1_corrected_index4"]
-  elution2: ["elution2_corrected_index7", "elution2_corrected_index8", "elution2_corrected_index11"]
+  elution1: ["corrected_index2", "corrected_index3", "corrected_index4"]
+  elution2: ["corrected_index7", "corrected_index8", "corrected_index11"]
 
 control_cols:
-  elution1: ["corrected_D3index6"]
-  elution2: ["corrected_D3index13"]
+  elution1: ["corrected_index6"]
+  elution2: ["corrected_index13"]
 
 raw_indexes:
   elution1: ["raw_index2", "raw_index3", "raw_index4"]
