@@ -14,8 +14,6 @@ DEL4/
 DEL4_backup/
 DEL5/
 DEL6/
-*.yaml
-*.csv
 *_report.html
 *.pyc
 
