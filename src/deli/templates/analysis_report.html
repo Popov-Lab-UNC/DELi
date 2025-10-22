@@ -103,7 +103,7 @@
             display: flex;
             flex-wrap: wrap;
             gap: 15px;
-            justify-content: flex-start; /* Align to the left */
+            justify-content: center; /* Center the plots */
             align-items: center; /* Center vertically */
         }
 
@@ -123,7 +123,7 @@
         .single-plot {
             display: block;
             margin: 0 auto;
-            max-width: 100%;
+            width: 100%;
             height: auto;
         }
     </style>
@@ -196,7 +196,7 @@
     <section>
         <h2>Trisynthon Overlap</h2>
         {% for plot in trisynthon_plots %}
-        <img src="data:image/png;base64,{{ plot }}" alt="Trisynthon Plot">
+        <img src="data:image/png;base64,{{ plot }}" alt="Trisynthon Plot" class="single-plot">
         {% endfor %}
     </section>
     {% endif %}
@@ -207,7 +207,7 @@
     <section>
         <h2>Disynthon Overlap</h2>
         {% for plot in disynthon_plots %}
-        <img src="data:image/png;base64,{{ plot }}" alt="Disynthon Plot">
+        <img src="data:image/png;base64,{{ plot }}" alt="Disynthon Plot" class="single-plot">
         {% endfor %}
     </section>
     {% endif %}
@@ -217,7 +217,7 @@
     <section>
         <h2>Top Disynthon Enrichment</h2>
         {% for plot in top_disynthons_plots %}
-        <img src="data:image/png;base64,{{ plot }}" alt="Top Disynthon Enrichment Plot">
+        <img src="data:image/png;base64,{{ plot }}" alt="Top Disynthon Enrichment Plot" class="single-plot">
         {% endfor %}
     </section>
     {% endif %}
@@ -227,7 +227,7 @@
     <section>
         <h2>Top Hit Compound Plots</h2>
         {% for plot in top_hits_plots %}
-        <img src="data:image/png;base64,{{ plot }}" alt="Top Hit Compound Plot">
+        <img src="data:image/png;base64,{{ plot }}" alt="Top Hit Compound Plot" class="single-plot">
         {% endfor %}
     </section>
     {% else %}
@@ -237,12 +237,24 @@
     </section>
     {% endif %}
 
+    <!-- Monosynthon Feature Space Section -->
+    {% if monosynthon_chemical_space_plots %}
+    <section>
+        <h2>Monosynthon Feature Space</h2>
+        {% for plot in monosynthon_chemical_space_plots %}
+        <div style="margin: 20px 0;">
+            {{ plot|safe }}
+        </div>
+        {% endfor %}
+    </section>
+    {% endif %}
+
     <!-- ML Fingerprints to Regression Section -->
     {% if ml_fingerprints_to_RF_plots %}
     <section>
         <h2>ML Fingerprints to Regression</h2>
         {% for plot in ml_fingerprints_to_RF_plots %}
-        <img src="data:image/png;base64,{{ plot }}" alt="ML Fingerprints to Regression Plot">
+        <img src="data:image/png;base64,{{ plot }}" alt="ML Fingerprints to Regression Plot" class="single-plot">
         {% endfor %}
     </section>
     {% endif %}
@@ -252,7 +264,7 @@
     <section>
         <h2>Classifier Plots</h2>
         {% for plot in ml_fingerprints_to_clf_plots %}
-        <img src="data:image/png;base64,{{ plot }}" alt="Classifier Plot">
+        <img src="data:image/png;base64,{{ plot }}" alt="Classifier Plot" class="single-plot">
         {% endfor %}
     </section>
     {% endif %}
@@ -262,7 +274,7 @@
     <section>
         <h2>GNN Classifier Plots</h2>
         {% for plot in gnn_classifier_plots %}
-        <img src="data:image/png;base64,{{ plot }}" alt="GNN Classifier Plot">
+        <img src="data:image/png;base64,{{ plot }}" alt="GNN Classifier Plot" class="single-plot">
         {% endfor %}
     </section>
     {% endif %}

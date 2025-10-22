@@ -1,0 +1,52 @@
+general:
+  data: "UNCDEL003_53bp1.csv"
+  lib_size: 58000
+  output_dir: "DEL3"
+
+# If indexes are not provided, raw_indexes will be used. If only indexes are provided, SD_min and NSC_values cannot be calculated
+# due to the necessity of raw reads for depth. You can still run the analysis, but the top of the report will display NA for these values.
+# Control columns are necessary for MLE and Z-scores calculations.
+# The id_col is used to specify the identifier column. If DEL_ID is not specified, the first column will be used by default.
+
+id_col: "DEL_ID"
+
+indexes:
+  53bp1: ["corrected_D3index1", "corrected_D3index2", "corrected_D3index3"]
+
+control_cols:
+
+raw_indexes:
+  53bp1: ["raw_D3index1", "raw_D3index2", "raw_D3index3"]
+
+flags:
+  SD_min: True
+  NSC_values: True
+  MLE: False
+  Z_score: False
+  z_score_log_data: False
+  disynthon_data: true
+  polyO: False
+  trisynthon_overlap: True
+  disynthon_overlap: True
+  disynthon_threshold: 50
+  normalized_data: False
+  simple_spotfire_version: true
+  ml_fingerprints_to_RF_reg: true
+  ml_fingerprints_to_RF_clf: true
+  clf_thresh: 7
+  gnn_classifier: false
+  gnn_threshold: 10
+  gnn_arch: "GAT"
+  top_hits: 20
+  top_hits_metric: "avg" #enter any metric calculated for enumerated library members
+  monosynthon_chemical_space: true
+  report: true
+
+  top_disynthons:
+    enabled: True
+    comparison: "none"       # Type of comparison: "control" or "exp2" or "none"
+    exp_name: "53bp1"
+    exp2_name: "53bp1"
+    control_name: "none"
+    top_count: 10               # Number of top disynthons to pull
+    comparison_metric: "avg"

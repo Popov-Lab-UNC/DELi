@@ -36,12 +36,13 @@ flags:
   simple_spotfire_version: true
   ml_fingerprints_to_RF_reg: true
   ml_fingerprints_to_RF_clf: true
-  clf_thresh: 10
+  clf_thresh: 7
   gnn_classifier: true
   gnn_threshold: 10
   gnn_arch: "GAT"
   top_hits: 20
   top_hits_metric: "sum"
+  monosynthon_chemical_space: true
   report: true
 
   top_disynthons:

@@ -3,7 +3,8 @@
 import abc
 import math
 import re
-from typing import Optional, Self
+from typing import Optional
+from typing_extensions import Self
 
 
 class BarcodeSchemaError(Exception):

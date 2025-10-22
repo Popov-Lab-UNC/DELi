@@ -7,7 +7,8 @@ import random
 import warnings
 from itertools import zip_longest
 from os import PathLike
-from typing import Any, Literal, Self
+from typing import Any, Literal
+from typing_extensions import Self
 
 import yaml
 from tqdm import tqdm
