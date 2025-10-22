@@ -1,6 +1,6 @@
 # toml
 [project]
-name = "deli"
+name = "del-informatics"
 version = "0.1.0a0"
 description = "DNA encoded library sequence analysis software with custom library design support"
 readme = "README.md"
