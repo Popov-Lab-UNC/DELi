@@ -1,5 +1,5 @@
 general:
-  data: "UNCDEL006_BRD4.csv"
+  data: "examples/UNCDEL006_BRD4_Analyze/UNCDEL006_BRD4.csv"
   lib_size: 850000
   output_dir: "DEL6"
 
@@ -33,7 +33,7 @@ flags:
   trisynthon_overlap: True
   disynthon_overlap: True
   disynthon_threshold: 50
-  normalized_data: True
+  normalized_data: False
   simple_spotfire_version: true
   ml_fingerprints_to_RF_reg: true
   ml_fingerprints_to_RF_clf: true

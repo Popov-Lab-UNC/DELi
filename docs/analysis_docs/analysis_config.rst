@@ -49,6 +49,8 @@ Flags
     - Example: ``False``
 - **disynthon_data**: Enable or disable disynthon enrichment calculation.
     - Example: ``true``
+- **polyO**: Enable or disable polyO calculation.
+    - Example: ``True``
 - **trisynthon_overlap**: Enable or disable trisynthon reproducibility calculation which displays venn diagram of library members across replicate runs.
     - Example: ``True``
 - **disynthon_overlap**: Enable or disable disynthon reproducibility calculation which displays venn diagram of library members across replicate runs.
@@ -73,6 +75,8 @@ Flags
     - Example: ``20``
 - **top_hits_metric**: Set the metric you want to use to pull top structures.
     - Example: ``sum``
+- **monosynthon_chemical_space**: Enable or disable monosynthon chemical space visualization using t-SNE and Morgan fingerprints.
+    - Example: ``true``
 - **report**: Enable or disable self-contained html report generation.
     - Example: ``true``
 

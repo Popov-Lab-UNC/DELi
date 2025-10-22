@@ -9,7 +9,9 @@ authors = [
     {name = "Jason Lin"}
 ]
 maintainers = [
-    {name = "James Wellnitz", email = "wellnitz.james@gmail.com"}
+    {name = "James Wellnitz", email = "wellnitz.james@gmail.com"},
+    {name = "Brandon Novy", email = "novy@unc.edu"},
+    {name = "Jason Lin", email = "shuhang@unc.edu"}
 ]
 readme = "README.md"
 classifiers = [

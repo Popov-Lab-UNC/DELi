@@ -14,11 +14,22 @@ The automated method allows you to configure a single YAML file, choose the anal
 
 The automated analysis mode is the default mode and can be run with the following command:
 
-.. code-block:: python
+.. code-block:: bash
 
-    python analysis.py --config <path_to_config.yaml>
+    deli analyze --config <path_to_config.yaml>
 
 This will generate a report and all the figures and CSVs you need to provide to your chemistry team.
+
+Development and Testing Mode
+-----------------------------
+
+For development and testing purposes, a standalone analysis script is available:
+
+.. code-block:: bash
+
+    python analysis_parse.py --config <path_to_config.yaml>
+
+This provides the same functionality as the CLI but without the full CLI infrastructure, making it useful for debugging and rapid prototyping of new analysis features.
 
 Manual Analysis Mode
 ---------------------
