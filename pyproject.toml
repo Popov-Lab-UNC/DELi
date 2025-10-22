@@ -98,6 +98,7 @@ optional = true
 
 [tool.poetry.group.docs.dependencies]
 sphinx = "^7.1.2"
+sphinx_rtd_theme = "^1.2.0"
 
 [tool.poetry.group.notebook]
 optional = true
@@ -117,6 +118,9 @@ priority = "explicit"
 [[tool.poetry.source]]
 name = "PyPI"
 priority = "primary"
+
+[tool.poetry.extras]
+ml = ["torch", "torchvision", "torchaudio", "pytorch-lightning", "torch-geometric"]
 
 [build-system]
 requires = ["poetry-core"]

@@ -1,69 +1,68 @@
+.. _deli-config-docs:
+
 DELi Configuration
 ==================
 
-DELi is built with Poetry, and subscribes to the notion of 'no arbitrary code during install'.
-By default no DELi figuration directory or file will be created.
-If you want to control these defaults, you can use ``deli init_config <DESIRED_LOCATION>``
-to generate a default configuration file.
+DELi uses a ``.deli`` config file to control some of its more advanced settings.
+To avoid arbitrary code execution, DELi does not initialize the config file when
+installed via ``pip``. Instead it will create one the first time you every use DELi
+(and it will raise a warning to let you know it did so).
+You can also create one yourself using ``deli config init``.
+A valid DELi config file is required for DELi to run *or* be imported.
+DELi will raise a ``DELiConfigError`` if it detects something wrong with the config file.
 
-By default, DELi looks for a ``.deli`` config folder in your ``$HOME`` directory.
-You can override where to look for this file by setting the ``DELI_CONFIG_DIR`` environment
-variable.
+.. note::
+    Any settings that might impact the outcome of a DELi command (like ``deli decode``)
+    are not part of the config file. The config file if for settings related to how DELi
+    outputs data, where it looks for files, and defining mappings.
 
-This folder contains a directory called ``deli_data``, which is the default DELi Data Directory
-(See :ref:`deli-data-dir-ref`) and default DELi configuration file named ``.deli``
+File Format
+-----------
+The config file follows the config (.ini) format, with sections and key-value pairs.
+DELi looks for a handful of sections:
 
-.. _deli-config-file-ref:
+- ``deli.data``: holds settings related to the DELi Data Directory
+- ``deli.buildingblocks``: holds settings related to how to handle building blocks
+- ``deli.hamming``: holds settings related to hamming encoding/decoding
 
-The ``.deli`` config file
--------------------------
-This file follow the config (.ini) format and controls some of the default setting DELi uses
-when decoding. This controls most of the more advanced settings that you might need for
-DELi applications (like ``deli decode``). Most users will not have to alter these, outside
-of setting the ``DELI_DATA_DIR``.
+.. warning::
+    The config file is case sensitive.
 
-For most command line tools you can pass a ``--deli-config`` argument to specify
-a config file. If no file is specified DELi will look to load one from ``$HOME\.deli\.deli``.
-If there is no such file, DELi will use the default settings
-
-DELI_DATA_DIR
+``deli.data``
 ^^^^^^^^^^^^^
-This should be the path to the DELI_DATA_DIR, which defaults to ``$USER\.deli\deli_data``.
-You can override this by setting the environment variable ``DELI_DATA_DIR``
+This section has only one key: ``deli_data_dir``. This is the path to the
+:ref:`DELi Data Directory <deli-data-dir-ref>`. This is the default location DELi will look
+for your DELi data files. All other methods of setting the DELi Data Directory (like with
+the ENV variable or the ``set_deli_data_dir`` function) will override this setting.
 
-BB_MASK
-^^^^^^^
-This is the token used by DELi when masking building blocks.
-Masking building blocks is done when creating IDs for non-full DEL compounds,
-like a disynthon for a trisynthon. The default is "###"
+``deli.buildingblocks``
+^^^^^^^^^^^^^^^^^^^^^^^
+This section has only one key: ``bb_mask``. This is the token DELi will use when masking
+building blocks. This happens during things like Di/Monosynthon ID creation, where specific
+cycles are aggregated (and then masked). The default is "###".
 
-MAX_INDEX_RISK_DIST_THRESHOLD
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-This is the max Levenshtein distance a called index can be from the observed sequence.
-During calling, DELi will pick the index with the shortest Levenshtein distance to the observed
-sequence as the correct index (unless there is a tie, in which case it fails).
-This distance might be very big. This parameter puts a cap to that distance.
-DELi will ignore this is there is only 1 index to call.
-The default value is 3
+. _deli-config-hamming-section
 
-MAX_LIBRARY_RISK_DIST_THRESHOLD
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-This is the max Levenshtein distance a called library can be from the observed sequence.
-During calling, DELi will pick the library with the shortest Levenshtein distance to the
-observed sequence as the correct library (unless there is a tie, in which case it fails).
-This distance might be very big. This parameter puts a cap to that distance.
-DELi will ignore this is there is only 1 library to call.
-The default value is 4
+.. _deli-config-hamming-section:
 
-NUC_2_INT
-^^^^^^^^^
-This is a mapping of nucleotide to integer for all 4 bases.
-This solely used for hamming decoding (and encoding) as the bases are converted to numbers
-to calculate the parity. You should make sure yours matches DELi's.
+``deli.hamming``
+^^^^^^^^^^^^^^^^
+This section has one key: ``nuc_2_int``. This is the mapping of nucleotide to integer values
+Hamming encoding/decoding happens using quaternary number space, thus must first covert the DNA
+into the numbers 0, 1, 2, and 3. How this is done must be the same for encoding and decoding.
+If you used a specific mapping when encoding, you must use the same mapping when decoding and
+this is how you tell DELi to change that. The default is ``A:0,T:1,C:2,G:3``.
 
-The default is ``A:0,T:1,C:2,G:3``
+.. note::
+    The ``nuc_2_int`` mapping is only used for Hamming encoding/decoding using a hamming matrix.
+    If you are using the "random" decoding method, this setting is not used.
 
-The format is simply a comma seperated list of the 4 bases: A,T,G,C seperated by a colon to
-their numeric conversion: 0,1,2,3. They can appear in any order, but all 4 must be present.
-If they are duplicated an exception will be raised. If you use numbers outside of 0,1,2,3 an
-exception will be raised.
+The hamming section also has an infinite number of sub sections, with each being the name of a
+specific hamming matrix. These follow the naming convention ``deli.hamming.<NAME>``. They
+each have to keys to fill out: ``hamming_order`` and ``custom_order``. You can read more about
+how this works in the :ref:`custom hamming docs <deli-custom-hamming-docs>`.
+
+.. warning::
+    The ":" character is reserved for the :ref:`error correction parser <error-correction-docs>`,
+    thus DELi will not allow the use of it in the names of hamming matrices. If you try to use it,
+    DELi will raise a ``DELiConfigError``.
