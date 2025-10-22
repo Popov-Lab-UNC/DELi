@@ -1,6 +1,6 @@
 # toml
 [project]
-name = "del-informatics"
+name = "deli-chem"
 version = "0.1.0a0"
 description = "DNA encoded library sequence analysis software with custom library design support"
 readme = "README.md"
@@ -91,6 +91,13 @@ notebook = [
   "notebook==7.1.3",
   "ipython==7.22.0"
 ]
+
+[tool.poetry]
+name = "deli-chem"
+version = "0.1.0a0"
+description = "DNA encoded library sequence analysis software with custom library design support"
+authors = ["James Wellnitz <wellnitz.james@gmail.com>", "Brandon Novy", "Travis Maxfield", "Jason Lin"]
+packages = [{include = "deli", from = "src"}]
 
 [build-system]
 requires = ["poetry-core"]
