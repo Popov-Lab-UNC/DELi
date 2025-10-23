@@ -1,4 +1,4 @@
-### DELi examples
+# DELi examples
 Here are some example for how to use DELi for decoding and analysis.
 NOTE: these are user provided, so they are not guaranteed to be up to date with current versions.
 
@@ -14,6 +14,14 @@ To ensure your analysis is running correctly, you can check for validated featur
 For benchmarking your results, note that in UNCDEL006 BRD4, the library member A035-B040-C030 is a nanomolar (nM) binder with experimental validation.
 
 ## Enumerate
+
+See `UNCDEL006_Enumerate` for an example of running enumeration using DELi. The folder includes three building block sets (A, B, C) with defined IDs and SMILES. The `UNCDEL006_Enumerate/enumerate.py` script is an example using DELi code to create building block sets and a reaction workflow for the enumeration of the library.
+
+Running the example is as simple as:
+
+```bash
+python enumerate.py
+```
 
 ## Decode
 
