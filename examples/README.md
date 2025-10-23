@@ -32,6 +32,10 @@ The `UNCDEL006_BRD4.csv.gz` file in the `UNCDEL006_BRD4_Analyze/` directory is o
 To run analysis on this data:
 
 ```bash
+# First unzip the data file
+gunzip UNCDEL006_BRD4_Analyze/UNCDEL006_BRD4.csv.gz
+
+# Run analysis
 deli analyze --config UNCDEL006_BRD4_Analyze/analysis_config_del6.yaml
 ```
 
