@@ -18,6 +18,12 @@ You can install DELi using pip for any OS/Machine that supports Python 3.10+:
 pip install deli-chem
 ```
 
+You can use DELi as a command line tool (see the [docs](https://dna-encoded-library-informatics-deli.readthedocs.io/en/latest/cli_docs.html) for more details) or as a python package
+```python
+import deli
+print(deli.__version__)
+```
+
 ## Getting Started
 For an end-to-end workflow of running DELi with open source libraries and selections (Enumerate, Decode, Analyze), see the [examples documentation](examples/README.md).
 
@@ -29,4 +35,5 @@ DELi is written in Python for two reasons:
 It is true that DELi would be faster as a compiled C++ or Rust program, but we have optimized the DELi enough that runtime isn't much of an issue.
 We hope to someday write a Rust version of DELi (at least for decoding and enumeration) but those plans are not yet in motion.
 
-**Note for developers:** Feel free to use `poetry build` to build DELi from source when developing or testing locally. This command will generate the `dist/` directory (if it doesn't already exist) and place the source and wheel distributions inside it.
+**Note for developers:** DELi is built using poetry. You can use `poetry build` to build from source after
+cloning the repo. Be on the lookup for contribution docs in the near future!
