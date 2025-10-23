@@ -15,12 +15,13 @@ For benchmarking your results, note that in UNCDEL006 BRD4, the library member A
 
 ## Enumerate
 
-See `UNCDEL006_Enumerate` for an example of running enumeration using DELi. The folder includes three building block sets (A, B, C) with defined IDs and SMILES. The `UNCDEL006_Enumerate/enumerate.py` script is an example using DELi code to create building block sets and a reaction workflow for the enumeration of the library.
+See `UNCDEL006_Enumerate` for an example of running enumeration using DELi. The folder includes three building block sets (A, B, C) with defined IDs and SMILES. The `enumerate.py` script is an example using DELi code to create building block sets and a reaction workflow for the enumeration of the library.
 
 Running the example is as simple as:
 
 ```bash
-python UNCDEL006_Enumerate/enumerate.py
+cd UNCDEL006_Enumerate
+python enumerate.py
 ```
 
 ## Decode
@@ -32,11 +33,13 @@ The `UNCDEL006_BRD4.csv.gz` file in the `UNCDEL006_BRD4_Analyze/` directory is o
 To run analysis on this data:
 
 ```bash
+cd UNCDEL006_BRD4_Analyze
+
 # First unzip the data file
-gunzip UNCDEL006_BRD4_Analyze/UNCDEL006_BRD4.csv.gz
+gunzip UNCDEL006_BRD4.csv.gz
 
 # Run analysis
-deli analyze --config UNCDEL006_BRD4_Analyze/analysis_config_del6.yaml
+deli analyze --config analysis_config_del6.yaml
 ```
 
 This will generate a comprehensive analysis report with plots, statistics, and chemical space visualizations.
