@@ -26,6 +26,36 @@ python enumerate.py
 
 ## Decode
 
+Data for an example decoding run can be found in `UNCDEL006_BRD4_Decode`. To run this example using the
+command line interface for DELi, first make sure you have run `pip install deli-chem` to install DELi
+and can run `deli --help` without error. Then you can clone the repo and run the example:
+
+```shell
+git clone git@github.com:Popov-Lab-UNC/DELi.git
+cd deli/examples/UNCDEL006_BRD4_Decode
+
+deli config init  # unless you already have a .deli config
+deli data set -u ../example_deli_data_dir  # you could also do export DELI_DATA_DIR=FULL/PATH/TO/example_deli_data_dir
+
+deli decode --tqdm --prefix EXAMPLE ./example_decode.yaml ./UNCDEL006_BRD4.fastq.gz
+```
+The output will default to the CWD.
+
+You could also run decoding from a python script:
+```python
+from deli.decode import DecodingRunner
+runner = DecodingRunner.from_file(
+    "example_decode.yaml",
+    ["UNCDEL006_BRD4.fastq.gz"],
+    disable_logging=True
+)
+
+results = runner.run(use_tqdm=True)
+results.write_decode_statistics("./EXAMPLE_decode_statistics.json")
+results.write_cube("./EXAMPLE_cube.csv")
+results.write_decode_report("./EXAMPLE_decode_report.html")
+```
+
 ## Analyze
 
 The `UNCDEL006_BRD4.csv.gz` file in the `UNCDEL006_BRD4_Analyze/` directory is output from the DELi decode module, containing decoded DEL sequences with enrichment data from BRD4 binding experiments.
