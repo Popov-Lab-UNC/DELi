@@ -20,7 +20,7 @@ See `UNCDEL006_Enumerate` for an example of running enumeration using DELi. The 
 Running the example is as simple as:
 
 ```bash
-python enumerate.py
+python UNCDEL006_Enumerate/enumerate.py
 ```
 
 ## Decode
@@ -32,7 +32,7 @@ The `UNCDEL006_BRD4.csv.gz` file in the `UNCDEL006_BRD4_Analyze/` directory is o
 To run analysis on this data:
 
 ```bash
-deli analyze --config examples/UNCDEL006_BRD4_Analyze/analysis_config_del6.yaml
+deli analyze --config UNCDEL006_BRD4_Analyze/analysis_config_del6.yaml
 ```
 
 This will generate a comprehensive analysis report with plots, statistics, and chemical space visualizations.
