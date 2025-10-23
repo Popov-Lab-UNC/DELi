@@ -9,7 +9,7 @@ DELi is a Python library for working with DNA-encoded libraries (DELs).
 
 You can install DELi using pip:
 ::
-    pip install del-informatics
+    pip install deli-chem
 
 
 .. toctree::

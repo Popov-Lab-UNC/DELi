@@ -1,14 +1,13 @@
 # DELi
 ![DELi](./assets/DELi_logo.png)
 
-DELi (DNA Encoded Library informatics) is the software suite used by the CICBDD to do their in-house DEL analysis.
+DELi (DNA-Encoded Library informatics) is a Python library for working with DELs.
 It incorporates the whole pipeline post base-calling/sequencing including:
-- Barcode/DEL ID calling and cube file generation
-- Enumeration of chemical structures from building blocks
-- Disython and Monosynthon analysis
-- Binary classification of enriched DELs (TODO)
-- Generation of machine learning datasets and baseline models from DEL data
-- Various digestible reports to understand the DEL results
+1. Barcode/DEL ID calling and cube file generation
+2. Enumeration of chemical structures from building blocks
+3. Disython and Monosynthon analysis
+4. Generation of machine learning datasets and baseline models from DEL data
+5. Various digestible reports to understand the DEL results
 
 You can read the detailed documentation [here](https://dna-encoded-library-informatics-deli.readthedocs.io/en/latest/).
 
