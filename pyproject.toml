@@ -69,6 +69,8 @@ ml = [
   "pytorch-lightning>=2.0.0",
   "torch-geometric==2.6.1"
 ]
+
+[dependency-groups]
 dev = [
   "pre-commit~=3.8.0",
   "mypy~=1.8.0",
@@ -92,16 +94,12 @@ notebook = [
   "ipython==7.22.0"
 ]
 
-[tool.poetry]
-name = "deli-chem"
-version = "0.1.1"
-description = "DNA encoded library sequence analysis software with custom library design support"
-authors = ["James Wellnitz <wellnitz.james@gmail.com>", "Brandon Novy", "Travis Maxfield", "Jason Lin"]
-packages = [{include = "deli", from = "src"}]
-
 [build-system]
-requires = ["poetry-core"]
+requires = ["poetry-core>=2.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+requires-poetry = ">=2.0.0"
 
 [tool.poetry_bumpversion.file."docs/conf.py"]
 search = 'release = "{current_version}"'
