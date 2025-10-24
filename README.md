@@ -18,13 +18,14 @@ You can install DELi using pip for any OS/Machine that supports Python 3.10+:
 pip install deli-chem
 ```
 
+## Getting Started
+
 You can use DELi as a command line tool (see the [docs](https://dna-encoded-library-informatics-deli.readthedocs.io/en/latest/cli_docs.html) for more details) or as a python package
 ```python
 import deli
 print(deli.__version__)
 ```
 
-## Getting Started
 For an end-to-end workflow of running DELi with open source libraries and selections (Enumerate, Decode, Analyze), see the [examples documentation](examples/README.md).
 
 ## Why not a compiled language
