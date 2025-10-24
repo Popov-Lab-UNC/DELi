@@ -7,7 +7,7 @@ author = "James Wellnitz"
 
 # The full version, including alpha/beta/rc tags
 release = "0.1.1"
-version = "0.1.1"
+version = release
 
 # Add any Sphinx extension module names here, as strings
 extensions = [

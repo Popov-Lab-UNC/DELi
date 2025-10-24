@@ -113,10 +113,6 @@ optional = true
 search = 'release = "{current_version}"'
 replace = 'release = "{new_version}"'
 
-[tool.poetry_bumpversion.file."docs/conf.py"]
-search = 'version = "{current_version}"'
-replace = 'version = "{new_version}"'
-
 [tool.poetry_bumpversion.file."src/deli/__init__.py"]
 search = '__version__ = "{current_version}"'
 replace = '__version__ = "{new_version}"'
