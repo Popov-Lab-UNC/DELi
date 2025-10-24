@@ -104,7 +104,7 @@ packages = [
 ]
 
 [tool.poetry.requires-plugins]
-poetry-bumpversion = "^=0.3.1"
+poetry-bumpversion = "^0.3.1"
 
 [tool.poetry.group.notebook]
 optional = true
