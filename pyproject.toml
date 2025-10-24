@@ -75,7 +75,6 @@ dev = [
   "pre-commit~=3.8.0",
   "mypy~=1.8.0",
   "types-PyYAML==6.0.12.20241230",
-  "poetry~=2.0.0",
   "poetry-bumpversion~=0.3.1",
   "ruff~=0.5.5"
 ]
@@ -100,6 +99,12 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 requires-poetry = ">=2.0.0"
+packages = [
+    { include = "deli", from = "src" }
+]
+
+[tool.poetry.group.notebook]
+optional = true
 
 [tool.poetry_bumpversion.file."docs/conf.py"]
 search = 'release = "{current_version}"'

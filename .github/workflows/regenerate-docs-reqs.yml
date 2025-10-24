@@ -1,0 +1,52 @@
+name: Regenerate docs/requirements-docs.txt
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+        - 'pyproject.toml'
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  regen-docs-reqs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install tomli
+        run: |
+          python -m pip install --upgrade pip
+          pip install tomli
+
+      - name: Run export script
+        run: |
+          python scripts/export_docs_requirements.py --pyproject pyproject.toml --output docs/requirements-docs.txt
+
+      - name: Show diff
+        run: git --no-pager diff -- docs/requirements-docs.txt || true
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [[ -n "$(git status --porcelain -- docs/requirements-docs.txt)" ]]; then
+            git add docs/requirements-docs.txt
+            git commit -m "chore(docs): regenerate docs/requirements-docs.txt"
+            git push origin HEAD:${{ github.head_ref }}
+          else
+            echo "No changes to docs/requirements-docs.txt"
+          fi
+        shell: bash
+
