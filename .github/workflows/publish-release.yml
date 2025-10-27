@@ -52,9 +52,8 @@ jobs:
           name: dist-${{ matrix.python-version }}
           path: dist/*
       - name: Publish to PiPy
-        if: ${{ secrets.PYPI_API_TOKEN }}
         env:
           PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
         run:
-          poetry config pypi-token.pypi $PYPI_TOKEN
+          poetry config pypi-token.pypi "$PYPI_TOKEN"
           poetry publish -n
