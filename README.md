@@ -25,6 +25,8 @@ You can use DELi as a command line tool (see the [docs](https://dna-encoded-libr
 import deli
 print(deli.__version__)
 ```
+> [!NOTE]
+> installing DELi uses `deli-chem` but to use DELi after install make sure to use `deli` and that you have no other packages named `deli`
 
 For an end-to-end workflow of running DELi with open source libraries and selections (Enumerate, Decode, Analyze), see the [examples documentation](examples/README.md).
 
