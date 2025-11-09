@@ -13,7 +13,7 @@ from .compound import (
     Compound,
     DELCompound,
     EnumeratedDELCompound,
-    LowMemDELCompound,
+    DELCompoundRaw,
     LowMemEnumeratedDELCompound,
     SmilesMixin,
 )
@@ -39,10 +39,10 @@ __all__ = [
     "SectionCondition",
     "SequencedSelection",
     "Selection",
-    "LowMemDELCompound",
+    "DELCompoundRaw",
     "Compound",
     "DELCompound",
     "EnumeratedDELCompound",
-    "LowMemEnumeratedDELCompound",
+    "EnumeratedDELCompoundRaw",
     "SmilesMixin",
 ]

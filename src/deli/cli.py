@@ -311,7 +311,9 @@ def run_decode(
     "--out_path", "-o", type=click.Path(), required=False, default="", help="Output CSV file path"
 )
 @click.option("--tqdm", "-t", is_flag=True, help="Enable TQDM progress bar")
-def enumerate_(library_file, out_path, tqdm):
+@click.option("--fail-on-error", "-f", is_flag=True, help="Fail on first error during enumeration")
+@click.option("--drop-failed", "-d", is_flag=True, help="Drop compounds with failed enumerations")
+def enumerate_(library_file, out_path, tqdm, fail_on_error, drop_failed):
     """
     Enumerates compounds from a given library
 
@@ -328,7 +330,7 @@ def enumerate_(library_file, out_path, tqdm):
     _start = datetime.datetime.now()
 
     enumerator = Library.load(library_file)
-    enumerator.enumerate_to_file(output_file, separator=",", use_tqdm=tqdm)
+    enumerator.enumerate_to_file(output_file, separator=",", use_tqdm=tqdm, fail_on_error=fail_on_error, drop_failed=drop_failed)
 
 
 @cli.command(name="analyze")

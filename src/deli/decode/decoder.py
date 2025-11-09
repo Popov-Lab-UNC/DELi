@@ -6,7 +6,7 @@ import os
 import sys
 import warnings
 from collections import defaultdict
-from typing import Literal, no_type_check
+from typing import Literal, no_type_check, Optional
 
 import numpy as np
 from Bio.Align import PairwiseAligner, substitution_matrices
@@ -225,7 +225,6 @@ class DecodedDELCompound(DELCompound):
             the called library
         building_blocks : list[BuildingBlock]
             the building block calls
-            if no calls were attempted (because library failed) pass a `None`
         umi: UMI or `None`
             the UMI for the read
             if not using umi or no umi in the barcode, use a `None`
@@ -305,15 +304,15 @@ class DELCollectionDecoder:
         self,
         library_collection: DELibraryCollection,
         library_error_tolerance: float = 0.1,
-        min_library_overlap: int | None = None,
+        min_library_overlap: Optional[int] = None,
         revcomp: bool = False,
         read_type: Literal["single", "paired"] = "single",
         alignment_algorithm: Literal["semi", "hybrid"] = "semi",
         bb_calling_approach: Literal["alignment", "bio"] = "bio",
-        max_read_length: int | None = None,
-        min_read_length: int | None = None,
+        max_read_length: Optional[int] = None,
+        min_read_length: Optional[int] = None,
         disable_error_correction: bool = False,
-        decode_statistics: DecodeStatistics | None = None,
+        decode_statistics: Optional[DecodeStatistics] = None,
     ):
         """
         Initialize the DELCollectionDecoder
@@ -366,11 +365,7 @@ class DELCollectionDecoder:
             the statistic tracker for the decoding run
             if None, will initialize a new, empty statistic object
         """
-        self.decode_statistics: DecodeStatistics
-        if decode_statistics is None:
-            self.decode_statistics = DecodeStatistics()
-        else:
-            self.decode_statistics = decode_statistics
+        self.decode_statistics: DecodeStatistics = decode_statistics if decode_statistics is not None else DecodeStatistics()
 
         self.library_caller: LibraryCaller
         if read_type == "single":
@@ -731,11 +726,11 @@ class BioAlignmentLibraryDecoder(LibraryDecoder):
                 f"are missing from the library barcode"
             )
 
-        # pre compile _inverse_indices with dummy data
+        # pre compile _query_to_ref_map with dummy data
         # this could make the initialization of the decoder take longer
         # if this function has not been compiled yet
         _tmp_alignment = self.aligner.align("AGCT", "AGCT")[0]
-        _inverse_indices(_tmp_alignment.sequences, _tmp_alignment.coordinates)
+        _query_to_ref_map(_tmp_alignment.coordinates)
 
     def call_barcode(self, library_call: ValidLibraryCall) -> DecodedDELCompound | FailedDecode:
         """
@@ -761,12 +756,11 @@ class BioAlignmentLibraryDecoder(LibraryDecoder):
         # loop through all scoring alignments, skipping if at any point a bb lookup
         # fails, and exiting and returning the first perfect match
         for _alignment in _alignments:
-            # _inverse_indices = _alignment.inverse_indices
-            inverse_indices = _inverse_indices(_alignment.sequences, _alignment.coordinates)
+            inverse_indices = _query_to_ref_map(_alignment.coordinates)
             bb_calls: dict[str, ValidBuildingBlockCall] = dict()
             for section_name, section_span in self._bb_sections_spans_to_search_for.items():
                 _aligned_bb_codon = library_call.sequence.sequence[
-                    inverse_indices[1][section_span.start] : inverse_indices[1][
+                    inverse_indices[section_span.start] : inverse_indices[
                         section_span.stop - 1
                     ]
                     + 1
@@ -785,7 +779,7 @@ class BioAlignmentLibraryDecoder(LibraryDecoder):
             if self._umi_span is not None:
                 _umi = UMI(
                     library_call.sequence.sequence[
-                        inverse_indices[1][self._umi_span.start] : inverse_indices[1][
+                        inverse_indices[self._umi_span.start] : inverse_indices[
                             self._umi_span.stop - 1
                         ]
                         + 1
@@ -805,6 +799,7 @@ class BioAlignmentLibraryDecoder(LibraryDecoder):
                     f"sections in your library definition.",
                     stacklevel=1,
                 )
+                self.decode_statistics.num_failed_umi_match_too_short += 1
                 return UMIMatchTooShort()
 
             return DecodedDELCompound(
@@ -823,72 +818,38 @@ sys.setrecursionlimit(3000)
 
 @no_type_check
 @njit
-def _inverse_indices(sequences, coordinates):
+def _query_to_ref_map(coords):
     """
-    Numba accelerated inverse_indices calculation
+    Given the alignment coords from a bio python alignment,
+    return a mapping from query indices to reference indices
 
-    This is lifted from biopython/Bio/Align/__init__.py:inverse_indices:2961
-    The inverse_indices attribute is actually a property for alignment objects
-    in Biopython, meaning it is just run every time you try and access the
-    inverse_indices attribute.
-    It is the most expensive part of the alignment, although
-    The code can be numba compiled to speed up the frequent calls
-    to the function we have to make.
-    This function does just that.
-    A few changes to the exact functions were made, but the algorithm is the
-    same, just compatible with njit now.
-
-    Using njit makes this function about 5 times faster, and since it accounts for
-    ~25% of the runtime during decoding, it offers tangible speed ups
-
-    WARNING:
-    Users should never touch this function, it is only meant
-    to be used by the BioAlignmentLibraryDecoder to make things
-    go a bit faster
-
-    Parameters
-    ----------
-    sequences
-        the sequences from the alignment object
-    coordinates
-        the coordinates from the alignment object
-
-    Returns
-    -------
-    reverse indices
+    Map is an array of length equal to the query sequence length
+    Each index indicates the reference index that the query index maps to
     """
-    a = [np.full(len(sequence), -1) for sequence in sequences]
-    n, m = coordinates.shape
-    steps = np.diff(coordinates, 1)
-    steps_bool = steps != 0
-    aligned = np.sum(steps_bool, 0) > 1
-    # True for steps in which at least two sequences align, False if a gap
-    steps = steps[:, aligned]
-    rcs = np.zeros(n)
-    for i, row in enumerate(steps):
-        if (row >= 0).all():
-            rcs[i] = False
-        elif (row <= 0).all():
-            rcs[i] = True
+    query_len = coords[1, -1]
+    mapping = np.full(query_len, -1, dtype=np.int64)
+    n_blocks = coords.shape[1] - 1
+    for i in range(n_blocks):
+        ref_start, ref_end = coords[0, i], coords[0, i + 1]
+        query_start, query_end = coords[1, i], coords[1, i + 1]
+        if (ref_end > ref_start) and (query_end > query_start):
+            block_len = ref_end - ref_start
+            for j in range(block_len):
+                mapping[query_start + j] = ref_start + j
+    next_val = -1
+    for i in range(query_len - 1, -1, -1):
+        if mapping[i] == -1:
+            if next_val != -1:
+                mapping[i] = next_val
         else:
-            raise ValueError(f"Inconsistent steps in row {i}")
-    i = 0
-    j = 0
-    for k in range(m - 1):
-        starts = coordinates[:, k]
-        ends = coordinates[:, k + 1]
-        for row, start, end, rc in zip(a, starts, ends, rcs):
-            if rc == False and start < end:  # noqa: E712
-                j = i + end - start
-                row[start:end] = np.arange(i, j)
-            elif rc == True and start > end:  # noqa: E712
-                j = i + start - end
-                if end > 0:
-                    row[start - 1 : end - 1 : -1] = np.arange(i, j)
-                elif start > 0:
-                    row[start - 1 :: -1] = np.arange(i, j)
-        i = j
-    return a
+            next_val = mapping[i]
+    if next_val == -1:
+        mapping[:] = query_len
+    else:
+        for i in range(query_len):
+            if mapping[i] == -1:
+                mapping[i] = query_len
+    return mapping
 
 
 #####

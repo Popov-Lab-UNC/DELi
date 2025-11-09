@@ -22,11 +22,11 @@ class Demultiplexer:
         Parameters
         ----------
         adapters: MultipleAdapters
-            the adapters to use fr demultiplexing
+            the adapters to use for demultiplexing
         """
         self.adapters = adapters
 
-    def _demultiplex(self, sequence: SequenceRecord) -> SingleMatch:
+    def _demultiplex(self, sequence: SequenceRecord) -> SingleMatch | None:
         """Given a observed_seq, match it to the adapters"""
         return self.adapters.match_to(sequence.sequence)
 

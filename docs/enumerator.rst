@@ -107,6 +107,6 @@ enumerated.
 
 Command-Line Interface
 ----------------------
-DELi's CLI include a command for enumerating DELs from a library file: ``deli enumerate``.
+DELi's CLI includes a command for enumerating DELs from a library file: ``deli enumerate``.
 All you need to do is provide the path to a library JSON file. See the :ref:`CLI docs <deli-enumeration-cli-docs>`
 for more info.

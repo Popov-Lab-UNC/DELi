@@ -87,11 +87,11 @@ class SmilesMixin:
 
 
 @overload
-def to_mol(smi: Molable, fail_on_error: Literal[False]) -> Chem.Mol: ...
+def to_mol(smi: Molable, fail_on_error: Literal[False]) -> Chem.Mol | None: ...
 
 
 @overload
-def to_mol(smi: Molable, fail_on_error: Literal[True]) -> Chem.Mol | None: ...
+def to_mol(smi: Molable, fail_on_error: Literal[True]) -> Chem.Mol: ...
 
 
 def to_mol(smi: Molable, fail_on_error: bool = True) -> Chem.Mol | None:

@@ -369,7 +369,7 @@ class BarcodeSchema:
         self._library_in_front = True
         for section in self.barcode_sections:
             if _found_bb_section and not _found_library:
-                _library_in_front = False
+                self._library_in_front = False
             if isinstance(section, LibraryBarcodeSection):
                 _found_library = True
             elif isinstance(section, BuildingBlockBarcodeSection):
