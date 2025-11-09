@@ -31,9 +31,7 @@ from deli.configure import (
     set_deli_data_dir,
     validate_deli_data_dir,
 )
-from deli.decode import (
-    DecodingRunner,
-)
+from deli.decode.runner import DecodingRunner
 from deli.dels.library import Library
 
 

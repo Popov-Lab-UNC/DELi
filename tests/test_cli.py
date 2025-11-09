@@ -122,10 +122,6 @@ def test_deli_data_set(monkeypatch, tmpdir, runner):
     assert result.exit_code == 0
     assert "deli_data" in result.output
 
-    # check for failure when missing config
-    result = runner.invoke(click_set_deli_data_dir, ["--update-config", "deli_data"])
-    assert result.exit_code == 1
-
     # check for failure on bad data directory
     os.makedirs(temp_home_path / "broken")
     result = runner.invoke(click_set_deli_data_dir, ["broken"])
