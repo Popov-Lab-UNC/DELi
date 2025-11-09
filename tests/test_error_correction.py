@@ -7,7 +7,7 @@ from deli.decode.bb_calling import (
     HashMapCollisionError,
     LevenshteinDistHashMap,
 )
-from deli.dels import TaggedBuildingBlock, TaggedBuildingBlockSet
+from deli.dels.building_block import TaggedBuildingBlock, TaggedBuildingBlockSet
 
 
 class TestHammingHashCorrectors:

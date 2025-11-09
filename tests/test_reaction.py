@@ -1,6 +1,7 @@
 """Tests for deli.dels.reaction module"""
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -18,6 +19,9 @@ from deli.enumeration.reaction import (
     ReactionVial,
     StaticReactant,
 )
+
+
+pytestmark = pytest.mark.filterwarnings("ignore::deli.enumeration.reaction.ReactionWarning")
 
 
 def _mol(smiles: str):
@@ -155,8 +159,6 @@ def test_reaction_priority():
     )  # should use rxn2
 
 
-DATA_DIR = Path("tests/test_data/reaction_test_data")
-
 # Map filename -> expected exception type (or None for success)
 TEST_CASES = {
     "valid_reaction.json": None,
@@ -170,6 +172,10 @@ TEST_CASES = {
     "reactants_nested_pool.json": ReactionParsingError,
     "reactants_type_invalid.json": ReactionParsingError,
 }
+
+DATA_DIR = Path(
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "test_data", "reaction_test_data"))
+)
 
 
 @pytest.mark.parametrize("fname, expected", list(TEST_CASES.items()))

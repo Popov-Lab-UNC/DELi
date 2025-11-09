@@ -4,7 +4,7 @@ import warnings
 
 import pytest
 
-from deli.dels import BuildingBlockBarcodeSection
+from deli.dels.barcode import BuildingBlockBarcodeSection
 from deli.dels.building_block import BuildingBlockSet
 from deli.dels.library import DELibrary, DELibraryCollection, LibraryBuildError
 

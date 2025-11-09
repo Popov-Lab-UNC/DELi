@@ -565,13 +565,15 @@ class BuildingBlockSet(DeliDataLoadable):
             # not in bb_subset_id format, assume just subset_id
             pass
 
-        bb_list = self._get_subset_lookup_table().get(subset_id, None)
-        if bb_list is None:
+        if self._bb_subset_lookup_table is None:
             if subset_id == self.bb_set_id:
                 return self.building_blocks
+        try:
+            bb_list = self._get_subset_lookup_table()[subset_id]
+        except KeyError as e:
             raise KeyError(
                 f"Subset id '{subset_id}' not found in BuildingBlockSet '{self.bb_set_id}'"
-            )
+            ) from e
         return bb_list
 
     def get_bb_subsets(self) -> dict[str, Sequence[BuildingBlock]]:

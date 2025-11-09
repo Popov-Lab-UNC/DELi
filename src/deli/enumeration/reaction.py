@@ -735,7 +735,7 @@ class ReactionTree:
         reaction_steps: list[ReactionStep] = list()
         for rxn_step_name, rxn_step_data in data.items():
             # parse rxn step id
-            rxn_step_id = rxn_step_data.get("step_id", rxn_step_name)
+            rxn_step_id = str(rxn_step_data.get("step_id", rxn_step_name))
             if rxn_step_id in _current_reaction_ids:
                 raise ReactionParsingError(
                     f"duplicate reaction step id '{rxn_step_id}' found in reaction definition; "

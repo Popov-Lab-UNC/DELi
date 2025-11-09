@@ -7,10 +7,14 @@ from typing import TYPE_CHECKING, Iterator, Literal, Optional, Sequence, overloa
 from rdkit.Chem import Mol
 from tqdm import tqdm
 
-from deli.dels.building_block import BuildingBlock, BuildingBlockSet
+from deli.dels.building_block import (
+    BuildingBlock,
+    BuildingBlockSet,
+)
 from deli.dels.compound import DELCompound, DELCompoundRaw
 from deli.utils import SmilesMixin
 
+from ..utils.mol_utils import ChemicalObjectError
 from .reaction import ReactionError, ReactionTree, ReactionVial
 
 
@@ -180,6 +184,31 @@ class Enumerator:
             total_size += thread_size
         return total_size
 
+    @staticmethod
+    def _validate_bb_for_enumeration(bb: BuildingBlock) -> None:
+        """
+        Validate that the provided building blocks can be used for enumeration
+
+        Will raise errors is building block cannot be used for enumeration
+
+        Parameters
+        ----------
+        bb: BuildingBlock
+            building block to validate
+
+        Raises
+        ------
+        EnumerationRunError
+            if any building block does not have a valid SMILES
+            or is missing a SMILES
+        """
+        if not bb.has_smiles():
+            raise EnumerationRunError(f"building block {bb.bb_id} does not have a SMILES")
+        try:
+            _ = bb.mol
+        except ChemicalObjectError as e:
+            raise EnumerationRunError(f"building block {bb.bb_id} has invalid SMILES") from e
+
     @overload
     def enumerate(
         self, dropped_failed: Literal[True], fail_on_error: bool, use_tqdm: bool
@@ -263,12 +292,17 @@ class Enumerator:
             )
 
             for bb_combo in bb_combos:
+                # validate the numeration
+                _bb_map: dict[str, Mol] = {}
+                for bb_id, bb in bb_combo:
+                    self._validate_bb_for_enumeration(bb)
+                    _bb_map[bb_id] = bb.mol
                 try:
                     enumerated_mol = rxn_thread.run_thread(
-                        starting_reactants=ReactionVial({bb[0]: bb[1].mol for bb in bb_combo})
+                        starting_reactants=ReactionVial(_bb_map)
                     )
                     yield [bb[1] for bb in bb_combo], enumerated_mol
-                except ReactionError as e:
+                except (ReactionError, ChemicalObjectError) as e:
                     if fail_on_error:
                         raise EnumerationRunError(
                             f"failed to enumerate compound with building blocks: "
@@ -287,8 +321,9 @@ class Enumerator:
         Parameters
         ----------
         bbs: list[BuildingBlock]
-            list of building block ids to enumerate
-            The should match the order of the building block sets in the library
+            list of building block ids to enumerate.
+            They should match the order of the building block
+            sets in the library
 
         Returns
         -------
@@ -300,19 +335,36 @@ class Enumerator:
         EnumerationRunError
             if enumeration fails
         """
+        bb_subset_id_mol_map: dict[str, Mol] = {}
+        for bb_set, bb in zip(self.building_block_sets, bbs, strict=False):
+            self._validate_bb_for_enumeration(bb)
+            try:
+                bb_subset_id = bb_set.get_subset_with_bb(bb, as_bb_subset_id=True)
+            except KeyError as e:
+                raise EnumerationRunError(
+                    "building block {bb.bb_id} not found in building block set "
+                    f"{bb_set.bb_set_id}; make sure order of building blocks matches "
+                    f"order of building block sets"
+                ) from e
+            bb_subset_id_mol_map[bb_subset_id] = bb.mol
+
         try:
-            bb_subset_id_map = {
-                bb_set.get_subset_with_bb(bb, as_bb_subset_id=True): bb.mol
-                for bb_set, bb in zip(self.building_block_sets, bbs, strict=False)
-            }
             rxn_thread = self.reaction_tree.get_thread_for_bb_subset_ids(
-                frozenset(bb_subset_id_map.keys())
+                frozenset(bb_subset_id_mol_map.keys())
             )
         except (KeyError, ReactionError) as e:
             raise EnumerationRunError(
-                f"failed to enumerate compound with building blocks: {[bb.bb_id for bb in bbs]}"
+                f"failed to enumerate compound with building blocks: "
+                f"{[bb.bb_id for bb in bbs]}; no matching reaction thread found"
             ) from e
-        return rxn_thread.run_thread(ReactionVial(bb_subset_id_map))
+
+        try:
+            return rxn_thread.run_thread(ReactionVial(bb_subset_id_mol_map))
+        except (ReactionError, ChemicalObjectError) as e:
+            raise EnumerationRunError(
+                f"failed to enumerate compound with building blocks: "
+                f"{[bb.bb_id for bb in bbs]}; reaction failed"
+            ) from e
 
     def enumerate_by_bb_ids(self, bb_ids: list[str]) -> Mol:
         """
@@ -341,6 +393,8 @@ class Enumerator:
             except KeyError as e:
                 raise EnumerationRunError(
                     f"failed to find building block {bb_id} "
-                    f"in building block set {bb_set.bb_set_id}"
+                    f"in building block set {bb_set.bb_set_id}; "
+                    f"make sure order of building blocks matches "
+                    f"order of building block sets"
                 ) from e
         return self.enumerate_by_bbs(bbs)

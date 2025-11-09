@@ -7,7 +7,8 @@ from typing import TypeAlias, Union
 
 from deli._hamming import BaseQuaternaryHamming
 from deli.configure import DELiConfigError, get_deli_config
-from deli.dels import BuildingBlockBarcodeSection, TaggedBuildingBlock, TaggedBuildingBlockSet
+from deli.dels.barcode import BuildingBlockBarcodeSection
+from deli.dels.building_block import TaggedBuildingBlock, TaggedBuildingBlockSet
 
 from .calls import FailedCall, ValidCall
 

@@ -13,7 +13,9 @@ from Bio.Align import PairwiseAligner, substitution_matrices
 from dnaio import SequenceRecord
 from numba import njit
 
-from deli.dels import BuildingBlock, DELCompound, DELibrary, DELibraryCollection
+from deli.dels.building_block import BuildingBlock
+from deli.dels.compound import DELCompound
+from deli.dels.library import DELibrary, DELibraryCollection
 from deli.dna import Aligner, HybridSemiGlobalAligner, SemiGlobalAligner
 
 from .bb_calling import BuildingBlockSetTagCaller, FailedBuildingBlockCall, ValidBuildingBlockCall

@@ -3,10 +3,10 @@
 import abc
 from typing import Optional, TypeAlias, Union
 
-from cutadapt.adapters import RightmostBackAdapter, FrontAdapter, MultipleAdapters, SingleMatch
+from cutadapt.adapters import FrontAdapter, MultipleAdapters, RightmostBackAdapter, SingleMatch
 from dnaio import SequenceRecord
 
-from deli.dels import DELibrary, DELibraryCollection
+from deli.dels.library import DELibrary, DELibraryCollection
 
 from .calls import FailedCall, ValidCall
 from .demultiplex import Demultiplexer

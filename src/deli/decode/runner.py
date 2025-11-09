@@ -11,7 +11,8 @@ import yaml
 from tqdm import tqdm
 
 from deli._logging import get_dummy_logger, get_logger
-from deli.dels import DELibrary, DELibraryCollection, Selection, SequencedSelection
+from deli.dels.library import DELibrary, DELibraryCollection
+from deli.dels.selection import Selection, SequencedSelection
 from deli.enumeration.enumerator import EnumerationRunError
 
 from .decoder import DecodedDELCompound, DecodeStatistics, DELCollectionDecoder
@@ -235,6 +236,7 @@ class DecodingRunnerResults:
         include_bb_smi_cols: bool = False,
         include_raw_count_col: bool = True,
         enumerate_smiles: bool = False,
+        fail_on_failed_numeration: bool = False,
         file_format: Literal["csv", "tsv"] = "csv",
     ) -> None:
         """
@@ -275,9 +277,6 @@ class DecodingRunnerResults:
         out_path: str
             path to save results to
             will create the directory if it does not exist
-        file_format: Literal["csv", "tsv"] = "csv"
-            which file format to write to
-            either "csv" or "tsv"
         include_library_id_col: bool, default = False
             include the library ID in the output
         include_bb_id_cols: bool, default = False
@@ -289,6 +288,13 @@ class DecodingRunnerResults:
         enumerate_smiles: bool, default = False
             include the enumerated SMILES in the output
             Note: this will have a dramatic impact on runtime
+        fail_on_failed_numeration: bool, default = False
+            if `True`, will raise an exception if enumeration fails for any DEL
+            if `False`, will set the SMILES to 'null' if enumeration fails
+            only used if `enumerate_smiles` is `True`
+        file_format: Literal["csv", "tsv"] = "csv"
+            which file format to write to
+            either "csv" or "tsv"
 
         Warnings
         --------
@@ -383,7 +389,12 @@ class DecodingRunnerResults:
                         if enumerate_smiles:
                             try:
                                 _smi = decode_barcode.enumerate().smi
-                            except EnumerationRunError:
+                            except (EnumerationRunError, RuntimeError) as e:
+                                if fail_on_failed_numeration:
+                                    raise RuntimeError(
+                                        f"Failed to enumerate SMILES for decoded DEL "
+                                        f"ID {decode_barcode.compound_id}"
+                                    ) from e
                                 _smi = "null"
                             _row += f"{delimiter}{_smi}"
                         if include_raw_count_col:

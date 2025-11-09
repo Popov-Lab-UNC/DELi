@@ -9,13 +9,13 @@ from pathlib import Path
 from typing import Any, Generic, Literal, Optional, Sequence, TypeVar, overload
 
 from deli.configure import DeliDataLoadable, accept_deli_data_name
-from deli.enumeration.enumerator import Enumerator
+from deli.enumeration.enumerator import EnumeratedDELCompound, Enumerator
 from deli.enumeration.reaction import ReactionTree
 from deli.utils import to_smi
 
 from .barcode import BarcodeSchema, BuildingBlockBarcodeSection
 from .building_block import BuildingBlock, BuildingBlockSet, TaggedBuildingBlockSet
-from .compound import DELCompound, EnumeratedDELCompound
+from .compound import DELCompound
 
 
 RESERVED_CONFIG_KEYS = [
@@ -352,7 +352,9 @@ class Library(DeliDataLoadable):
         If `dropped_failed` is set to True and `fail_on_error` is also set to True,
         `fail_on_error` will take precedence
         """
-        for building_blocks, enumerated_mol in self.enumerator.enumerate(
+        _enumerator = self.enumerator  # check it exists
+
+        for building_blocks, enumerated_mol in _enumerator.enumerate(
             dropped_failed, fail_on_error, use_tqdm
         ):
             if enumerated_mol is not None:

@@ -7,7 +7,7 @@ from datetime import datetime
 import jinja2
 import plotly.graph_objects as go
 
-from deli.dels import Selection
+from deli.dels.selection import Selection
 
 from .decoder import DecodeStatistics
 
@@ -51,7 +51,7 @@ def _generate_calling_pie_chart(
     picked_colors: list[str] = []
     picked_values: list[int] = []
 
-    for _label, _color, _val in zip(_all_labels, _all_colors, _all_values):
+    for _label, _color, _val in zip(_all_labels, _all_colors, _all_values, strict=False):
         if _val > 0:
             picked_values.append(_val)
             picked_labels.append(_label)
@@ -245,7 +245,10 @@ def build_decoding_report(
 
     # write the report as a rendered jinja2 template
     # the template is stored as a resource in the package under templates
-    with resources.path("deli.templates", "decode_report.html") as template_path:
+    # with resources.path("deli.templates", "decode_report.html") as template_path:
+    with resources.as_file(
+        resources.files("deli.templates") / "decode_report.html"
+    ) as template_path:
         template = jinja2.Template(open(template_path).read())
         rendered_content = template.render(jinja_data)
         with open(out_path, "w", encoding="utf-8") as f:
