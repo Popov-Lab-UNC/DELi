@@ -6,12 +6,12 @@ from collections.abc import Iterator
 from functools import reduce
 from operator import mul
 from pathlib import Path
-from typing import Any, Generic, Literal, Optional, Sequence, TypeVar, Union, overload
+from typing import Any, Generic, Literal, Optional, Sequence, TypeVar, overload
 
 from deli.configure import DeliDataLoadable, accept_deli_data_name
-from deli.utils import to_smi
-from deli.enumeration.reaction import ReactionTree
 from deli.enumeration.enumerator import Enumerator
+from deli.enumeration.reaction import ReactionTree
+from deli.utils import to_smi
 
 from .barcode import BarcodeSchema, BuildingBlockBarcodeSection
 from .building_block import BuildingBlock, BuildingBlockSet, TaggedBuildingBlockSet
@@ -25,7 +25,7 @@ RESERVED_CONFIG_KEYS = [
     "reactions",
     "barcode_schema",
     "dna_barcode_on",
-    "bb_sets"
+    "bb_sets",
 ]
 
 
@@ -45,7 +45,6 @@ def _parse_library_json(data: dict, load_dna: bool) -> dict[str, Any]:
     dict[str, Any]
         arguments to construct the library object
     """
-
     # load bb sets and check for hamming decoding
     _observed_sets: list[tuple[int, BuildingBlockSet | TaggedBuildingBlockSet]] = list()
     for i, bb_data in enumerate(data["bb_sets"]):
@@ -73,7 +72,14 @@ def _parse_library_json(data: dict, load_dna: bool) -> dict[str, Any]:
                 f"please choose a different name"
             )
 
-        _observed_sets.append((cycle, BuildingBlockSet.load(file_path) if not load_dna else TaggedBuildingBlockSet.load(file_path)))
+        _observed_sets.append(
+            (
+                cycle,
+                BuildingBlockSet.load(file_path)
+                if not load_dna
+                else TaggedBuildingBlockSet.load(file_path),
+            )
+        )
 
     # check for right order of sets
     _bb_cycles = [_[0] for _ in _observed_sets]
@@ -96,12 +102,13 @@ def _parse_library_json(data: dict, load_dna: bool) -> dict[str, Any]:
         rxn_tree = ReactionTree.load_from_dict(
             data["reactions"],
             frozenset(bb_set_ids),
-            static_comp_lookup={"linker": linker, "scaffold": scaffold, "truncated_linker": truncated_linker}
+            static_comp_lookup={
+                "linker": linker,
+                "scaffold": scaffold,
+                "truncated_linker": truncated_linker,
+            },
         )
-        enumerator = Enumerator(
-            reaction_tree=rxn_tree,
-            building_block_sets=bb_sets
-        )
+        enumerator = Enumerator(reaction_tree=rxn_tree, building_block_sets=bb_sets)
     else:
         enumerator = None
 
@@ -111,11 +118,14 @@ def _parse_library_json(data: dict, load_dna: bool) -> dict[str, Any]:
         "scaffold": data.get("scaffold"),
     }
     if load_dna:
-        res.update({
-            "barcode_schema": BarcodeSchema.from_dict(data["barcode_schema"]),
-            "dna_barcode_on": data.get("dna_barcode_on", None),
-        })
+        res.update(
+            {
+                "barcode_schema": BarcodeSchema.from_dict(data["barcode_schema"]),
+                "dna_barcode_on": data.get("dna_barcode_on", None),
+            }
+        )
     return res
+
 
 class LibraryBuildError(Exception):
     """error raised when a library build fails"""
@@ -220,7 +230,9 @@ class Library(DeliDataLoadable):
         Library
         """
         library_id = Path(path).stem.replace(" ", "_")
-        _cls = cls(library_id=library_id, **_parse_library_json(json.load(open(path)), load_dna=False))
+        _cls = cls(
+            library_id=library_id, **_parse_library_json(json.load(open(path)), load_dna=False)
+        )
         _cls.loaded_from = path
         return _cls
 
@@ -241,9 +253,10 @@ class Library(DeliDataLoadable):
         if self._enumerator is None:
             raise RuntimeError(f"library {self.library_id} does not have an enumerator")
         if not self._can_enumerate:
-            raise RuntimeError(f"library {self.library_id} cannot enumerate; missing building block SMILES")
+            raise RuntimeError(
+                f"library {self.library_id} cannot enumerate; missing building block SMILES"
+            )
         return self._enumerator
-
 
     def iter_bb_sets(self) -> Iterator[BuildingBlockSet]:
         """
@@ -406,7 +419,7 @@ class Library(DeliDataLoadable):
         return self.enumerate_by_bbs(
             [
                 bb_set.get_bb_by_id(bb_id, fail_on_missing=True)
-                for bb_set, bb_id in zip(self.bb_sets, bb_ids)
+                for bb_set, bb_id in zip(self.bb_sets, bb_ids, strict=False)
             ]
         )
 
@@ -605,7 +618,9 @@ class DELibrary(Library):
         DELibrary
         """
         library_id = Path(path).stem.replace(" ", "_")
-        _cls = cls(library_id=library_id, **_parse_library_json(json.load(open(path)), load_dna=True))
+        _cls = cls(
+            library_id=library_id, **_parse_library_json(json.load(open(path)), load_dna=True)
+        )
         _cls.loaded_from = path
         return _cls
 
@@ -619,7 +634,9 @@ class DELibrary(Library):
         ------
         tuple[BuildingBlockBarcodeSection, BuildingBlockSet]
         """
-        for bb_section, bb_set in zip(self.barcode_schema.building_block_sections, self.bb_sets):
+        for bb_section, bb_set in zip(
+            self.barcode_schema.building_block_sections, self.bb_sets, strict=False
+        ):
             yield bb_section, bb_set
 
 

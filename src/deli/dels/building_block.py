@@ -8,6 +8,7 @@ from typing import Literal, Optional, Sequence, overload
 from deli.configure import DeliDataLoadable, accept_deli_data_name, get_deli_config
 from deli.utils.mol_utils import SmilesMixin
 
+
 # possible column headers for building block csv files
 BB_FILE_ID_COLUMN = "id"
 BB_FILE_SMILES_COLUMN = "smiles"
@@ -43,7 +44,7 @@ def load_bb_set_from_csv_file(path: str) -> "BuildingBlockSet | TaggedBuildingBl
 
 
 def _validate_bb_set_id(bb_set_id: str) -> bool:
-    """check that a building block set id is valid (not in subset id format)"""
+    """Check that a building block set id is valid (not in subset id format)"""
     try:
         parse_building_block_subset_id(bb_set_id)
         return False
@@ -51,7 +52,9 @@ def _validate_bb_set_id(bb_set_id: str) -> bool:
         return True  # true means the id is good
 
 
-def _validate_bb_set_file_header(header: list[str], required_columns: list[str]) -> tuple[int, int | None, int | None, dict[str, int]]:
+def _validate_bb_set_file_header(
+    header: list[str], required_columns: set[str]
+) -> tuple[int, int | None, int | None, dict[str, int]]:
     """
     Locates all required/optional columns in a building block set file header
 
@@ -63,11 +66,8 @@ def _validate_bb_set_file_header(header: list[str], required_columns: list[str])
         tuple of (bb_id_col_idx, bb_smiles_col_idx, bb_subset_id_col, extra_cols)
         where extra_cols is a dict mapping from extra required column name to its index
     """
-
     if BB_FILE_ID_COLUMN not in header:
-        raise BuildingBlockSetError(
-            f"missing required column '{BB_FILE_ID_COLUMN}'"
-        )
+        raise BuildingBlockSetError(f"missing required column '{BB_FILE_ID_COLUMN}'")
     else:
         bb_col_idx = header.index(BB_FILE_ID_COLUMN)
 
@@ -76,9 +76,7 @@ def _validate_bb_set_file_header(header: list[str], required_columns: list[str])
         bb_smiles_col_idx = header.index(BB_FILE_SMILES_COLUMN)
     else:
         if BB_FILE_SMILES_COLUMN in required_columns:
-            raise BuildingBlockSetError(
-                f"missing required column '{BB_FILE_SMILES_COLUMN}'"
-            )
+            raise BuildingBlockSetError(f"missing required column '{BB_FILE_SMILES_COLUMN}'")
         bb_smiles_col_idx = None
 
     bb_subset_id_col_idx: int | None
@@ -86,19 +84,19 @@ def _validate_bb_set_file_header(header: list[str], required_columns: list[str])
         bb_subset_id_col_idx = header.index(BB_FILE_SUBSET_ID_COLUMN)
     else:
         if BB_FILE_SUBSET_ID_COLUMN in required_columns:
-            raise BuildingBlockSetError(
-                f"missing required column '{BB_FILE_SUBSET_ID_COLUMN}'"
-            )
+            raise BuildingBlockSetError(f"missing required column '{BB_FILE_SUBSET_ID_COLUMN}'")
         bb_subset_id_col_idx = None
 
     # handle extra required columns
-    required_columns = set(required_columns) - {BB_FILE_ID_COLUMN, BB_FILE_SMILES_COLUMN, BB_FILE_SUBSET_ID_COLUMN}
+    required_columns = set(required_columns) - {
+        BB_FILE_ID_COLUMN,
+        BB_FILE_SMILES_COLUMN,
+        BB_FILE_SUBSET_ID_COLUMN,
+    }
     extra_cols: dict[str, int] = {}
     for required_column in required_columns:
         if required_column not in header:
-            raise BuildingBlockSetError(
-                f"missing required column '{required_column}'"
-            )
+            raise BuildingBlockSetError(f"missing required column '{required_column}'")
         else:
             extra_cols[required_column] = header.index(required_column)
 
@@ -333,7 +331,12 @@ class BuildingBlockSet(DeliDataLoadable):
 
     """
 
-    def __init__(self, bb_set_id: str, building_blocks: Sequence[BuildingBlock], subset_id_map: Optional[Sequence[str]] = None):
+    def __init__(
+        self,
+        bb_set_id: str,
+        building_blocks: Sequence[BuildingBlock],
+        subset_id_map: Optional[Sequence[str]] = None,
+    ):
         """
         Initialize the building blocks
 
@@ -361,16 +364,16 @@ class BuildingBlockSet(DeliDataLoadable):
         self.subset_id_map = subset_id_map
 
         self._bb_lookup_table = {bb.bb_id: i for i, bb in enumerate(self.building_blocks)}
-        self._bb_subset_lookup_table: dict[str, Sequence[BuildingBlock]] | None = self._build_subset_lookup_table(
-            subset_id_map
-        ) if subset_id_map is not None else None
+        self._bb_subset_lookup_table: dict[str, Sequence[BuildingBlock]] | None = (
+            self._build_subset_lookup_table(subset_id_map) if subset_id_map is not None else None
+        )
 
         self.has_smiles = all([bb.has_smiles() for bb in self.building_blocks])
 
     def _build_subset_lookup_table(self, subset_id_map) -> dict[str, Sequence[BuildingBlock]]:
         """Build a lookup table from subset id to list of building blocks in that subset"""
         _bb_subset_lookup = defaultdict(list)
-        for bb, subset_id in zip(self.building_blocks, subset_id_map):
+        for bb, subset_id in zip(self.building_blocks, subset_id_map, strict=False):
             _bb_subset_lookup[subset_id].append(bb)
         subset_lookup = dict(_bb_subset_lookup)
 
@@ -404,12 +407,16 @@ class BuildingBlockSet(DeliDataLoadable):
         -------
         BuildingBlockSet
         """
-        _cls = cls.load_from_csv(path, set_id=os.path.basename(path).split(".")[0], check_for_smiles=check_for_smiles)
+        _cls = cls.load_from_csv(
+            path, set_id=os.path.basename(path).split(".")[0], check_for_smiles=check_for_smiles
+        )
         _cls.loaded_from = path
         return _cls
 
     @classmethod
-    def load_from_csv(cls, path: str, set_id: Optional[str] = None, check_for_smiles: bool = False) -> "BuildingBlockSet":
+    def load_from_csv(
+        cls, path: str, set_id: Optional[str] = None, check_for_smiles: bool = False
+    ) -> "BuildingBlockSet":
         """
         Read a building block set from a csv file
 
@@ -441,7 +448,7 @@ class BuildingBlockSet(DeliDataLoadable):
             try:
                 _id_col_idx, _smi_col_idx, _subset_id_col_idx, _ = _validate_bb_set_file_header(
                     header=header,
-                    required_columns=[BB_FILE_SMILES_COLUMN] if check_for_smiles else []
+                    required_columns={BB_FILE_SMILES_COLUMN} if check_for_smiles else set(),
                 )
             except BuildingBlockSetError as e:
                 raise BuildingBlockSetError(
@@ -512,7 +519,7 @@ class BuildingBlockSet(DeliDataLoadable):
             return self.building_blocks[_idx]
 
     def _get_subset_lookup_table(self) -> dict[str, Sequence[BuildingBlock]]:
-        """get the subset lookup table if it exists, else raise an error"""
+        """Get the subset lookup table if it exists, else raise an error"""
         if self._bb_subset_lookup_table is None:
             raise ValueError(
                 f"BuildingBlockSet '{self.bb_set_id}' was not initialized with a subset_id_map"
@@ -551,7 +558,8 @@ class BuildingBlockSet(DeliDataLoadable):
             bb_set_id, subset_id = parse_building_block_subset_id(subset_id)
             if bb_set_id != self.bb_set_id:
                 raise KeyError(
-                    f"Building block subset id '{subset_id}' does not belong to BuildingBlockSet '{self.bb_set_id}'"
+                    f"Building block subset id '{subset_id}' does not belong "
+                    f"to BuildingBlockSet '{self.bb_set_id}'"
                 )
         except ValueError:
             # not in bb_subset_id format, assume just subset_id
@@ -570,8 +578,8 @@ class BuildingBlockSet(DeliDataLoadable):
         """
         Get all building block subsets in the set
 
-        Will map the full building block subset id (which includes the bb_set_id, not just the subset id)
-        to the list of building blocks in that subset
+        Will map the full building block subset id (which includes the bb_set_id,
+        not just the subset id) to the list of building blocks in that subset
 
         Returns
         -------
@@ -584,7 +592,7 @@ class BuildingBlockSet(DeliDataLoadable):
         """
         return {
             generate_building_block_subset_id(self.bb_set_id, subset_id): subset
-            for subset_id, subset in self._get_subset_lookup_table()
+            for subset_id, subset in self._get_subset_lookup_table().items()
         }
 
     def get_subset_with_bb(self, bb: BuildingBlock, as_bb_subset_id: bool = False) -> str:
@@ -652,6 +660,7 @@ class BuildingBlockSet(DeliDataLoadable):
             f"of BuildingBlockSet '{self.bb_set_id}'"
         )
 
+
 class TaggedBuildingBlockSet(BuildingBlockSet):
     """
     Define a set of building blocks
@@ -662,7 +671,12 @@ class TaggedBuildingBlockSet(BuildingBlockSet):
         True if all BuildingBlocks in this set have a non-None `smiles` attribute
     """
 
-    def __init__(self, bb_set_id: str, building_blocks: Sequence[TaggedBuildingBlock], subset_id_map: Optional[Sequence[str]] = None):
+    def __init__(
+        self,
+        bb_set_id: str,
+        building_blocks: Sequence[TaggedBuildingBlock],
+        subset_id_map: Optional[Sequence[str]] = None,
+    ):
         """
         Initialize the building blocks
 
@@ -723,7 +737,9 @@ class TaggedBuildingBlockSet(BuildingBlockSet):
         return _cls
 
     @classmethod
-    def load_from_csv(cls, path: str, set_id: Optional[str] = None, check_for_smiles: bool = False) -> "TaggedBuildingBlockSet":
+    def load_from_csv(
+        cls, path: str, set_id: Optional[str] = None, check_for_smiles: bool = False
+    ) -> "TaggedBuildingBlockSet":
         """
         Read a building block set from a csv file
 
@@ -753,10 +769,13 @@ class TaggedBuildingBlockSet(BuildingBlockSet):
             header = f.readline().strip().split(",")
 
             try:
-                _id_col_idx, _smi_col_idx, _subset_id_col_idx, extra_cols = _validate_bb_set_file_header(
-                    header=header,
-                    required_columns=[BB_FILE_SMILES_COLUMN, BB_FILE_TAG_COLUMN]
-                    if check_for_smiles else [BB_FILE_TAG_COLUMN]
+                _id_col_idx, _smi_col_idx, _subset_id_col_idx, extra_cols = (
+                    _validate_bb_set_file_header(
+                        header=header,
+                        required_columns={BB_FILE_SMILES_COLUMN, BB_FILE_TAG_COLUMN}
+                        if check_for_smiles
+                        else {BB_FILE_TAG_COLUMN},
+                    )
                 )
             except BuildingBlockSetError as e:
                 raise BuildingBlockSetError(

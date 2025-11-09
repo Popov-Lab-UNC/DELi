@@ -182,9 +182,11 @@ class StaticReactant(Reactant):
         self.mol = mol
 
     def __str__(self):
+        """String representation of the static reactant"""
         return to_smi(self.mol)
 
     def __repr__(self):
+        """Representation of the static reactant"""
         return f"StaticReactant({to_smi(self.mol)})"
 
     def get_from_vial(self, vial: ReactionVial) -> Chem.Mol:
@@ -222,9 +224,11 @@ class BBSetReactant(Reactant):
         self.bb_set_reactant_id = bb_set_reactant_id
 
     def __str__(self):
+        """String representation of the BB set reactant"""
         return self.bb_set_reactant_id
 
     def __repr__(self):
+        """Representation of the BB set reactant"""
         return f"BBSetReactant({self.bb_set_reactant_id})"
 
     def get_from_vial(self, vial: ReactionVial) -> Chem.Mol:
@@ -253,7 +257,10 @@ class BBSetReactant(Reactant):
             except ValueError:
                 bb_set_id = self.bb_set_reactant_id
                 bb_subset_id = None
-            _error_msg = f"failed to find a reactant with id {self.bb_set_reactant_id} from BB Set {bb_set_id}"
+            _error_msg = (
+                f"failed to find a reactant with id {self.bb_set_reactant_id} "
+                f"from BB Set {bb_set_id}"
+            )
             if bb_subset_id is not None:
                 _error_msg += f" and subset {bb_subset_id}"
             _error_msg += f" in current reactant set {list(vial.keys())}"
@@ -276,17 +283,21 @@ class ProductReactant(Reactant):
         self.step_id = step_id
 
     def __str__(self):
+        """String representation of the product reactant"""
         return self.product_id
 
     def __repr__(self):
+        """Representation of the product reactant"""
         return f"ProductReactant({self.product_id})"
 
     @property
     def product_id(self):
+        """The product id derived from the step id"""
         return f"product_{self.step_id}"
 
     @product_id.setter
     def product_id(self, value):
+        """Prevent modification of product_id property"""
         raise RuntimeError(
             "product_id is a read-only property derived from step_id; cannot be modified"
         )
@@ -336,9 +347,7 @@ class PooledReactant(Reactant):
         self.reactants = reactants
 
         if any([isinstance(reactant, PooledReactant) for reactant in reactants]):
-            raise ReactionParsingError(
-                "nested PooledReactants are not supported"
-            )
+            raise ReactionParsingError("nested PooledReactants are not supported")
 
     def get_from_vial(self, vial: ReactionVial) -> Chem.Mol:
         """
@@ -368,6 +377,7 @@ class PooledReactant(Reactant):
             f"in current reactant set {list(vial.keys())}"
         )
 
+
 class ReactionStep:
     """
     Contains required information to carry out a reaction step
@@ -382,7 +392,13 @@ class ReactionStep:
         by default this is always "product_<step_id>"
     """
 
-    def __init__(self, step_name: str, reaction: Reaction | Sequence[Reaction], reactants: list[Reactant], step_id: Optional[str] = None):
+    def __init__(
+        self,
+        step_name: str,
+        reaction: Reaction | Sequence[Reaction],
+        reactants: list[Reactant],
+        step_id: Optional[str] = None,
+    ):
         """
         Initialize a reaction step
 
@@ -401,7 +417,9 @@ class ReactionStep:
         """
         self.step_name = step_name
         self.step_id: str = step_id if step_id else step_name
-        self.reactions: Sequence[Reaction] = [reaction] if isinstance(reaction, Reaction) else reaction
+        self.reactions: Sequence[Reaction] = (
+            [reaction] if isinstance(reaction, Reaction) else reaction
+        )
         self.reactants = reactants
         self.product_id = f"product_{self.step_id}"
 
@@ -409,7 +427,8 @@ class ReactionStep:
         for rxn in self.reactions:
             if rxn.num_reactants != len(self.reactants):
                 raise ReactionError(
-                    f"reaction {rxn.to_smarts()} in step {self.step_id} expects {rxn.num_reactants} "
+                    f"reaction {rxn.to_smarts()} in step {self.step_id} "
+                    f"expects {rxn.num_reactants} "
                     f"reactants, but {len(self.reactants)} were provided"
                 )
 
@@ -459,8 +478,10 @@ class ReactionStep:
                 possible_reactants.add_product(
                     self.product_id,
                     reaction.react(
-                        *[reactant.get_from_vial(possible_reactants)
-                          for reactant in self.reactants]
+                        *[
+                            reactant.get_from_vial(possible_reactants)
+                            for reactant in self.reactants
+                        ]
                     ),
                 )
                 return  # success, exit the method
@@ -487,6 +508,7 @@ class ReactionThread:
         the set of building block set *or subset* ids used by this reaction thread
         if subsets are being used, this can be different from `bb_set_ids`
     """
+
     def __init__(self, reaction_steps: Sequence["ReactionStep"]):
         """
         Initialize a reaction thread
@@ -497,7 +519,9 @@ class ReactionThread:
             the ordered reaction steps that make up the thread
             *must* be in order from first to last step
         """
-        self.reaction_steps = reaction_steps if isinstance(reaction_steps, tuple) else tuple(reaction_steps)
+        self.reaction_steps = (
+            reaction_steps if isinstance(reaction_steps, tuple) else tuple(reaction_steps)
+        )
         self._final_product_id = self.reaction_steps[-1].product_id
 
         # validate that each BuildingBlockSet used by the thread only appears once
@@ -558,13 +582,14 @@ class ReactionThread:
 
 class _ReactionNode:
     """Internal support class for building reaction trees"""
+
     def __init__(self, step: ReactionStep):
         self.step = step
         self.parents: list["_ReactionNode"] = list()
         self.children: list["_ReactionNode"] = list()
 
     def __eq__(self, other):
-        """reaction nodes are equal if their step ids are equal"""
+        """Reaction nodes are equal if their step ids are equal"""
         if not isinstance(other, _ReactionNode):
             return False
         return self.step.step_id == other.step.step_id
@@ -591,6 +616,7 @@ class ReactionTree:
     not chemically valid.
 
     """
+
     def __init__(self, reaction_steps: list[ReactionStep]):
         """
         Initialize the reaction tree
@@ -621,7 +647,9 @@ class ReactionTree:
             _bb_set_reactant_id_thread_sets.add(bb_set_reactant_id_thread_set)
 
     def _build_tree(self) -> tuple[tuple[_ReactionNode, ...], list[_ReactionNode]]:
-        _nodes: dict[str, _ReactionNode] = {step.step_id: _ReactionNode(step) for step in self.reaction_steps}
+        _nodes: dict[str, _ReactionNode] = {
+            step.step_id: _ReactionNode(step) for step in self.reaction_steps
+        }
 
         for step_id, node in _nodes.items():
             for reactant in node.step.flatten_reactants():
@@ -642,13 +670,14 @@ class ReactionTree:
         root_nodes = [node for node in _nodes.values() if not node.parents]
         if len(root_nodes) == 0:
             raise ReactionParsingError(
-                "no root node found in reaction tree; possible recation cycle detected (all step rely on previous steps)"
+                "no root node found in reaction tree; possible recation cycle "
+                "detected (all step rely on previous steps)"
             )
 
         return tuple(root_nodes), list(_nodes.values())
 
     def _find_threads(self) -> tuple[ReactionThread, ...]:
-        # do a DFS from each root node and save all possible paths to leaves (no children reactions)
+        # do a DFS from each root node and save all possible paths to leaves
         paths: list[list[_ReactionNode]] = list()
         for root_node in self._roots:
             stack = [(root_node, [root_node])]
@@ -668,7 +697,12 @@ class ReactionTree:
 
     @no_type_check
     @classmethod
-    def load_from_dict(cls, data: dict, possible_bb_set_ids: frozenset[str], static_comp_lookup: Optional[dict[str, str | None]] = None) -> "ReactionTree":
+    def load_from_dict(
+        cls,
+        data: dict,
+        possible_bb_set_ids: frozenset[str],
+        static_comp_lookup: Optional[dict[str, str | None]] = None,
+    ) -> "ReactionTree":
         """
         Load a reaction tree from reaction steps defined in dict format
 
@@ -715,8 +749,7 @@ class ReactionTree:
                 rxn_smarts = rxn_step_data["rxn_smarts"]
             except KeyError as e:
                 raise ReactionParsingError(
-                    f"reaction step {rxn_step_name} missing required "
-                    f"'rxn_smarts' field"
+                    f"reaction step {rxn_step_name} missing required 'rxn_smarts' field"
                 ) from e
 
             if isinstance(rxn_smarts, list):
@@ -730,8 +763,7 @@ class ReactionTree:
                 reactant_ids = rxn_step_data["reactants"]
             except KeyError as e:
                 raise ReactionParsingError(
-                    f"reaction step {rxn_step_name} missing required "
-                    f"'reactants' field"
+                    f"reaction step {rxn_step_name} missing required 'reactants' field"
                 ) from e
             if not isinstance(reactant_ids, list):
                 raise ReactionParsingError(
@@ -744,18 +776,28 @@ class ReactionTree:
                     for pooled_reactant_id in reactant_id:
                         if not isinstance(pooled_reactant_id, str):
                             raise ReactionParsingError(
-                                f"reaction step '{rxn_step_name}' contains a pooled reactant with an invalid tpye;"
-                                f"reactant pools can only have strings; found type '{type(pooled_reactant_id)}' in "
+                                f"reaction step '{rxn_step_name}' contains a pooled "
+                                f"reactant with an invalid tpye;"
+                                f"reactant pools can only have strings; found type "
+                                f"'{type(pooled_reactant_id)}' in "
                                 f"pool '{reactant_id}'"
                             )
-                        _reactant_pool.append(_build_reactant(pooled_reactant_id, possible_bb_set_ids, _static_comp_lookup))
+                        _reactant_pool.append(
+                            _build_reactant(
+                                pooled_reactant_id, possible_bb_set_ids, _static_comp_lookup
+                            )
+                        )
                     reactants.append(PooledReactant(_reactant_pool))
                 elif isinstance(reactant_id, str):
-                    reactants.append(_build_reactant(reactant_id, possible_bb_set_ids, _static_comp_lookup))
+                    reactants.append(
+                        _build_reactant(reactant_id, possible_bb_set_ids, _static_comp_lookup)
+                    )
                 else:
                     raise ReactionParsingError(
-                        f"reaction step '{rxn_step_name}' has an invalid reactant id of type '{type(reactant_id)}'; "
-                        f"reactant ids must be strings or lists of strings (for pooled reactants)"
+                        f"reaction step '{rxn_step_name}' has an invalid "
+                        f"reactant id of type '{type(reactant_id)}'; "
+                        f"reactant ids must be strings or lists of strings "
+                        f"(for pooled reactants)"
                     )
 
             reaction_steps.append(
@@ -763,7 +805,7 @@ class ReactionTree:
                     step_name=rxn_step_name,
                     step_id=rxn_step_id,
                     reaction=reactions if len(reactions) > 1 else reactions[0],
-                    reactants=reactants
+                    reactants=reactants,
                 )
             )
         return cls(reaction_steps)
@@ -795,7 +837,9 @@ class ReactionTree:
         )
 
 
-def _build_reactant(reactant_id: str, bb_ids: frozenset[str], static_comp_map: dict[str, str | None]) -> Reactant:
+def _build_reactant(
+    reactant_id: str, bb_ids: frozenset[str], static_comp_map: dict[str, str | None]
+) -> Reactant:
     """
     Build the correct reactant from its id string
 

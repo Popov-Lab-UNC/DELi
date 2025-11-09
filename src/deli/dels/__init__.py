@@ -9,14 +9,7 @@ from .building_block import (
     TaggedBuildingBlock,
     TaggedBuildingBlockSet,
 )
-from .compound import (
-    Compound,
-    DELCompound,
-    EnumeratedDELCompound,
-    DELCompoundRaw,
-    LowMemEnumeratedDELCompound,
-    SmilesMixin,
-)
+from .compound import DELCompound, DELCompoundRaw, EnumeratedDELCompound
 from .library import DELibrary, DELibraryCollection, Library, LibraryCollection
 from .selection import SectionCondition, Selection, SequencedSelection
 from .umi import Umi
@@ -40,9 +33,6 @@ __all__ = [
     "SequencedSelection",
     "Selection",
     "DELCompoundRaw",
-    "Compound",
     "DELCompound",
     "EnumeratedDELCompound",
-    "EnumeratedDELCompoundRaw",
-    "SmilesMixin",
 ]

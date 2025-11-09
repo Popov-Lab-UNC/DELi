@@ -7,8 +7,9 @@ from .building_block import BuildingBlock
 
 # for mypy to recognize the library type hints
 if TYPE_CHECKING:
-    from .library import Library, LibraryCollection
     from deli.enumeration.enumerator import EnumeratedDELCompound
+
+    from .library import Library, LibraryCollection
 
 
 def generate_compound_id(library_id: str, building_blocks: list[str]) -> str:
@@ -117,7 +118,9 @@ class DELCompoundRaw:
             raise DELCompoundException(f"Library {self.library_id} not found in collection") from e
 
         _bbs: list[BuildingBlock] = list()
-        for i, (bb_set, bb_id) in enumerate(zip(library.bb_sets, self.building_block_ids)):
+        for i, (bb_set, bb_id) in enumerate(
+            zip(library.bb_sets, self.building_block_ids, strict=False)
+        ):
             try:
                 _bbs.append(bb_set.get_bb_by_id(bb_id, fail_on_missing=True))
             except KeyError as e:
@@ -169,9 +172,9 @@ class DELCompound(DELCompoundRaw):
     """
 
     def __init__(
-            self,
-            library: "Library",
-            building_blocks: list[BuildingBlock],
+        self,
+        library: "Library",
+        building_blocks: list[BuildingBlock],
     ):
         """
         Initialize the DELCompound object.
@@ -188,8 +191,7 @@ class DELCompound(DELCompoundRaw):
         self.building_blocks = building_blocks
 
         super().__init__(
-            library_id=library.library_id,
-            building_blocks_ids=[bb.bb_id for bb in building_blocks]
+            library_id=library.library_id, building_blocks_ids=[bb.bb_id for bb in building_blocks]
         )
 
     def to_raw(self) -> "DELCompoundRaw":

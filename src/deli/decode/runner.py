@@ -200,7 +200,6 @@ class DecodingRunnerResults:
         out_path: str
             path to save decoding statistics to
         """
-
         if self.decode_statistics is not None:
             if os.path.dirname(out_path) != "":
                 os.makedirs(os.path.dirname(out_path), exist_ok=True)
@@ -210,9 +209,7 @@ class DecodingRunnerResults:
         else:
             raise RuntimeError("Cannot write decode report, no decode statistics found")
 
-    def write_decode_statistics(
-        self, out_path: str, include_read_lengths: bool = False
-    ):
+    def write_decode_statistics(self, out_path: str, include_read_lengths: bool = False):
         """
         Write the decoding statistics for this run
 
@@ -382,10 +379,7 @@ class DecodingRunnerResults:
                             if include_bb_id_cols:
                                 _row += f"{delimiter}{bb.bb_id}"
                             if include_bb_smi_cols:
-                                _row += (
-                                    f"{delimiter}"
-                                    f"{bb.smi if (bb.has_smiles()) else 'null'}"
-                                )
+                                _row += f"{delimiter}{bb.smi if (bb.has_smiles()) else 'null'}"
                         if enumerate_smiles:
                             try:
                                 _smi = decode_barcode.enumerate().smi

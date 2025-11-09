@@ -2,7 +2,7 @@
 
 import os
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional
 
 import yaml
 
@@ -193,12 +193,12 @@ class SequencedSelection(Selection):
     def __init__(
         self,
         library_collection: DELibraryCollection,
-        sequence_files: list[str | os.PathLike],
-        date_ran: datetime | None = None,
-        target_id: str | None = None,
-        selection_condition: str | None = None,
-        selection_id: str | None = None,
-        additional_info: str | None = None,
+        sequence_files: list[str],
+        date_ran: Optional[datetime] = None,
+        target_id: Optional[str] = None,
+        selection_condition: Optional[str] = None,
+        selection_id: Optional[str] = None,
+        additional_info: Optional[str] = None,
     ):
         """
         Initialize a Selection object.
@@ -207,6 +207,8 @@ class SequencedSelection(Selection):
         ----------
         library_collection: DELibraryCollection
             the library collection used in the selection
+        sequence_files: list[str]
+            the list of observed_seq files for the selection
         date_ran: datetime | None
             the date the selection was run, defaults to now if None
         target_id: str | None

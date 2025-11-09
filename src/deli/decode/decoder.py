@@ -6,7 +6,7 @@ import os
 import sys
 import warnings
 from collections import defaultdict
-from typing import Literal, no_type_check, Optional
+from typing import Literal, Optional, no_type_check
 
 import numpy as np
 from Bio.Align import PairwiseAligner, substitution_matrices
@@ -365,7 +365,9 @@ class DELCollectionDecoder:
             the statistic tracker for the decoding run
             if None, will initialize a new, empty statistic object
         """
-        self.decode_statistics: DecodeStatistics = decode_statistics if decode_statistics is not None else DecodeStatistics()
+        self.decode_statistics: DecodeStatistics = (
+            decode_statistics if decode_statistics is not None else DecodeStatistics()
+        )
 
         self.library_caller: LibraryCaller
         if read_type == "single":
@@ -760,9 +762,7 @@ class BioAlignmentLibraryDecoder(LibraryDecoder):
             bb_calls: dict[str, ValidBuildingBlockCall] = dict()
             for section_name, section_span in self._bb_sections_spans_to_search_for.items():
                 _aligned_bb_codon = library_call.sequence.sequence[
-                    inverse_indices[section_span.start] : inverse_indices[
-                        section_span.stop - 1
-                    ]
+                    inverse_indices[section_span.start] : inverse_indices[section_span.stop - 1]
                     + 1
                 ]
                 bb_call = self._bb_callers[section_name].call_building_block(_aligned_bb_codon)
@@ -820,11 +820,14 @@ sys.setrecursionlimit(3000)
 @njit
 def _query_to_ref_map(coords):
     """
-    Given the alignment coords from a bio python alignment,
-    return a mapping from query indices to reference indices
+    Generate map from query indices to reference indices
 
     Map is an array of length equal to the query sequence length
     Each index indicates the reference index that the query index maps to
+
+    Notes
+    -----
+    Uses the coordinates from a Biopython alignment object
     """
     query_len = coords[1, -1]
     mapping = np.full(query_len, -1, dtype=np.int64)

@@ -1,16 +1,18 @@
 """classes for enumerating combinatorial libraries based on reaction trees"""
+
 import warnings
 from itertools import product as iter_product
-from typing import Sequence, overload, Literal, Iterator, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Iterator, Literal, Optional, Sequence, overload
 
 from rdkit.Chem import Mol
 from tqdm import tqdm
 
-from deli.dels.building_block import BuildingBlockSet, BuildingBlock
+from deli.dels.building_block import BuildingBlock, BuildingBlockSet
 from deli.dels.compound import DELCompound, DELCompoundRaw
 from deli.utils import SmilesMixin
 
-from .reaction import ReactionTree, ReactionVial, ReactionError
+from .reaction import ReactionError, ReactionTree, ReactionVial
+
 
 if TYPE_CHECKING:
     from deli.dels.library import Library
@@ -110,21 +112,43 @@ class EnumeratedDELCompound(DELCompound, SmilesMixin):
 
 
 class Enumerator:
-    def __init__(self, building_block_sets: Sequence[BuildingBlockSet],  reaction_tree: ReactionTree):
+    """
+    Enumerator for combinatorial libraries based on reaction trees
+
+    Contains all the necessary information to enumerate compounds
+    from building block sets and a reaction tree.
+    """
+
+    def __init__(
+        self, building_block_sets: Sequence[BuildingBlockSet], reaction_tree: ReactionTree
+    ):
+        """
+        Initialize the Enumerator object.
+
+        Parameters
+        ----------
+        building_block_sets: Sequence[BuildingBlockSet]
+            The building block sets to use for enumeration
+        reaction_tree: ReactionTree
+            The reaction tree to use for enumeration
+        """
         self.building_block_sets = building_block_sets
         self.reaction_tree = reaction_tree
 
     def get_bb_set(self, bb_set_id: str) -> BuildingBlockSet:
         """
         Get a building block set by its ID
+
         Parameters
         ----------
         bb_set_id: str
             The ID of the building block set to retrieve
+
         Returns
         -------
         BuildingBlockSet
             The building block set with the specified ID
+
         Raises
         ------
         KeyError
@@ -149,7 +173,9 @@ class Enumerator:
         total_size = 0
         for rxn_thread in self.reaction_tree.threads:
             thread_size = 1
-            for bb_set_id, bb_set_reactant_id in zip(rxn_thread.bb_set_ids, rxn_thread.bb_set_reactant_ids):
+            for bb_set_id, bb_set_reactant_id in zip(
+                rxn_thread.bb_set_ids, rxn_thread.bb_set_reactant_ids, strict=False
+            ):
                 thread_size *= len(self.get_bb_set(bb_set_id).get_bb_subset(bb_set_reactant_id))
             total_size += thread_size
         return total_size
@@ -228,7 +254,9 @@ class Enumerator:
         for rxn_thread in self.reaction_tree.threads:
             bb_set_dict = {
                 bb_set_reactant_id: self.get_bb_set(bb_set_id).get_bb_subset(bb_set_reactant_id)
-                for bb_set_id, bb_set_reactant_id in zip(rxn_thread.bb_set_ids, rxn_thread.bb_set_reactant_ids)
+                for bb_set_id, bb_set_reactant_id in zip(
+                    rxn_thread.bb_set_ids, rxn_thread.bb_set_reactant_ids, strict=False
+                )
             }
             bb_combos: iter_product[tuple[tuple[str, BuildingBlock], ...]] = iter_product(
                 *[[(bb_set_id, bb) for bb in bb_set] for bb_set_id, bb_set in bb_set_dict.items()]
@@ -237,7 +265,7 @@ class Enumerator:
             for bb_combo in bb_combos:
                 try:
                     enumerated_mol = rxn_thread.run_thread(
-                        vail=ReactionVial({bb[0]: bb[1].mol for bb in bb_combo})
+                        starting_reactants=ReactionVial({bb[0]: bb[1].mol for bb in bb_combo})
                     )
                     yield [bb[1] for bb in bb_combo], enumerated_mol
                 except ReactionError as e:
@@ -272,15 +300,17 @@ class Enumerator:
         EnumerationRunError
             if enumeration fails
         """
-
         try:
-            bb_subset_id_map = {bb_set.get_subset_with_bb(bb, as_bb_subset_id=True): bb.mol for bb_set, bb in
-                                zip(self.building_block_sets, bbs)}
-            rxn_thread = self.reaction_tree.get_thread_for_bb_subset_ids(frozenset(bb_subset_id_map.keys()))
+            bb_subset_id_map = {
+                bb_set.get_subset_with_bb(bb, as_bb_subset_id=True): bb.mol
+                for bb_set, bb in zip(self.building_block_sets, bbs, strict=False)
+            }
+            rxn_thread = self.reaction_tree.get_thread_for_bb_subset_ids(
+                frozenset(bb_subset_id_map.keys())
+            )
         except (KeyError, ReactionError) as e:
             raise EnumerationRunError(
-                f"failed to enumerate compound with building blocks: "
-                f"{[bb.bb_id for bb in bbs]}"
+                f"failed to enumerate compound with building blocks: {[bb.bb_id for bb in bbs]}"
             ) from e
         return rxn_thread.run_thread(ReactionVial(bb_subset_id_map))
 
@@ -305,11 +335,12 @@ class Enumerator:
             if enumeration fails
         """
         bbs = []
-        for bb_set, bb_id in zip(self.building_block_sets, bb_ids):
+        for bb_set, bb_id in zip(self.building_block_sets, bb_ids, strict=False):
             try:
                 bbs.append(bb_set.get_bb_by_id(bb_id, fail_on_missing=True))
             except KeyError as e:
                 raise EnumerationRunError(
-                    f"failed to find building block {bb_id} in building block set {bb_set.bb_set_id}"
+                    f"failed to find building block {bb_id} "
+                    f"in building block set {bb_set.bb_set_id}"
                 ) from e
         return self.enumerate_by_bbs(bbs)
