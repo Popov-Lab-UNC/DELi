@@ -171,7 +171,7 @@ class Library(DeliDataLoadable):
             the sets of building-block used to build this library
             order in list should be the same as the order of synthesis
             must have length >= 2
-        enumerator : Enumerator
+        enumerator : optional, Enumerator
             The Enumerator used to build this library
         scaffold: optional, str
             SMILES of the scaffold
@@ -187,7 +187,11 @@ class Library(DeliDataLoadable):
         self.bb_sets = bb_sets
         self.scaffold = scaffold
 
-        self.library_size = reduce(mul, [len(bb_set) for bb_set in self.bb_sets])
+        self.library_size = (
+            reduce(mul, [len(bb_set) for bb_set in self.bb_sets])
+            if enumerator is None
+            else enumerator.get_enumeration_size()
+        )
         self.num_cycles = len(self.bb_sets)
 
         self._enumerator = enumerator
