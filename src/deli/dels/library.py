@@ -107,6 +107,7 @@ def _parse_library_json(data: dict, load_dna: bool) -> dict[str, Any]:
                 "scaffold": scaffold,
                 "truncated_linker": truncated_linker,
             },
+            use_deli_data_dir=True,
         )
         enumerator = Enumerator(reaction_tree=rxn_tree, building_block_sets=bb_sets)
     else:

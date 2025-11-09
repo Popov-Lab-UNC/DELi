@@ -1,12 +1,14 @@
 """define reaction classes"""
 
 import abc
+import os.path
 import warnings
 from typing import Optional, Sequence, no_type_check
 
 from rdkit import Chem
 from rdkit.Chem import rdChemReactions
 
+from deli.configure import DeliDataLoadable, accept_deli_data_name
 from deli.dels.building_block import parse_building_block_subset_id
 from deli.utils.mol_utils import to_mol, to_smi
 
@@ -29,7 +31,7 @@ class ReactionWarning(UserWarning):
     pass
 
 
-class Reaction:
+class Reaction(DeliDataLoadable):
     """Class for describing a singular chemical reaction"""
 
     def __init__(self, rxn_smarts: str):
@@ -41,7 +43,12 @@ class Reaction:
         rxn_smarts: str
             SMARTS or SMIRKS to define a reaction
         """
-        self.rxn = rdChemReactions.ReactionFromSmarts(rxn_smarts)
+        try:
+            self.rxn = rdChemReactions.ReactionFromSmarts(rxn_smarts)
+        except Exception as e:
+            raise ReactionParsingError(
+                f"failed to parse reaction SMARTS/SMIRKS: {rxn_smarts}"
+            ) from e
         self.num_reactants = self.rxn.GetNumReactantTemplates()
 
         if self.rxn.GetNumProductTemplates() != 1:
@@ -50,6 +57,41 @@ class Reaction:
                     self.rxn.GetNumProductTemplates()
                 )
             )
+
+    @classmethod
+    @accept_deli_data_name(
+        "reactions", "rxn", return_on_not_found=True, target_param="path_name_rxn"
+    )
+    def load(cls, path_name_rxn) -> "Reaction":
+        """
+        Load a reaction from a SMARTS/SMIRKS string or file
+
+        Parameters
+        ----------
+        path_name_rxn: str
+            the SMARTS/SMIRKS string or path to file containing it
+            can also be the name of a reaction file in the DELi data
+            reactions directory
+
+        Returns
+        -------
+        Reaction
+            the loaded reaction object
+        """
+        if os.path.exists(path_name_rxn):
+            with open(path_name_rxn, "r") as rxn_file:
+                rxn_smarts = rxn_file.read().strip()
+            return cls(rxn_smarts)
+        else:
+            try:
+                return cls(path_name_rxn)
+            except ReactionParsingError as e:
+                raise ReactionParsingError(
+                    f"failed to load reaction {path_name_rxn}; "
+                    f"make sure it is a valid file path, "
+                    f"in the DELi data reaction directory, "
+                    f"or a valid SMARTS/SMIRKS string"
+                ) from e
 
     def _order_reactants(self, *args: Chem.Mol) -> tuple[Chem.Mol, ...]:
         """RDKit needs reactants in the right order, this will do that"""
@@ -702,6 +744,7 @@ class ReactionTree:
         data: dict,
         possible_bb_set_ids: frozenset[str],
         static_comp_lookup: Optional[dict[str, str | None]] = None,
+        use_deli_data_dir: bool = False,
     ) -> "ReactionTree":
         """
         Load a reaction tree from reaction steps defined in dict format
@@ -721,6 +764,9 @@ class ReactionTree:
             if provided, reactants that are static components
             will be looked up in this table to get their SMILES *before*
             being checked if they are a valid SMILES string
+        use_deli_data_dir: bool, default=False
+            whether to use the DELi data directory for loading reactions
+            default is `False` to enable loading with a deli_data_dir
 
         Returns
         -------
@@ -753,9 +799,14 @@ class ReactionTree:
                 ) from e
 
             if isinstance(rxn_smarts, list):
-                reactions = [Reaction(smart) for smart in rxn_smarts]
+                reactions = [
+                    Reaction(smart) if not use_deli_data_dir else Reaction.load(smart)
+                    for smart in rxn_smarts
+                ]
             else:
-                reactions = [Reaction(rxn_smarts)]
+                reactions = [
+                    Reaction(rxn_smarts) if not use_deli_data_dir else Reaction.load(rxn_smarts)
+                ]
 
             # parse reactants
             reactants: list[Reactant] = list()

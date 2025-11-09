@@ -171,6 +171,10 @@ TEST_CASES = {
     "pool_nonexistant_reactant.json": ReactionParsingError,
     "reactants_nested_pool.json": ReactionParsingError,
     "reactants_type_invalid.json": ReactionParsingError,
+    "invalid_reaction_data_dir.json": ReactionParsingError,
+    "missing_reaction_in_data_dir.json": ReactionParsingError,
+    "valid_reaction_multiple.json": None,
+    "valid_reaction_data_dir.json": None,
 }
 
 DATA_DIR = Path(
@@ -190,7 +194,7 @@ def test_reaction_tree_json_files(fname, expected):
 
     if expected is None:
         # should load successfully
-        tree = ReactionTree.load_from_dict(reaction_steps, possible)
+        tree = ReactionTree.load_from_dict(reaction_steps, possible, use_deli_data_dir=True)
         assert hasattr(tree, "threads")
         assert len(tree.threads) >= 1
     else:
