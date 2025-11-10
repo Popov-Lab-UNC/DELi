@@ -2,6 +2,7 @@
 
 import abc
 import os
+import warnings
 from collections import defaultdict
 from typing import Literal, Optional, Sequence, overload
 
@@ -535,7 +536,7 @@ class BuildingBlockSet(DeliDataLoadable):
                     f"missing required columns in building block set '{_set_id}': {str(e)}"
                 ) from e
 
-            for line in f:
+            for i, line in enumerate(f):
                 splits = line.strip().split(",")
                 _id = splits[_id_col_idx]
                 _smiles = splits[_smi_col_idx] if _smi_col_idx is not None else None
@@ -553,6 +554,11 @@ class BuildingBlockSet(DeliDataLoadable):
                             f"'{_subset}', '{_building_block_map[_id].subset_id}' "
                         )  # skip duplicate with same smiles
                     else:
+                        warnings.warn(
+                            f"duplicate building block id '{_id}' detected in row {i}; ignoring",
+                            category=UserWarning,
+                            stacklevel=2,
+                        )
                         continue  # skip since it's a duplicate
                 else:
                     _building_blocks.append(
@@ -897,7 +903,7 @@ class TaggedBuildingBlockSet(BuildingBlockSet):
                     f"missing required columns in building block set '{_set_id}': {str(e)}"
                 ) from e
 
-            for line in f:
+            for i, line in enumerate(f):
                 splits = line.strip().split(",")
                 _id = splits[_id_col_idx]
                 _smiles = splits[_smi_col_idx] if _smi_col_idx is not None else None
@@ -916,6 +922,13 @@ class TaggedBuildingBlockSet(BuildingBlockSet):
                             f"'{_subset}', '{_building_block_map[_id].subset_id}' "
                         )  # skip duplicate with same smiles
                     else:
+                        if _tag in _building_block_map[_id].tags:
+                            warnings.warn(
+                                f"duplicate building block detected in row {i}; ignoring",
+                                category=UserWarning,
+                                stacklevel=2,
+                            )
+                            continue  # skip since it's a duplicate
                         _building_block_map[_id].tags.append(_tag)  # skip since it's a duplicate
                 else:
                     _building_blocks.append(
