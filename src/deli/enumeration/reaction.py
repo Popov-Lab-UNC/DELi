@@ -34,7 +34,13 @@ class ReactionWarning(UserWarning):
 class Reaction(DeliDataLoadable):
     """Class for describing a singular chemical reaction"""
 
-    def __init__(self, rxn_smarts: str):
+    def __init__(
+        self,
+        rxn_smarts: str,
+        pick_fragment: Optional[int] = None,
+        ignore_multiple_products: bool = False,
+        fail_on_multiple_products: bool = False,
+    ):
         """
         Initialize the reaction object
 
@@ -42,6 +48,16 @@ class Reaction(DeliDataLoadable):
         ----------
         rxn_smarts: str
             SMARTS or SMIRKS to define a reaction
+        pick_fragment: optional, int
+            if the reaction produces multiple products,
+            this indicates which product to pick (1-indexed)
+            if not provided, the first product will be picked
+        ignore_multiple_products: bool, default=False
+            if True, will ignore warnings about multiple products
+            being produced by the reaction
+        fail_on_multiple_products: bool, default=False
+            if True, will raise an error if multiple products
+            are produced by the reaction
         """
         try:
             self.rxn = rdChemReactions.ReactionFromSmarts(rxn_smarts)
@@ -51,18 +67,40 @@ class Reaction(DeliDataLoadable):
             ) from e
         self.num_reactants = self.rxn.GetNumReactantTemplates()
 
-        if self.rxn.GetNumProductTemplates() != 1:
-            raise ReactionError(
-                "reaction must produce exactly one product; found {}".format(
-                    self.rxn.GetNumProductTemplates()
+        # handle multiple product fragments
+        if pick_fragment is None:
+            self.pick_fragment = 0
+            if self.rxn.GetNumProductTemplates() != 1:
+                warnings.warn(
+                    f"reaction produces more than one product fragment "
+                    f"but 'pick_fragment' was not set; "
+                    f"defaulting to first product fragment; "
+                    f"found {self.rxn.GetNumProductTemplates()}",
+                    category=ReactionWarning,
+                    stacklevel=1,
                 )
-            )
+        else:
+            if not (1 <= pick_fragment <= self.rxn.GetNumProductTemplates()):
+                raise ReactionParsingError(
+                    f"pick_fragment {pick_fragment} is out of range for reaction "
+                    f"with {self.rxn.GetNumProductTemplates()} product fragments"
+                )
+            self.pick_fragment = pick_fragment - 1  # convert to 0-indexed
+
+        self.ignore_multiple_products = ignore_multiple_products
+        self.fail_on_multiple_products = fail_on_multiple_products
 
     @classmethod
     @accept_deli_data_name(
         "reactions", "rxn", return_on_not_found=True, target_param="path_name_rxn"
     )
-    def load(cls, path_name_rxn) -> "Reaction":
+    def load(
+        cls,
+        path_name_rxn,
+        pick_fragment: Optional[int] = None,
+        ignore_multiple_products: bool = False,
+        fail_on_multiple_products: bool = False,
+    ) -> "Reaction":
         """
         Load a reaction from a SMARTS/SMIRKS string or file
 
@@ -72,6 +110,16 @@ class Reaction(DeliDataLoadable):
             the SMARTS/SMIRKS string or path to file containing it
             can also be the name of a reaction file in the DELi data
             reactions directory
+        pick_fragment: optional, int
+            if the reaction produces multiple products,
+            this indicates which product to pick (1-indexed)
+            if not provided, the first product will be picked
+        ignore_multiple_products: bool, default=False
+            if True, will ignore warnings about multiple products
+            being produced by the reaction
+        fail_on_multiple_products: bool, default=False
+            if True, will raise an error if multiple products
+            are produced by the reaction
 
         Returns
         -------
@@ -81,10 +129,20 @@ class Reaction(DeliDataLoadable):
         if os.path.exists(path_name_rxn):
             with open(path_name_rxn, "r") as rxn_file:
                 rxn_smarts = rxn_file.read().strip()
-            return cls(rxn_smarts)
+            return cls(
+                rxn_smarts,
+                pick_fragment=pick_fragment,
+                ignore_multiple_products=ignore_multiple_products,
+                fail_on_multiple_products=fail_on_multiple_products,
+            )
         else:
             try:
-                return cls(path_name_rxn)
+                return cls(
+                    path_name_rxn,
+                    pick_fragment=pick_fragment,
+                    ignore_multiple_products=ignore_multiple_products,
+                    fail_on_multiple_products=fail_on_multiple_products,
+                )
             except ReactionParsingError as e:
                 raise ReactionParsingError(
                     f"failed to load reaction {path_name_rxn}; "
@@ -158,17 +216,24 @@ class Reaction(DeliDataLoadable):
             raise ReactionError("Failed to generate product from reactants")
 
         if len(products) > 1:
-            reactant_smiles = [Chem.MolToSmiles(arg) for arg in args]
-            warnings.warn(
-                f"multiple reaction pathways found for reaction "
-                f"{self.to_smarts()} with reactants {reactant_smiles}, "
-                f"selecting first product by default",
-                ReactionWarning,
-                stacklevel=1,
-            )
+            if self.fail_on_multiple_products:
+                reactant_smiles = [Chem.MolToSmiles(arg) for arg in args]
+                raise ReactionError(
+                    f"multiple reaction pathways found for reaction "
+                    f"{self.to_smarts()} with reactants {reactant_smiles}"
+                )
+            elif not self.ignore_multiple_products:
+                reactant_smiles = [Chem.MolToSmiles(arg) for arg in args]
+                warnings.warn(
+                    f"multiple reaction pathways found for reaction "
+                    f"{self.to_smarts()} with reactants {reactant_smiles}, "
+                    f"selecting first product by default",
+                    ReactionWarning,
+                    stacklevel=1,
+                )
 
         # Take the first outcome's product
-        product = products[0][0]
+        product = products[0][self.pick_fragment]
 
         # Sanitize the product before return
         try:
@@ -780,6 +845,19 @@ class ReactionTree:
         _current_reaction_ids: set[str] = set()
         reaction_steps: list[ReactionStep] = list()
         for rxn_step_name, rxn_step_data in data.items():
+            # extract optional reaction arguments
+            _rxn_kwargs = {
+                "ignore_multiple_products": bool(
+                    rxn_step_data.get("ignore_multiple_products", False)
+                ),
+                "fail_on_multiple_products": bool(
+                    rxn_step_data.get("fail_on_multiple_products", False)
+                ),
+                "pick_fragment": int(rxn_step_data["pick_fragment"])
+                if rxn_step_data.get("pick_fragment", None)
+                else None,
+            }
+
             # parse rxn step id
             rxn_step_id = str(rxn_step_data.get("step_id", rxn_step_name))
             if rxn_step_id in _current_reaction_ids:
@@ -800,12 +878,16 @@ class ReactionTree:
 
             if isinstance(rxn_smarts, list):
                 reactions = [
-                    Reaction(smart) if not use_deli_data_dir else Reaction.load(smart)
+                    Reaction(smart, **_rxn_kwargs)
+                    if not use_deli_data_dir
+                    else Reaction.load(smart, **_rxn_kwargs)
                     for smart in rxn_smarts
                 ]
             else:
                 reactions = [
-                    Reaction(rxn_smarts) if not use_deli_data_dir else Reaction.load(rxn_smarts)
+                    Reaction(rxn_smarts, **_rxn_kwargs)
+                    if not use_deli_data_dir
+                    else Reaction.load(rxn_smarts, **_rxn_kwargs)
                 ]
 
             # parse reactants

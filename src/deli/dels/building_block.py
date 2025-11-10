@@ -241,9 +241,11 @@ class MaskedBuildingBlock(BaseBuildingBlock):
 
 
 class BuildingBlock(BaseBuildingBlock, SmilesMixin):
-    """Define building block that has a chemical structure associated with it"""
+    """
+    Define building block that has a chemical structure associated with it
+    """
 
-    def __init__(self, bb_id: str, smiles: Optional[str] = None):
+    def __init__(self, bb_id: str, smiles: Optional[str] = None, subset_id: Optional[str] = None):
         """
         Initialize the building block that has an associated DNA tag
 
@@ -253,10 +255,14 @@ class BuildingBlock(BaseBuildingBlock, SmilesMixin):
             building block id
         smiles: Optional[str], default = None
             SMILES of the building block
+        subset_id: str | None
+        if building block belongs to a subset, the subset id
+        else None
         """
         super().__init__()
         self.bb_id = bb_id
         self._smiles = smiles
+        self.subset_id = str(subset_id) if subset_id else None  # stringify
 
     def __eq__(self, other):
         """Two building blocks are equal if their ID is equal"""
@@ -276,17 +282,60 @@ class BuildingBlock(BaseBuildingBlock, SmilesMixin):
         -------
         BuildingBlock
         """
-        return cls(data["id"], smiles=data.get("smiles", None))
+        return cls(
+            data["id"], smiles=data.get("smiles", None), subset_id=data.get("subset_id", None)
+        )
 
     def is_mask(self) -> bool:
         """Masked BBs are never masks"""
         return False
 
+    def in_subset(self) -> bool:
+        """
+        Check if building block belongs to a subset
+
+        Returns
+        -------
+        bool
+        """
+        return self.subset_id is not None
+
+    def get_subset_id(self) -> str:
+        """
+        Get the subset id of the building block
+
+        Returns
+        -------
+        str
+            subset id of the building block
+
+        Raises
+        ------
+        ValueError
+            if the building block does not belong to a subset
+        """
+        if self.subset_id is None:
+            raise RuntimeError(f"building block '{self.bb_id}' does not belong to a subset")
+        return self.subset_id
+
 
 class TaggedBuildingBlock(BuildingBlock):
-    """Define building block that has a chemical structure and a DNA tag associated with it"""
+    """
+    Define building block that has a chemical structure and a DNA tag associated with it
 
-    def __init__(self, bb_id: str, tag: str, smiles: Optional[str] = None):
+    Attributes
+    ----------
+    tags: list[str]
+        the dna tag(s) associated with this building block
+    """
+
+    def __init__(
+        self,
+        bb_id: str,
+        tag: str | list[str],
+        smiles: Optional[str] = None,
+        subset_id: Optional[str] = None,
+    ):
         """
         Initialize the building block
 
@@ -294,13 +343,15 @@ class TaggedBuildingBlock(BuildingBlock):
         ----------
         bb_id: str
             building block id
-        tag: str
+        tag: str | list[str]
             the dna tag associated with this building block
-        smiles: Optional[str], default = None
+        smiles: str, default = None
             SMILES of the building block
+        subset_id: str, default = None
+            if building block belongs to a subset, the subset id
         """
-        super().__init__(bb_id=bb_id, smiles=smiles)
-        self.tag = tag
+        super().__init__(bb_id=bb_id, smiles=smiles, subset_id=subset_id)
+        self.tags = tag if not isinstance(tag, str) else [tag]
 
     @classmethod
     def from_dict(cls, data: dict[str, str]):
@@ -331,12 +382,7 @@ class BuildingBlockSet(DeliDataLoadable):
 
     """
 
-    def __init__(
-        self,
-        bb_set_id: str,
-        building_blocks: Sequence[BuildingBlock],
-        subset_id_map: Optional[Sequence[str]] = None,
-    ):
+    def __init__(self, bb_set_id: str, building_blocks: Sequence[BuildingBlock]):
         """
         Initialize the building blocks
 
@@ -346,9 +392,6 @@ class BuildingBlockSet(DeliDataLoadable):
             building block set id/name
         building_blocks: Sequence[BuildingBlock]
             list of building blocks in set
-        subset_id_map: Optional[Sequence[str]], default = None
-            if provided, a mapping from building block index to subset id
-            for any given idx, building_blocks[idx] belongs to subset subset_id_map[idx]
         """
         self.bb_set_id = bb_set_id
 
@@ -361,28 +404,64 @@ class BuildingBlockSet(DeliDataLoadable):
             )
 
         self.building_blocks = building_blocks
-        self.subset_id_map = subset_id_map
+        self._validate_bb_set()
 
         self._bb_lookup_table = {bb.bb_id: i for i, bb in enumerate(self.building_blocks)}
-        self._bb_subset_lookup_table: dict[str, Sequence[BuildingBlock]] | None = (
-            self._build_subset_lookup_table(subset_id_map) if subset_id_map is not None else None
+        self._bb_subset_lookup_table: dict[str, list[BuildingBlock]] | None = (
+            self._build_subset_lookup_table()
         )
 
         self.has_smiles = all([bb.has_smiles() for bb in self.building_blocks])
 
-    def _build_subset_lookup_table(self, subset_id_map) -> dict[str, Sequence[BuildingBlock]]:
+    def _validate_bb_set(self):
+        """Validate the building block set"""
+        _bb_id_set: set[str] = set()
+        for bb in self.building_blocks:
+            if bb.bb_id in _bb_id_set:
+                raise BuildingBlockSetError(
+                    f"duplicate building block id '{bb.bb_id}'; "
+                    f"BuildingBlockSets cannot contain multiple building blocks "
+                    f"with the same id"
+                )
+            _bb_id_set.add(bb.bb_id)
+
+    def _build_subset_lookup_table(self) -> dict[str, list[BuildingBlock]] | None:
         """Build a lookup table from subset id to list of building blocks in that subset"""
+        _no_subset_id: bool = self.building_blocks[0].subset_id is None
         _bb_subset_lookup = defaultdict(list)
-        for bb, subset_id in zip(self.building_blocks, subset_id_map, strict=False):
-            _bb_subset_lookup[subset_id].append(bb)
-        subset_lookup = dict(_bb_subset_lookup)
+        for bb in self.building_blocks:
+            if bb.subset_id is None:
+                if _no_subset_id:
+                    continue
+                else:
+                    raise BuildingBlockSetError(
+                        f"building block {bb.bb_id} in set '{self.bb_set_id}' is missing "
+                        f"a subset id when other building blocks have them. All building "
+                        f"blocks in a set must either have subset ids or none of them "
+                        f"can have subset ids."
+                    )
+            elif _no_subset_id:
+                raise BuildingBlockSetError(
+                    f"building block {bb.bb_id} in set '{self.bb_set_id}' has a "
+                    f"a subset id when other building blocks lack them. All building "
+                    f"blocks in a set must either have subset ids or none of them "
+                    f"can have subset ids."
+                )
+            else:
+                _bb_subset_lookup[bb.subset_id].append(bb)
 
-        if self.bb_set_id in _bb_subset_lookup.keys():
-            raise BuildingBlockSetError(
-                f"building block set id '{self.bb_set_id}' cannot be the same as a subset id"
-            )
+        if _no_subset_id:
+            return None
+        else:
+            subset_lookup = dict(_bb_subset_lookup)  # cast to dict from default dict
 
-        return subset_lookup
+            # assert building block set cannot be the same as subset ids
+            if self.bb_set_id in _bb_subset_lookup.keys():
+                raise BuildingBlockSetError(
+                    f"building block set id '{self.bb_set_id}' cannot be the same as a subset id"
+                )
+
+            return subset_lookup
 
     @classmethod
     @accept_deli_data_name(sub_dir="building_blocks", extension="csv")
@@ -441,7 +520,8 @@ class BuildingBlockSet(DeliDataLoadable):
         else:
             _set_id = set_id
 
-        _building_blocks = []
+        _building_blocks: list[BuildingBlock] = list()
+        _building_block_map: dict[str, BuildingBlock] = dict()
         with open(path, "r") as f:
             header = f.readline().strip().split(",")
 
@@ -455,19 +535,30 @@ class BuildingBlockSet(DeliDataLoadable):
                     f"missing required columns in building block set '{_set_id}': {str(e)}"
                 ) from e
 
-            _subset_map: list[str] = list()
             for line in f:
                 splits = line.strip().split(",")
                 _id = splits[_id_col_idx]
                 _smiles = splits[_smi_col_idx] if _smi_col_idx is not None else None
-                if _subset_id_col_idx is not None:
-                    _subset_map.append(splits[_subset_id_col_idx])
-                _building_blocks.append(BuildingBlock(bb_id=_id, smiles=_smiles))
+                _subset = splits[_subset_id_col_idx] if _subset_id_col_idx is not None else None
 
-        if _subset_map:
-            return cls(_set_id, _building_blocks, subset_id_map=_subset_map)
-        else:
-            return cls(_set_id, _building_blocks)
+                if _id in _building_block_map.keys():
+                    if _smiles != _building_block_map[_id].smi:
+                        raise BuildingBlockSetError(
+                            f"duplicate building block id '{_id}' with conflicting SMILES: "
+                            f"'{_smiles}', '{_building_block_map[_id].smi}' "
+                        )
+                    elif _subset == _building_block_map[_id].subset_id:
+                        raise BuildingBlockSetError(
+                            f"duplicate building block id '{_id}' with conflicting subset_ids: "
+                            f"'{_subset}', '{_building_block_map[_id].subset_id}' "
+                        )  # skip duplicate with same smiles
+                    else:
+                        continue  # skip since it's a duplicate
+                else:
+                    _building_blocks.append(
+                        BuildingBlock(bb_id=_id, smiles=_smiles, subset_id=_subset)
+                    )
+        return cls(_set_id, _building_blocks)
 
     def __len__(self):
         """Get the number of building blocks in the set"""
@@ -518,7 +609,7 @@ class BuildingBlockSet(DeliDataLoadable):
         else:
             return self.building_blocks[_idx]
 
-    def _get_subset_lookup_table(self) -> dict[str, Sequence[BuildingBlock]]:
+    def _get_subset_lookup_table(self) -> dict[str, list[BuildingBlock]]:
         """Get the subset lookup table if it exists, else raise an error"""
         if self._bb_subset_lookup_table is None:
             raise ValueError(
@@ -527,7 +618,7 @@ class BuildingBlockSet(DeliDataLoadable):
         else:
             return self._bb_subset_lookup_table
 
-    def get_bb_subset(self, subset_id: str) -> Sequence[BuildingBlock]:
+    def get_bb_subset(self, subset_id: str) -> list[BuildingBlock]:
         """
         Given a subset id, return all building blocks in that subset
 
@@ -544,7 +635,7 @@ class BuildingBlockSet(DeliDataLoadable):
 
         Returns
         -------
-        Sequence[BuildingBlock]
+        list[BuildingBlock]
             list of building blocks in that subset
 
         Raises
@@ -567,7 +658,7 @@ class BuildingBlockSet(DeliDataLoadable):
 
         if self._bb_subset_lookup_table is None:
             if subset_id == self.bb_set_id:
-                return self.building_blocks
+                return list(self.building_blocks)
         try:
             bb_list = self._get_subset_lookup_table()[subset_id]
         except KeyError as e:
@@ -576,7 +667,7 @@ class BuildingBlockSet(DeliDataLoadable):
             ) from e
         return bb_list
 
-    def get_bb_subsets(self) -> dict[str, Sequence[BuildingBlock]]:
+    def get_bb_subsets(self) -> dict[str, list[BuildingBlock]]:
         """
         Get all building block subsets in the set
 
@@ -585,7 +676,7 @@ class BuildingBlockSet(DeliDataLoadable):
 
         Returns
         -------
-        dict[str, Sequence[BuildingBlock]]
+        dict[str, list[BuildingBlock]]
             mapping from building block subset id to list of building blocks in that subset
 
         See Also
@@ -677,7 +768,6 @@ class TaggedBuildingBlockSet(BuildingBlockSet):
         self,
         bb_set_id: str,
         building_blocks: Sequence[TaggedBuildingBlock],
-        subset_id_map: Optional[Sequence[str]] = None,
     ):
         """
         Initialize the building blocks
@@ -688,28 +778,50 @@ class TaggedBuildingBlockSet(BuildingBlockSet):
             building block set id/name
         building_blocks: Sequence[TaggedBuildingBlock]
             list of building blocks in set
-        subset_id_map: Optional[Sequence[str]], default = None
-            if provided, a mapping from building block index to subset id
-            for any given idx, building_blocks[idx] belongs to subset subset_id_map[idx]
 
         Notes
         -----
         Building blocks that are attached to DNA should mark the atom
         that bind DNA with a "X" in the SMILES
         """
-        super().__init__(bb_set_id, building_blocks, subset_id_map=subset_id_map)
+        super().__init__(bb_set_id, building_blocks)
         self.building_blocks: Sequence[TaggedBuildingBlock] = building_blocks  # for type checker
 
-        self.tag_length = len(self.building_blocks[0].tag)
+        self.tag_length = len(self.building_blocks[0].tags[0])
         for i, _bb in enumerate(self.building_blocks[1:]):
-            if self.tag_length != len(_bb.tag):
-                raise BuildingBlockSetError(
-                    f"expected all tags to have length {self.tag_length}, "
-                    f"but tag '{_bb.bb_id}' at row {i} has length {len(_bb.tag)}"
-                )
+            for _tag in _bb.tags:
+                if self.tag_length != len(_tag):
+                    raise BuildingBlockSetError(
+                        f"expected all tags to have length {self.tag_length}, "
+                        f"but tag '{_bb.bb_id}' at row {i} has length {len(_tag)}"
+                    )
 
-        self._dna_lookup_table = {bb.tag: i for i, bb in enumerate(self.building_blocks)}
+        self._dna_lookup_table = {
+            tag: i for i, bb in enumerate(self.building_blocks) for tag in bb.tags
+        }
         self._bb_lookup_table = {bb.bb_id: i for i, bb in enumerate(self.building_blocks)}
+
+    def _validate_bb_set(self):
+        """Validate the building block set"""
+        _bb_id_set: set[str] = set()
+        _tag_set: set[str] = set()
+        for bb in self.building_blocks:
+            if bb.bb_id in _bb_id_set:
+                raise BuildingBlockSetError(
+                    f"duplicate building block id '{bb.bb_id}'; "
+                    f"BuildingBlockSets cannot contain multiple building blocks "
+                    f"with the same id"
+                )
+            _bb_id_set.add(bb.bb_id)
+
+            for tag in bb.tags:
+                if tag in _tag_set:
+                    raise BuildingBlockSetError(
+                        f"duplicate building block tag '{tag}'; "
+                        f"BuildingBlockSets cannot contain multiple building blocks "
+                        f"with the same tag"
+                    )
+                _tag_set.add(tag)
 
     @classmethod
     @accept_deli_data_name(sub_dir="building_blocks", extension="csv")
@@ -766,7 +878,8 @@ class TaggedBuildingBlockSet(BuildingBlockSet):
         else:
             _set_id = set_id
 
-        _building_blocks = []
+        _building_blocks: list[TaggedBuildingBlock] = list()
+        _building_block_map: dict[str, TaggedBuildingBlock] = dict()
         with open(path, "r") as f:
             header = f.readline().strip().split(",")
 
@@ -784,20 +897,31 @@ class TaggedBuildingBlockSet(BuildingBlockSet):
                     f"missing required columns in building block set '{_set_id}': {str(e)}"
                 ) from e
 
-            _subset_map: list[str] = list()
             for line in f:
                 splits = line.strip().split(",")
                 _id = splits[_id_col_idx]
-                _tag = splits[extra_cols[BB_FILE_TAG_COLUMN]]
                 _smiles = splits[_smi_col_idx] if _smi_col_idx is not None else None
-                if _subset_id_col_idx is not None:
-                    _subset_map.append(splits[_subset_id_col_idx])
-                _building_blocks.append(TaggedBuildingBlock(bb_id=_id, smiles=_smiles, tag=_tag))
+                _subset = splits[_subset_id_col_idx] if _subset_id_col_idx is not None else None
+                _tag = splits[extra_cols[BB_FILE_TAG_COLUMN]]
 
-        if _subset_map:
-            return cls(_set_id, _building_blocks, subset_id_map=_subset_map)
-        else:
-            return cls(_set_id, _building_blocks)
+                if _id in _building_block_map.keys():
+                    if _smiles != _building_block_map[_id].smi:
+                        raise BuildingBlockSetError(
+                            f"duplicate building block id '{_id}' with conflicting SMILES: "
+                            f"'{_smiles}', '{_building_block_map[_id].smi}' "
+                        )
+                    elif _subset != _building_block_map[_id].subset_id:
+                        raise BuildingBlockSetError(
+                            f"duplicate building block id '{_id}' with conflicting subset_ids: "
+                            f"'{_subset}', '{_building_block_map[_id].subset_id}' "
+                        )  # skip duplicate with same smiles
+                    else:
+                        _building_block_map[_id].tags.append(_tag)  # skip since it's a duplicate
+                else:
+                    _building_blocks.append(
+                        TaggedBuildingBlock(bb_id=_id, smiles=_smiles, tag=_tag, subset_id=_subset)
+                    )
+        return cls(_set_id, _building_blocks)
 
     @overload
     def search_tags(
