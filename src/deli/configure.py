@@ -47,7 +47,7 @@ def set_deli_data_dir(data_dir: Optional[str | Path]) -> None:
     get_deli_config().deli_data_dir = Path(data_dir) if isinstance(data_dir, str) else data_dir
 
 
-def get_deli_config():
+def get_deli_config() -> "_DeliConfig":
     """Get the DELi config, loading it lazily if not already loaded"""
     global DELI_CONFIG
     if DELI_CONFIG is None:

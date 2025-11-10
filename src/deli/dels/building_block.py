@@ -222,7 +222,7 @@ class MaskedBuildingBlock(BaseBuildingBlock):
     def __init__(self):
         """Initialize the object"""
         super().__init__()
-        self.bb_id = get_deli_config()["BB_MASK"]
+        self.bb_id = get_deli_config().bb_mask
 
     def is_mask(self) -> bool:
         """Masked BBs are always masks"""
