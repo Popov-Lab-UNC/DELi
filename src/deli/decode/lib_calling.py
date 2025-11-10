@@ -3,10 +3,10 @@
 import abc
 from typing import Optional, TypeAlias, Union
 
-from cutadapt.adapters import BackAdapter, FrontAdapter, MultipleAdapters, SingleMatch
+from cutadapt.adapters import FrontAdapter, MultipleAdapters, RightmostBackAdapter, SingleMatch
 from dnaio import SequenceRecord
 
-from deli.dels import DELibrary, DELibraryCollection
+from deli.dels.library import DELibrary, DELibraryCollection
 
 from .calls import FailedCall, ValidCall
 from .demultiplex import Demultiplexer
@@ -184,7 +184,7 @@ class LibraryCaller(Demultiplexer, abc.ABC):
                     name=lib.library_id,
                 )
                 if lib.barcode_schema.is_library_tag_in_front()
-                else BackAdapter(
+                else RightmostBackAdapter(
                     sequence=lib.barcode_schema.library_section.get_dna_sequence(),
                     max_errors=error_rate,
                     min_overlap=min_overlap
@@ -299,7 +299,7 @@ class SingleReadLibraryCaller(LibraryCaller):
         """
         match = self._demultiplex(sequence)
 
-        if self.revcomp:
+        if self.revcomp and match and match.errors != 0:
             revcomp_seq: SequenceRecord = sequence.reverse_complement()
             revcomp_match = self._demultiplex(revcomp_seq)
             return self._compare_matches((sequence, match), (revcomp_seq, revcomp_match))

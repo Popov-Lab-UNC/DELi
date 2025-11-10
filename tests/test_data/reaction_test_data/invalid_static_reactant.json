@@ -1,0 +1,16 @@
+{
+  "possible_bb_set_ids": ["BB1", "BB2", "BB3"],
+  "reaction_steps": {
+    "step1": {
+      "step_id": "1",
+      "rxn_smarts": "[NH2:1].[C:2](=O)O>>[C:2](=O)N",
+      "reactants": ["BB1", "BB2"]
+    },
+    "step2": {
+      "step_id": "2",
+      "rxn_smarts": "[NH2:1].[C:2](=O)O>>[C:2](=O)N",
+      "reactants": ["product_1", "FAKE_REACTANT"]
+    }
+  }
+}
+

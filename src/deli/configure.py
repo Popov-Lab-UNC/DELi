@@ -8,8 +8,7 @@ import os
 import shutil
 import warnings
 from pathlib import Path
-from typing import Any, Callable, Literal, Optional, ParamSpec, TypeVar, Union
-from typing_extensions import Self
+from typing import Any, Callable, Final, Optional, ParamSpec, TypeVar
 
 
 P = ParamSpec("P")
@@ -32,7 +31,7 @@ _custom_order_7_3 = "p1,p2,d3,p4,d5,d6,d7"
 _hamming_order_15_4 = "p1,p2,d3,p4,d5,d6,d7,p8,d9,d10,d11,d12,d13,d14,d15"
 _custom_order_15_4 = "p1,p2,d3,p4,d5,d6,d7,p8,d9,d10,d11,d12,d13,d14,d15"
 
-DELI_DATA_SUB_DIRS = ["libraries", "building_blocks"]
+DELI_DATA_SUB_DIRS: Final = ("libraries", "building_blocks", "reactions")
 
 DELI_CONFIG = None
 
@@ -43,12 +42,12 @@ class DELiConfigError(Exception):
     pass
 
 
-def set_deli_data_dir(data_dir: Union[str, Path, None]) -> None:
+def set_deli_data_dir(data_dir: Optional[str | Path]) -> None:
     """Sets the deli data directory path"""
     get_deli_config().deli_data_dir = Path(data_dir) if isinstance(data_dir, str) else data_dir
 
 
-def get_deli_config():
+def get_deli_config() -> "_DeliConfig":
     """Get the DELi config, loading it lazily if not already loaded"""
     global DELI_CONFIG
     if DELI_CONFIG is None:
@@ -75,7 +74,7 @@ def get_deli_config():
     return DELI_CONFIG
 
 
-def load_deli_config(path: Union[str, Path]) -> None:
+def load_deli_config(path: str | Path) -> None:
     """
     Load a new deli config from a given path
 
@@ -230,7 +229,7 @@ class _DeliConfig:
         raise RuntimeError("Cannot delete 'nuc_2_int'")
 
     @classmethod
-    def load_config(cls, path: Union[str, Path]) -> Self:
+    def load_config(cls, path: str | Path) -> "_DeliConfig":
         """Helper func to load in config data"""
         config = configparser.RawConfigParser()
         try:
@@ -451,7 +450,7 @@ def init_deli_config(
 
     Parameters
     ----------
-    path: Optional[Union[str, os.PathLike]]
+    path: Optional[Path], default = None
         path to create deli config dir at
         will be at $USER/.deli if left as None
     fail_on_exist: bool, default = True
@@ -529,8 +528,10 @@ def _build_default_hamming_code_strings(
 
 
 def accept_deli_data_name(
-    sub_dir: Literal["building_blocks", "libraries", "indexes", "barcodes", "hamming"],
+    sub_dir: str,  # cannot use literal unpacking if we want to support older python versions
     extension: str,
+    target_param: str = "path",
+    return_on_not_found: bool = False,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """
     Decorator to allow load functions to take name of DELi data object
@@ -561,13 +562,18 @@ def accept_deli_data_name(
         the name of the DELi data sub directory to look in
     extension: str
         the file extension for matching files
+    target_param: str, default = "path"
+        the name of the parameter to look up in deli data dir
+    return_on_not_found: bool, default = False
+        if True, will return the original input string if the file is not found
+        instead of raising DeliDataNotFound
 
     Returns
     -------
     decorated_function: Callable[P, R]
     """
 
-    def _build_deli_data_path(path: Union[str, os.PathLike]) -> Path:
+    def _build_deli_data_path(path: str) -> Path | str:
         if os.path.exists(path):
             return Path(path)
 
@@ -581,13 +587,15 @@ def accept_deli_data_name(
         _file_name = os.path.basename(path).split(".")[0] + "." + extension
         file_path = get_deli_config().deli_data_dir / sub_dir / _file_name
 
-        if not os.path.exists(file_path):
+        if not os.path.exists(file_path) and (not return_on_not_found):
             raise DeliDataNotFound(f"cannot find file '{path}.{extension}' in {_sub_dir_path}")
-
-        return file_path
+        elif os.path.exists(file_path):
+            return file_path
+        else:
+            return path
 
     try:
-        decorator = _build_argument_validation_decorator(_build_deli_data_path, "path")
+        decorator = _build_argument_validation_decorator(_build_deli_data_path, target_param)
     except ValueError as err:  # will throw this error if the function lacks a "path" argument
         raise RuntimeError(
             "cannot decorate function without 'path' parameter "
@@ -629,7 +637,7 @@ def _build_argument_validation_decorator(
 class DeliDataLoadable(abc.ABC):
     """Mixin for objects that can be loaded from DeliDataDir"""
 
-    loaded_from: Union[os.PathLike, str] = ""
+    loaded_from: str = ""
 
     @classmethod
     @abc.abstractmethod

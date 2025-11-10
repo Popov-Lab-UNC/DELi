@@ -4,8 +4,12 @@ import os
 
 import pytest
 
-from deli.dels import DELibrary, Library
-from deli.dels.library import EnumerationRunError
+from deli.dels.library import DELibrary, Library
+from deli.enumeration.enumerator import EnumeratedDELCompound
+
+
+# filter reaction warning
+pytestmark = pytest.mark.filterwarnings("ignore::deli.enumeration.reaction.ReactionWarning")
 
 
 @pytest.mark.unit
@@ -50,9 +54,16 @@ def test_enumerate_from_library(del_library: DELibrary, tmpdir):
 @pytest.mark.unit
 def test_enumerator_enumerate(del_enumerator, missing_enumerator):
     """Test using the enumerator to enumerate a library"""
-    del_enumerator.enumerate(use_tqdm=False)
-    with pytest.raises(EnumerationRunError):
-        missing_enumerator.enumerate(use_tqdm=False)
+    compounds = del_enumerator.enumerate(use_tqdm=False)
+    _count = 0
+    for compound in compounds:
+        assert isinstance(compound, EnumeratedDELCompound)
+        _count += 1
+    assert _count == del_enumerator.enumerator.get_enumeration_size()
+
+    # test no enumerator fails
+    with pytest.raises(RuntimeError):
+        missing_enumerator.enumerate(use_tqdm=False).__next__()
 
 
 @pytest.mark.unit

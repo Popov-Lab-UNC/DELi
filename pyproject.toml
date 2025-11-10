@@ -44,7 +44,7 @@ dependencies = [
     "scipy>=1.14.1",
     "rdkit>=2024.9.5",
     "pandas>=2.2.3",
-    "cutadapt==5.0",
+    "cutadapt>=5.2",
     "biopython==1.85",
     "dnaio==1.2.3",
     "seaborn>=0.12.2",
@@ -105,9 +105,6 @@ packages = [
 
 [tool.poetry.requires-plugins]
 poetry-bumpversion = "^0.3.1"
-
-[tool.poetry.group.notebook]
-optional = true
 
 [tool.poetry_bumpversion.file."docs/conf.py"]
 search = 'release = "{current_version}"'

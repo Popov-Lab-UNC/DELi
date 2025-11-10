@@ -6,11 +6,12 @@ import datetime
 import os
 import sys
 from pathlib import Path
-import logging
+
 
 # Suppress RDKit warnings at module level
 try:
     from rdkit import RDLogger
+
     rd_logger = RDLogger.logger()
     rd_logger.setLevel(RDLogger.ERROR)
 except ImportError:
@@ -30,9 +31,7 @@ from deli.configure import (
     set_deli_data_dir,
     validate_deli_data_dir,
 )
-from deli.decode import (
-    DecodingRunner,
-)
+from deli.decode.runner import DecodingRunner
 from deli.dels.library import Library
 
 
@@ -311,7 +310,9 @@ def run_decode(
     "--out_path", "-o", type=click.Path(), required=False, default="", help="Output CSV file path"
 )
 @click.option("--tqdm", "-t", is_flag=True, help="Enable TQDM progress bar")
-def enumerate_(library_file, out_path, tqdm):
+@click.option("--fail-on-error", "-f", is_flag=True, help="Fail on first error during enumeration")
+@click.option("--drop-failed", "-d", is_flag=True, help="Drop compounds with failed enumerations")
+def enumerate_(library_file, out_path, tqdm, fail_on_error, drop_failed):
     """
     Enumerates compounds from a given library
 
@@ -328,7 +329,13 @@ def enumerate_(library_file, out_path, tqdm):
     _start = datetime.datetime.now()
 
     enumerator = Library.load(library_file)
-    enumerator.enumerate_to_file(output_file, separator=",", use_tqdm=tqdm)
+    enumerator.enumerate_to_file(
+        output_file,
+        separator=",",
+        use_tqdm=tqdm,
+        fail_on_error=fail_on_error,
+        drop_failed=drop_failed,
+    )
 
 
 @cli.command(name="analyze")
@@ -345,7 +352,7 @@ def analyze(config):
     CONFIG is the path to the YAML configuration file.
     """
     print("Analysis started with config:", config)
-    
+
     def create_output_dir(output_dir):
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
@@ -371,17 +378,17 @@ def analyze(config):
     config = load_config(config)
     output_dir_base = config["general"].get("output_dir", "output")
     output_dir = create_dated_output_dir(output_dir_base, "analysis")
-    
+
     # Set up log file to capture all output
     log_file = os.path.join(output_dir, "deli.log")
-    log_file_handle = open(log_file, 'w')
-    
+    log_file_handle = open(log_file, "w")
+
     # Redirect stdout and stderr to log file
     original_stdout = sys.stdout
     original_stderr = sys.stderr
     sys.stdout = log_file_handle
     sys.stderr = log_file_handle
-    
+
     print("Analysis started with config:", config)
     print(f"Logging all output to: {log_file}")
 
@@ -519,11 +526,11 @@ def analyze(config):
                 os.path.join(output_dir_base, f"cube_data_{today_date}.csv"),
                 index=False,
             )
-    
+
     # Cleanup: restore stdout/stderr and close log file
     sys.stdout = original_stdout
     sys.stderr = original_stderr
     log_file_handle.close()
-    
+
     print(f"Analysis completed! Check the log file at: {log_file}")
     print(f"Results saved to: {output_dir}")

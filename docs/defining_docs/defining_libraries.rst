@@ -65,34 +65,36 @@ Below is and example of a library json file
                 "bb_set_name": "DEL006_BBC"
             }
         ],
-        "reactions": [
-            {
-                "step": 1,
+        "reactions": {
+            "step1": {
+                "step_id": 1,
                 "rxn_smarts": "[#6:1]-C(=O)-O.[15N:2]>>[15N:2]-C(=O)-[#6:1]",
                 "reactants": ["DEL006_BBA", "[15N]"]
             },
-            {
-                "step": 2,
+            "step2": {
+                "step_id": 2,
                 "rxn_smarts": "[#8]=[#6](-[#8]-[#6]-[#6]1-[#6]2:[#6]:[#6]:[#6]:[#6]:[#6]:2-[#6]2:[#6]-1:[#6]:[#6]:[#6]:[#6]:2)-[#7:1][*:2]>>[#7:1]([H])[*:2]",
                 "reactants": ["product_1"]
             },
+            "step3":
             {
-                "step": 3,
+                "step_id": 3,
                 "rxn_smarts": "[Nh:2].[#6:3](=O)-O >>[#6:3](=O)-[N:2]",
                 "reactants": ["product_2", "OC(C1=CC=C(F)C(N(=O)=O)=C1)=O"]
             },
+            "step4":
             {
-                "step": 4,
+                "step_id": 4,
                 "rxn_smarts": "[#6:0]1(-[*:1]):[#6]:[#6]:[#6:2](-[#9]):[#6:4](-[#7+](-[#8-])=[#8]):[#6]:1.[NH2:6][*:3]>>[#6:0]1(-[*:1]):[#6]:[#6]:[#6:2](-[NH:6][*:3]):[#6:4](-[#7+](-[#8-])=[#8]):[#6]:1",
                 "reactants": ["product_3", "DEL006_BBB"]
             },
+            "step5":
             {
-                "step": 5,
+                "step_id": 5,
                 "rxn_smarts": "[#6:0]1(-[*:1]):[#6]:[#6]:[#6:2](-[#7][*:3]):[#6:4](-[#7+](-[#8-])=[#8]):[#6]:1.[CX3H1:6](=O)[*:5]>>[#6:0]1(-[*:1]):[#6]:[#6]:[#6:2]2-[#7]([*:3])-[#6:6](-[*:5])=[#7]-[#6:4]:2:[#6]:1",
                 "reactants": ["product_4", "DEL006_BBC"]
-            }
-        ],
-        "dna_barcode_on": "DEL006_BBA"
+            },
+        "dna_barcode_on": "DEL006_BBA",
         "scaffold": "C1CCCCC1"
     }
 
@@ -151,7 +153,7 @@ four nucleic acids: 'AGTC' (e.g. AGTTCGTA).
 
 The DNA info dictionary can have the following elements:
 - ``tag``: the DNA sequence of the section. This is a string of nucleic acids (A, T, C, G) or
-  'N's if the section is variable (with the number of N's equal to the expect length)
+  'N's if the section is variable (with the number of N's equal to the expected length)
 - ``overhang``: the overhang sequence of the section. This section is optional, and only
   should be included if the section actually has an overhang. Overhangs are the regions used to promote
   DNA ligation and must be static, even in a variable section. That means it should be a string
@@ -165,7 +167,7 @@ The DNA info dictionary can have the following elements:
 When it comes to barcode sections, some section names are reserved, and possibly required, by DELi.
 These are:
 - library: this section name is for the part of the DNA barcode used to decode the
-  library the compound originates from. It is *required* and must be static.
+  library the compound originates from. It is **required** and must be static.
 - bb##: sections that are for building block cycles are BB<cycle number>. The number of building block
   sections should match the number of building block sets specified in
   the :ref:`bb_sets section <bb-set-sec>`. They are mapped by the building block cycle number, so
@@ -182,52 +184,142 @@ These are:
 
 ``reactions``
 ^^^^^^^^^^^^^
-All compounds in a library should follow the same reaction scheme to
-create the compounds.
-This is usually carried out in steps.
-For example: Cycle1 is attached to DNA, Cycle2 is attached to Cycle1,
-Cycle3 is attached to the Cycle1-2 product and so on.
-
+This section describes the reaction scheme used to synthesize
+the compounds from a given library.
 While not required, if the reaction schema is provided, it will enable
-DELi to enumerate out the full SMILES for any compound in the library.
+DELi to :ref:`enumerate <enumeration-docs>` the full SMILES for any compound in the library.
 
 .. note::
     Enumeration is expensive, so it is recommend to run a full library
     enumeration once and the results saved in a database mapping DEL IDs
     to the full SMILES. See Enumerating Libraries for more info
 
-The reaction is defined as a list of dictionaries,
-with each dictionary defining a single 'step' of the reaction scheme.
-Each step should include the follow key-value pairs:
+The reaction scheme is defined as a dictionary of named of "steps" that
+contain information about that reaction step, namely the reaction SMARTS
+and the reactants used in that step. DELi uses the names of the
+reactions steps and the reactants to build possible reaction paths.
+This is discussed in more detail below.
+Not all compounds in a given DEL will follow the same reaction path.
+For example, some DELs might leverage two different reaction routes to
+attach cycle 1 and cycle 2 building blocks. DELi is capable of handling
+this scenario, but the user must provide detailed reaction information
+regarding which reaction steps are used for which building blocks
 
-* ``step``: the order/position of this this step, starting from 1. Each reaction steps should have a unique step position and they should be sequential (i.e. 1, 2, 3 is valid but 1, 3, 4 is not as 2 is missing)
+The name for each reaction step in the reaction dictionary
+should be unique with respect to the library. Each step can
+contain the following key-value pairs:
+
+**Required keys:**
 
 * ``rxn_smarts``: the SMARTS that defines the reaction that will occur.
   for more info on how reaction SMARTS are defined,
-  see `the Daylight docs <https://www.daylight.com/dayhtml/doc/theory/theory.smarts.html>`_
+  see `the Daylight docs <https://www.daylight.com/dayhtml/doc/theory/theory.smarts.html>`_.
+  You can also use the name of a predefined reaction in your :ref:`DELi data directory <deli-data-dir-ref>`
+  in the reaction subfolder. DELi will auto detect this for you.
 
-* ``reactants``: this value should be a list, and contain the BB cycle ids or
-  SMILES of the reactants. Only use the SMILES if all compounds in the library
-  are reacting with the same compound. You can also include 'scaffold' if the
-  reaction includes using the :ref:`scaffold <scaffold-sec-ref>` in the DEL.
-  You can reference the product of any other steps by
-  using ``product_<step>``, i.e. ``product_1`` is the product from the first
-  reaction step.
+  This element can also be a list, rather than a single string. In this case,
+  DELi will attempt to run each reaction SMARTS in order until one works. This is useful
+  if you have multiple reaction SMARTS that could be used for a given reaction step that
+  have a defined priority order. For example, reacting with primary then secondary amines.
+
+  .. note::
+      In cases where there are two or more entirely different reactions (that are not related)
+      that could be taken, you should instead define a separate reaction step for each. You
+      can read more about this below.
+
+* ``reactants``: this value should be a list, and contain strings that reference the follow:
+  * A SMILES string for a chemical reactant
+  * A building block set id (should match the one of the ones specified in :ref:`the bb set section <bb-set-sec>`
+  * A product from a previous reaction step (see below)
+
+.. _reaction-bb-subset-docs:
+
+  In the case that a building block set is used as a reactant, you can further specify if a specific
+  subset is used by appending ":::" and a subset name to the building block set name. For example,
+  if building block set "BB1" is used, but only the subset "subsetA" is reacting, you would
+  specify the reactant as "BB1:::subsetA". See the building :ref:`block set docs <defining_building_blocks>` for more info on
+  defining subsets.
+
+  To specify a product from a different reaction step, you can use the syntax "product_<step_name>",
+  where <step_name> is the name of the reaction step that produced the product you want to use.
+  You can also use the ``step_id`` to keep things cleaner if your reaction step names are long.
+
+  .. note::
+      This means that reaction step names cannot match the pattern "product_*"
+      (where * is anything). DELi will complain if you try to use such a name.
+
+  You can also use a list of strings to specify the pooling of multiple reactant source.
+  For example, if I wanted to react the products of step 1 and step 2 with with building block set "BB1",
+  I could specify the reactants as ``reactants: [["product_1", "product_2"], "BB1"]``.
+  This would tell DELi to pool the products of step 1 and step 2 together as a single reactant source, so
+  in this case there are only two reactants. This is very different
+  from ``reactants: ["product_1", "product_2", "BB1"]``, which would tell DELi you are doing a reaction
+  that takes in three reactants, the products of step 1, step 2, and building block set "BB1".
+  The reactants can be any number of items, as long as they match the number reactant in the reaction SMARTS for
+  the given step.
 
   .. warning::
-        Reactants in the list **MUST** match the order they are used in the
-        reactants part of the reaction SMARTS. This is because RDKit expects this
-        For example, for an amide reaction [NH2:1].[C:2](=[O:3])(O)>>[C:2]
-        (=[O:3])[NH:1], you need to order the recants as ['amine', 'carbo-acid'.
-        If you ordered it as ['carbo-acid', 'amine'] the reaction
-        would not be carried out.
+      DELi uses RDKit to perform the reactions, which requires that the order
+      of reactants matches the order in the reaction SMARTS. Be sure that the order
+      of the reactants you provide matches the order in the SMARTS.
 
+  Lastly, there are two reserved reactant keywords beyond the three listed above. These are "linker" and
+  "scaffold". These keywords tell DELi to use the library's linker or scaffold as a reactant
+  in the reaction. The "linker" keyword is also used to set the root of the reaction tree. If you
+  do not include one, DELi will create a dummy linker for you to use as the root (this will not impact the reaction products)
+
+  .. warning::
+      This means "scaffold" and "linker" (in any capitalization) are reserved names. DELi will complain
+      if you try to use them as :ref:`building block set names <defining_building_block_set_names>`.
+
+  This section is probably the most complex part of defining reactions in DELi, as it is what DELi uses to make
+  the reaction trees, and if you have configured it wrong DELi will not be able to properly enumerate. There are
+  some checks that exist to catch some mistakes, but not all. So be sure to double check that you are specifying
+  your reacts correctly give your reaction schema.
+
+**Optional keys**
+
+* ``step_id``: an addition unique identifier for the reaction step.
+  This is useful if your reaction step names are long and cumbersome as it can be referenced
+  in place of the full reaction step name in files
+
+  .. note::
+      `step_id` is always used to reference previous products and reactions.
+      If you do not set a `step_id`, DELi will assign it the same value as the step name.
+
+* ``description``: a string description of the reaction step. This is only useful for documentation,
+  DELi does not use this information.
+
+* ``pick_fragment``: If your reaction SMART defines multiple product fragments,
+  (contains a '.' in the product side)
+  use this to specify which one to pick as the product.
+  The indexing start at 1, so if you have two possible fragments, you can set this to 1 or 2.
+  If this is not provided, DELi will pick the first fragment by default and warn you that you
+  did not specify which fragment to pick.
+
+* ``ignore_multiple_products``: A boolean (true/false) value that tells DELi to supress warnings
+  in the case where multiple possible products are generated after running the reaction.
+  By default, DELi will warn you everytime a reaction results in ambiguous products, then
+  select the first to proceed with. If you set this value to true, DELi will not warn you
+  and will just pick the first product to proceed with.
+
+  .. note::
+      Multiple products are not the same as multiple fragments. A reaction SMARTS can define multiple fragments
+      (e.g. with a '.' in the product side), but still only produce one product per fragment.
+      Multiple products means that the reaction SMARTS can produce multiple different products
+      for the same set of reactants. This can happen if the reaction SMARTS is not specific enough
+      or the reactants have multiple reactive sites.
+
+* ``fail_on_multiple_products``: Similar to ``ignore_multiple_products``, but instead of suppressing
+  multiple products warnings, DELi will raise an exception and fail the enumeration if multiple products are found.
+  This is useful if you want to ensure that your reaction SMARTS are specific enough to only produce
+  one product per reaction.
 
 An example of a reaction step dictionary for an amide coupling between
 a BB set 'BB1' and the scaffold would be
 ::
-    {
-        "step": 1
+    "cycle_1_reaction": {
+        "step_id": "1",
         "rxn_smarts": "[NH2:1].[C:2](=[O:3])(O)>>[C:2](=[O:3])[NH:1]"
         "reactants": ["BB1", "scaffold"]
     }
@@ -236,16 +328,16 @@ Reactions are not limited to 2 reactants, it can be any number that matches
 the reaction SMARTS.
 An example of a reaction step dictionary for a three step reaction is
 ::
-    {
-        "step": 1
+    "cycle 1-2 reaction": {
+        "step_id": 1
         "rxn_smarts": "[NH2].[C(=O)O].[OH]>>[C(=O)N].[C(=O)O]"
         "reactants": ["BB1", "BB2", "c1ccccc1[OH]"]
     }
 
 .. note::
-    reaction steps do not need to be ordered in the list as long as the ``step``
-    key still provides the correct order. However, for readability providing the
-    steps in the order they occur is preferred.
+    Since DELi will load steps first then build a reaction tree, the order of steps
+    in the dictionary does not matter.
+    DELi will sort them out based on the reactants specified for each step.
 
 
 ``dna_barcode_on``

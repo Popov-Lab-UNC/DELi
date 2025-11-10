@@ -87,13 +87,13 @@ class SequenceDirectoryReader(SequenceReader):
 class SequenceGlobReader(SequenceReader):
     """Read all sequences from a glob of files"""
 
-    def __init__(self, sequence_files: list[str | os.PathLike]):
+    def __init__(self, sequence_files: list[str]):
         """
         Initialize a SequenceDirectoryReader object.
 
         Parameters
         ----------
-        sequence_files: list[str or PathLike]
+        sequence_files: list[str]
             paths to the observed_seq files to read
         """
         self.sequence_files: list[Path] = [Path(sequence_file) for sequence_file in sequence_files]
@@ -101,6 +101,6 @@ class SequenceGlobReader(SequenceReader):
 
     def __iter__(self) -> Iterator[SequenceRecord]:
         """Yield all sequences from all files in the glob"""
-        for _, reader in zip(self.sequence_files, self._sequence_readers):
+        for _, reader in zip(self.sequence_files, self._sequence_readers, strict=False):
             for record in reader:
                 yield record

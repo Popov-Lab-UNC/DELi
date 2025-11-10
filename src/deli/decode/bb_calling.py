@@ -7,7 +7,8 @@ from typing import TypeAlias, Union
 
 from deli._hamming import BaseQuaternaryHamming
 from deli.configure import DELiConfigError, get_deli_config
-from deli.dels import BuildingBlockBarcodeSection, TaggedBuildingBlock, TaggedBuildingBlockSet
+from deli.dels.barcode import BuildingBlockBarcodeSection
+from deli.dels.building_block import TaggedBuildingBlock, TaggedBuildingBlockSet
 
 from .calls import FailedCall, ValidCall
 
@@ -281,34 +282,56 @@ class HashMapErrorCorrector(ErrorCorrector, abc.ABC):
         """
         self.distance_cutoff = distance_cutoff
         self.asymmetrical = asymmetrical
-        self._hash_map: dict[str, tuple[TaggedBuildingBlock | None, int]] = {}
+        self._hash_map: dict[str, tuple[TaggedBuildingBlock | None, list[str], int]] = {}
 
         for bb in bb_set:
-            possible_tags = self._get_neighbors(bb.tag)
-            for tag, dist in possible_tags.items():
-                if tag in self._hash_map:
-                    if not self.asymmetrical:
-                        _colliding_bb = self._hash_map[tag][0]
-                        if _colliding_bb is None:
-                            # this is for type hinting and mypy
-                            raise RuntimeError(
-                                "this should never happen, please report to the developers"
-                            )
+            possible_tags: dict[str, int] = dict()
+            # loop through all tags to get neighbors, saving smallest dist if conflict since
+            #  these two map to the same compound
+            for bb_tag in bb.tags:
+                possible_tags = self._get_neighbors(bb_tag)
+                for tag, dist in possible_tags.items():
+                    if tag in self._hash_map:
+                        if not self.asymmetrical:
+                            _colliding_bb = self._hash_map[tag][0]
+                            if _colliding_bb is not None:
+                                # if the colliding bb is the same as the current one not an issue
+                                if _colliding_bb == bb:
+                                    self._hash_map[tag][1].append(bb_tag)
+                                raise HashMapCollisionError(
+                                    f"collision detected when building {self.__class__.__name__} "
+                                    f"with distance {self.distance_cutoff} for tag {tag}; "
+                                    f"collision between building blocks {bb.bb_id} and "
+                                    f"{_colliding_bb.bb_id} with tags {bb.tags} "
+                                    f"and {_colliding_bb.tags} respectively"
+                                )
+                            else:
+                                # this is for type hinting and mypy
+                                raise RuntimeError(
+                                    "this should never happen, please report to the developers"
+                                )
                         else:
-                            raise HashMapCollisionError(
-                                f"collision detected when building {self.__class__.__name__} "
-                                f"with distance {self.distance_cutoff} for tag {tag}; "
-                                f"collision between building blocks {bb.bb_id} and "
-                                f"{_colliding_bb.bb_id} with tags {bb.tag} "
-                                f"and {_colliding_bb.tag} respectively"
-                            )
+                            if self._hash_map[tag][2] == dist:
+                                if self._hash_map[tag][0] == bb:
+                                    self._hash_map[tag][1].append(bb_tag)
+                                else:
+                                    self._hash_map[tag] = (None, list(), dist)
+                            elif self._hash_map[tag][2] > dist:
+                                self._hash_map[tag] = (
+                                    bb,
+                                    [
+                                        bb_tag,
+                                    ],
+                                    dist,
+                                )
                     else:
-                        if self._hash_map[tag][1] == dist:
-                            self._hash_map[tag] = (None, dist)
-                        elif self._hash_map[tag][1] > dist:
-                            self._hash_map[tag] = (bb, dist)
-                else:
-                    self._hash_map[tag] = (bb, dist)
+                        self._hash_map[tag] = (
+                            bb,
+                            [
+                                bb_tag,
+                            ],
+                            dist,
+                        )
 
     @abc.abstractmethod
     def _get_neighbors(self, seq: str) -> dict[str, int]:
@@ -342,9 +365,12 @@ class HashMapErrorCorrector(ErrorCorrector, abc.ABC):
             the corrected DNA observed_seq; None if fails to correct
         """
         if observed_seq in self._hash_map:
-            _existing_bb = self._hash_map[observed_seq][0]
-            if _existing_bb is not None:
-                return _existing_bb.tag
+            _match = self._hash_map[observed_seq]
+            if _match[0] is not None:
+                # there is no way to know which tag was the original since multiple
+                # tags for this BB have the same neighbors at the same distance.
+                # Just return the first one for simplicity
+                return _match[1][0]  # return first tag
         return None
 
 
@@ -365,6 +391,7 @@ class LevenshteinDistHashMap(HashMapErrorCorrector):
     or None if there are more than one possible match with the same distance
     """
 
+    # TODO could this have some jit with numba?
     def _get_neighbors(self, seq: str) -> dict[str, int]:
         """
         Get all neighbors of a sequence within a given Levenshtein distance from it
@@ -433,6 +460,7 @@ class HammingDistHashMap(HashMapErrorCorrector):
     or None if there is more than one possible match with the same distance
     """
 
+    # TODO could this have some jit with numba?
     def _get_neighbors(self, seq: str) -> dict[str, int]:
         """
         Get all neighbors of a sequence within a given Hamming distance from it

@@ -5,17 +5,15 @@ import logging
 import os
 import random
 import warnings
-from itertools import zip_longest
-from os import PathLike
 from typing import Any, Literal
-from typing_extensions import Self
 
 import yaml
 from tqdm import tqdm
 
 from deli._logging import get_dummy_logger, get_logger
-from deli.dels import DELibrary, DELibraryCollection, Selection, SequencedSelection
-from deli.dels.library import EnumerationRunError
+from deli.dels.library import DELibrary, DELibraryCollection
+from deli.dels.selection import Selection, SequencedSelection
+from deli.enumeration.enumerator import EnumerationRunError
 
 from .decoder import DecodedDELCompound, DecodeStatistics, DELCollectionDecoder
 from .degen import DELCollectionCounter, DELCollectionIdCounter, DELCollectionIdUmiCounter
@@ -122,19 +120,19 @@ class DecodingSettings(dict):
             umi_min_distance=umi_min_distance,
         )
 
-    def to_file(self, path: str | PathLike):
+    def to_file(self, path: str):
         """
         Save settings to a YAML file
 
         Parameters
         ----------
-        path : str | PathLike
+        path : str
             path to save settings to
         """
         yaml.dump(self.__dict__, open(path, "w"))
 
     @classmethod
-    def from_file(cls, path: str | PathLike) -> Self:
+    def from_file(cls, path: str) -> "DecodingSettings":
         """
         Load settings from a yaml file
 
@@ -144,7 +142,7 @@ class DecodingSettings(dict):
 
         Parameters
         ----------
-        path : str | PathLike
+        path : str
             Path to yaml file
 
         Returns
@@ -194,13 +192,13 @@ class DecodingRunnerResults:
         self.decode_statistics = decode_statistics
         self.degen = degen
 
-    def write_decode_report(self, out_path: str | os.PathLike):
+    def write_decode_report(self, out_path: str):
         """
         Write the decoding statistics for this run
 
         Parameters
         ----------
-        out_path: str | PathLike
+        out_path: str
             path to save decoding statistics to
         """
         if self.decode_statistics is not None:
@@ -212,15 +210,13 @@ class DecodingRunnerResults:
         else:
             raise RuntimeError("Cannot write decode report, no decode statistics found")
 
-    def write_decode_statistics(
-        self, out_path: str | os.PathLike, include_read_lengths: bool = False
-    ):
+    def write_decode_statistics(self, out_path: str, include_read_lengths: bool = False):
         """
         Write the decoding statistics for this run
 
         Parameters
         ----------
-        out_path: str | PathLike
+        out_path: str
             path to save decoding statistics to
         include_read_lengths: bool, default = False
             if True, will include the read lengths in the file
@@ -234,12 +230,13 @@ class DecodingRunnerResults:
 
     def write_cube(
         self,
-        out_path: str | os.PathLike,
+        out_path: str,
         include_library_id_col: bool = False,
         include_bb_id_cols: bool = False,
         include_bb_smi_cols: bool = False,
         include_raw_count_col: bool = True,
         enumerate_smiles: bool = False,
+        fail_on_failed_numeration: bool = False,
         file_format: Literal["csv", "tsv"] = "csv",
     ) -> None:
         """
@@ -277,12 +274,9 @@ class DecodingRunnerResults:
 
         Parameters
         ----------
-        out_path: str | PathLike
+        out_path: str
             path to save results to
             will create the directory if it does not exist
-        file_format: Literal["csv", "tsv"] = "csv"
-            which file format to write to
-            either "csv" or "tsv"
         include_library_id_col: bool, default = False
             include the library ID in the output
         include_bb_id_cols: bool, default = False
@@ -294,6 +288,13 @@ class DecodingRunnerResults:
         enumerate_smiles: bool, default = False
             include the enumerated SMILES in the output
             Note: this will have a dramatic impact on runtime
+        fail_on_failed_numeration: bool, default = False
+            if `True`, will raise an exception if enumeration fails for any DEL
+            if `False`, will set the SMILES to 'null' if enumeration fails
+            only used if `enumerate_smiles` is `True`
+        file_format: Literal["csv", "tsv"] = "csv"
+            which file format to write to
+            either "csv" or "tsv"
 
         Warnings
         --------
@@ -380,20 +381,20 @@ class DecodingRunnerResults:
                         _row = f"{decode_barcode.compound_id}"
                         if include_library_id_col:
                             _row += f"{delimiter}{decode_barcode.library.library_id}"
-                        for _, bb in zip_longest(
-                            range(_max_cycle_size), decode_barcode.building_blocks
-                        ):
+                        for bb in decode_barcode.building_blocks:
                             if include_bb_id_cols:
-                                _row += f"{delimiter}{bb.bb_id if bb is not None else 'null'}"
+                                _row += f"{delimiter}{bb.bb_id}"
                             if include_bb_smi_cols:
-                                _row += (
-                                    f"{delimiter}"
-                                    f"{bb.smi if (bb is not None and bb.has_smiles()) else 'null'}"
-                                )
+                                _row += f"{delimiter}{bb.smi if (bb.has_smiles()) else 'null'}"
                         if enumerate_smiles:
                             try:
                                 _smi = decode_barcode.enumerate().smi
-                            except EnumerationRunError:
+                            except (EnumerationRunError, RuntimeError) as e:
+                                if fail_on_failed_numeration:
+                                    raise RuntimeError(
+                                        f"Failed to enumerate SMILES for decoded DEL "
+                                        f"ID {decode_barcode.compound_id}"
+                                    ) from e
                                 _smi = "null"
                             _row += f"{delimiter}{_smi}"
                         if include_raw_count_col:
@@ -452,7 +453,7 @@ class DecodingRunner:
         )
 
         self.selection: SequencedSelection = selection
-        self.decode_settings = (
+        self.decode_settings: DecodingSettings = (
             decode_settings if decode_settings is not None else DecodingSettings()
         )
 
@@ -475,8 +476,6 @@ class DecodingRunner:
             [lib.barcode_schema.has_umi() for lib in self.selection.library_collection.libraries]
         )
 
-        # TODO right now all barcodes must have a UMI to enable, maybe should not be this
-        #  will throw warning and ask user to raise issue to see if that ever happens
         if any(
             [lib.barcode_schema.has_umi() for lib in self.selection.library_collection.libraries]
         ) and (not _has_umi):
@@ -586,13 +585,13 @@ class DecodingRunner:
             degen=self.degen,
         )
 
-    def to_file(self, out_path: str | PathLike):
+    def to_file(self, out_path: str):
         """
         Write decode runner config to a human-readable file
 
         Parameters
         ----------
-        out_path: str or PathLike
+        out_path: str
             path to save experiment to
         """
         data = {
@@ -614,8 +613,8 @@ class DecodingRunner:
     @classmethod
     def from_file(
         cls,
-        decode_file: str | PathLike,
-        fastq_files: list[str | PathLike] | None = None,
+        decode_file: str,
+        fastq_files: list[str] | None = None,
         ignore_decode_seqs: bool = False,
         debug: bool = False,
         disable_logging: bool = False,
@@ -643,9 +642,9 @@ class DecodingRunner:
 
         Parameters
         ----------
-        decode_file: str or PathLike
+        decode_file: str
             path to load experiment from
-        fastq_files: list[str | PathLike], default = None
+        fastq_files: list[str], default = None
             list of paths to fastq files to decode
             if `None`, will use the observed_seq files from the decode file
         ignore_decode_seqs: bool, default = False
@@ -670,7 +669,7 @@ class DecodingRunner:
         DecodingExperiment
         """
         # just to make it list for typing constancy
-        _fastq_files: list[str | PathLike]
+        _fastq_files: list[str]
         if fastq_files is None:
             _fastq_files = []
         else:
@@ -679,7 +678,7 @@ class DecodingRunner:
         data = yaml.safe_load(open(decode_file, "r"))
 
         # check this early so we do not waste time loading libraries if format error
-        _seq_files: list[str | PathLike]
+        _seq_files: list[str]
         _decode_seq_files = data.get("sequence_files", [])
         if (len(_fastq_files) > 0) and (len(_decode_seq_files) > 0):
             # if we are ignoring the decode seqs, just use the fastq files

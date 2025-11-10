@@ -5,9 +5,8 @@ import shutil
 
 import pytest
 
-from deli.decode import DecodingRunner, DecodingRunnerResults
 from deli.decode.bb_calling import HashMapCollisionError
-from deli.decode.runner import DecodingRunParsingError
+from deli.decode.runner import DecodingRunner, DecodingRunnerResults, DecodingRunParsingError
 
 
 DECODE_FILE = os.path.abspath(
@@ -103,12 +102,14 @@ def test_decoding_runner_to_file(runner, tmpdir):
 
 
 @pytest.mark.functional
+@pytest.mark.filterwarnings("ignore:.*UMI length.*:UserWarning")
 def test_decode_runner_run(runner):
     """Test running a DecodingRunner"""
     runner.run(use_tqdm=False)
 
 
 @pytest.mark.functional
+@pytest.mark.filterwarnings("ignore:.*UMI length.*:UserWarning")
 def test_decode_runner_run_with_save_failed(runner, tmpdir):
     """Test running a DecodingRunner"""
     runner.run(use_tqdm=False, save_failed_to=tmpdir)
@@ -117,6 +118,7 @@ def test_decode_runner_run_with_save_failed(runner, tmpdir):
 
 
 @pytest.fixture
+@pytest.mark.filterwarnings("ignore:.*UMI length.*:UserWarning")
 def decode_results() -> DecodingRunnerResults:
     """A DecodingRunner that has run fixture for testing"""
     runner = DecodingRunner.from_file(DECODE_FILE, disable_logging=True)
@@ -124,6 +126,7 @@ def decode_results() -> DecodingRunnerResults:
 
 
 @pytest.mark.unit
+@pytest.mark.filterwarnings("ignore:.*UMI length.*:UserWarning")
 def test_decode_runner_write_report(decode_results, tmpdir):
     """Test writing decode report to a file"""
     decode_results.write_decode_report(tmpdir.join("TEST_decode_report.html"))
@@ -131,6 +134,7 @@ def test_decode_runner_write_report(decode_results, tmpdir):
 
 
 @pytest.mark.unit
+@pytest.mark.filterwarnings("ignore:.*UMI length.*:UserWarning")
 def test_decode_runner_write_stats(decode_results, tmpdir):
     """Test writing decode statistics to a file"""
     decode_results.write_decode_statistics(tmpdir.join("TEST_decode_statistics.json"))
@@ -138,6 +142,7 @@ def test_decode_runner_write_stats(decode_results, tmpdir):
 
 
 @pytest.mark.unit
+@pytest.mark.filterwarnings("ignore:.*UMI length.*:UserWarning")
 def test_decode_runner_write_cube(decode_results, tmpdir):
     """Test writing decode cube to a file"""
     decode_results.write_cube(tmpdir.join("TEST_cube.csv"))

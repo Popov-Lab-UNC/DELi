@@ -2,34 +2,134 @@
 
 import json
 import os
-import warnings
 from collections.abc import Iterator
-from copy import deepcopy
 from functools import reduce
-from itertools import product as iter_product
 from operator import mul
 from pathlib import Path
-from typing import Any, Generic, Literal, Optional, Sequence, TypeVar, Union, overload
-
-from tqdm import tqdm
+from typing import Any, Generic, Literal, Optional, Sequence, TypeVar, overload
 
 from deli.configure import DeliDataLoadable, accept_deli_data_name
+from deli.enumeration.enumerator import EnumeratedDELCompound, Enumerator
+from deli.enumeration.reaction import ReactionTree
 from deli.utils import to_smi
 
 from .barcode import BarcodeSchema, BuildingBlockBarcodeSection
 from .building_block import BuildingBlock, BuildingBlockSet, TaggedBuildingBlockSet
-from .compound import DELCompound, EnumeratedDELCompound
-from .reaction import ReactionError, ReactionVial, ReactionWorkflow
+from .compound import DELCompound
+
+
+RESERVED_CONFIG_KEYS = [
+    "linker",
+    "truncated_linker",
+    "scaffold",
+    "reactions",
+    "barcode_schema",
+    "dna_barcode_on",
+    "bb_sets",
+]
+
+
+def _parse_library_json(data: dict, load_dna: bool) -> dict[str, Any]:
+    """
+    Load from a JSON dict
+
+    Parameters
+    ----------
+    data: dict
+        data read in from JSON
+    load_dna: bool
+        whether to load information about DNA barcodes
+
+    Returns
+    -------
+    dict[str, Any]
+        arguments to construct the library object
+    """
+    # load bb sets and check for hamming decoding
+    _observed_sets: list[tuple[int, BuildingBlockSet | TaggedBuildingBlockSet]] = list()
+    for i, bb_data in enumerate(data["bb_sets"]):
+        cycle = bb_data.get("cycle", None)
+        if cycle is None:
+            raise LibraryBuildError(
+                f"build block sets require a cycle number;set at index {i} lacks a cycle"
+            )
+        bb_set_name = bb_data.get("bb_set_name", None)
+        file_path = bb_data.get("bb_set_path", None)
+        if file_path is None and bb_set_name is None:
+            raise LibraryBuildError(
+                f"either 'bb_set_name' or 'bb_set_path' must be provided "
+                f"for a building block set;"
+                f"set in index {i} lacks a both"
+            )
+        if file_path is None:
+            file_path = bb_set_name
+        if bb_set_name is None:
+            bb_set_name = os.path.basename(file_path).split(".")[0]
+
+        if bb_set_name in RESERVED_CONFIG_KEYS:
+            raise LibraryBuildError(
+                f"building block set name '{bb_set_name}' is a reserved keyword; "
+                f"please choose a different name"
+            )
+
+        _observed_sets.append(
+            (
+                cycle,
+                BuildingBlockSet.load(file_path)
+                if not load_dna
+                else TaggedBuildingBlockSet.load(file_path),
+            )
+        )
+
+    # check for right order of sets
+    _bb_cycles = [_[0] for _ in _observed_sets]
+    if _bb_cycles != list(range(1, len(_observed_sets) + 1)):
+        raise LibraryBuildError(
+            f"building block sets must be in consecutive ascending "
+            f"order starting from 1 (1, 2, 3...); "
+            f"observed order: '{_bb_cycles}'"
+        )
+
+    bb_sets: list[BuildingBlockSet] = [_[1] for _ in _observed_sets]
+    bb_set_ids = set([bb_set.bb_set_id for bb_set in bb_sets])
+
+    # check for scaffold and linker
+    linker = data.get("linker", None)
+    truncated_linker = data.get("truncated_linker", None)
+    scaffold = data.get("scaffold", None)
+
+    if "reactions" in data.keys():
+        rxn_tree = ReactionTree.load_from_dict(
+            data["reactions"],
+            frozenset(bb_set_ids),
+            static_comp_lookup={
+                "linker": linker,
+                "scaffold": scaffold,
+                "truncated_linker": truncated_linker,
+            },
+            use_deli_data_dir=True,
+        )
+        enumerator = Enumerator(reaction_tree=rxn_tree, building_block_sets=bb_sets)
+    else:
+        enumerator = None
+
+    res = {
+        "bb_sets": bb_sets,
+        "enumerator": enumerator,
+        "scaffold": data.get("scaffold"),
+    }
+    if load_dna:
+        res.update(
+            {
+                "barcode_schema": BarcodeSchema.from_dict(data["barcode_schema"]),
+                "dna_barcode_on": data.get("dna_barcode_on", None),
+            }
+        )
+    return res
 
 
 class LibraryBuildError(Exception):
     """error raised when a library build fails"""
-
-    pass
-
-
-class EnumerationRunError(Exception):
-    """error raised when a enumerator run fails"""
 
     pass
 
@@ -57,7 +157,7 @@ class Library(DeliDataLoadable):
         self,
         library_id: str,
         bb_sets: Sequence[BuildingBlockSet],
-        reaction_workflow: Optional[ReactionWorkflow] = None,
+        enumerator: Optional[Enumerator] = None,
         scaffold: Optional[str] = None,
     ):
         """
@@ -69,10 +169,10 @@ class Library(DeliDataLoadable):
             name/id of the library
         bb_sets : Sequence[BuildingBlockSet]
             the sets of building-block used to build this library
-            order in list should be order of synthesis
+            order in list should be the same as the order of synthesis
             must have length >= 2
-        reaction_workflow : ReactionWorkflow
-            The reaction workflow/schema used to build this library
+        enumerator : optional, Enumerator
+            The Enumerator used to build this library
         scaffold: optional, str
             SMILES of the scaffold
             if no scaffold in library should be `None`
@@ -87,12 +187,15 @@ class Library(DeliDataLoadable):
         self.bb_sets = bb_sets
         self.scaffold = scaffold
 
-        self.library_size = reduce(mul, [len(bb_set) for bb_set in self.bb_sets])
+        self.library_size = (
+            reduce(mul, [len(bb_set) for bb_set in self.bb_sets])
+            if enumerator is None
+            else enumerator.get_enumeration_size()
+        )
         self.num_cycles = len(self.bb_sets)
 
-        self._reaction_workflow = reaction_workflow
-        if isinstance(reaction_workflow, ReactionWorkflow) and self.building_blocks_have_smi():
-            self._valid_reaction_workflow: ReactionWorkflow = reaction_workflow
+        self._enumerator = enumerator
+        self._can_enumerate = (self._enumerator is not None) and self.building_blocks_have_smi()
 
         ### VALIDATION ###
 
@@ -103,7 +206,7 @@ class Library(DeliDataLoadable):
 
     def __repr__(self):
         """Represent the library as its name"""
-        return self.library_id
+        return f"{self.__class__}({self.library_id})"
 
     @classmethod
     @accept_deli_data_name("libraries", "json")
@@ -131,75 +234,34 @@ class Library(DeliDataLoadable):
         -------
         Library
         """
-        _cls = cls(**cls.read_json(path))
+        library_id = Path(path).stem.replace(" ", "_")
+        _cls = cls(
+            library_id=library_id, **_parse_library_json(json.load(open(path)), load_dna=False)
+        )
         _cls.loaded_from = path
         return _cls
 
-    @classmethod
-    def read_json(cls, path: str) -> dict[str, Any]:
+    @property
+    def enumerator(self) -> Enumerator:
         """
-        Load a DEL from a json file
-
-        Parameters
-        ----------
-        path: str
-            path to file with DEL json
+        Return the enumerator for this library
 
         Returns
         -------
-        dict[str, Any]
-            arguments to construct the library object
+        Enumerator
+
+        Raises
+        ------
+        RuntimeError
+            if the library does not have an enumerator
         """
-        data = json.load(open(path))
-
-        # load bb sets and check for hamming decoding
-        _observed_sets: list[tuple[int, BuildingBlockSet]] = list()
-        for i, bb_data in enumerate(data["bb_sets"]):
-            cycle = bb_data.get("cycle", None)
-            if cycle is None:
-                raise LibraryBuildError(
-                    f"build block sets require a cycle number;set at index {i} lacks a cycle"
-                )
-            bb_set_name = bb_data.get("bb_set_name", None)
-            file_path = bb_data.get("bb_set_path", None)
-            if file_path is None and bb_set_name is None:
-                raise LibraryBuildError(
-                    f"either 'bb_set_name' or 'bb_set_path' must be provided "
-                    f"for a building block set;"
-                    f"set in index {i} lacks a both"
-                )
-            if file_path is None:
-                file_path = bb_set_name
-            if bb_set_name is None:
-                bb_set_name = os.path.basename(file_path).split(".")[0]
-            _observed_sets.append((cycle, BuildingBlockSet.load(file_path)))
-
-        # check for right order of sets
-        _bb_cycles = [_[0] for _ in _observed_sets]
-        if _bb_cycles != list(range(1, len(_observed_sets) + 1)):
-            raise LibraryBuildError(
-                f"building block sets must be in consecutive ascending "
-                f"order starting from 1 (1, 2, 3...); "
-                f"observed order: '{_bb_cycles}'"
+        if self._enumerator is None:
+            raise RuntimeError(f"library {self.library_id} does not have an enumerator")
+        if not self._can_enumerate:
+            raise RuntimeError(
+                f"library {self.library_id} cannot enumerate; missing building block SMILES"
             )
-
-        bb_sets: list[BuildingBlockSet] = [_[1] for _ in _observed_sets]
-        bb_set_ids = set([bb_set.bb_set_id for bb_set in bb_sets] + ["scaffold"])
-
-        if "reactions" in data.keys():
-            reaction_workflow = ReactionWorkflow.load_from_json_list(data["reactions"], bb_set_ids)
-        else:
-            reaction_workflow = None
-
-        # get library id from path
-        library_id = Path(path).stem.replace(" ", "_")
-
-        return {
-            "library_id": library_id,
-            "bb_sets": bb_sets,
-            "reaction_workflow": reaction_workflow,
-            "scaffold": data.get("scaffold"),
-        }
+        return self._enumerator
 
     def iter_bb_sets(self) -> Iterator[BuildingBlockSet]:
         """
@@ -222,38 +284,7 @@ class Library(DeliDataLoadable):
         bool
             True if all building block sets have SMILES, False otherwise
         """
-        return any([bb_set.has_smiles for bb_set in self.bb_sets])
-
-    def _get_reaction_workflow(self) -> ReactionWorkflow:
-        """
-        Check and get the library has a valid reaction workflow
-
-        Will fail if library cannot enumerate using the reaction workflow
-
-        Raises
-        ------
-        EnumerationRunError
-            if the library lacks enough information to run the reaction workflow
-        """
-        if hasattr(self, "_valid_reaction_workflow"):
-            return self._valid_reaction_workflow
-        else:
-            if self._reaction_workflow is None:
-                raise EnumerationRunError(
-                    f"cannot enumerate library {self.library_id}; lacking reaction information"
-                )
-            else:
-                for bb_set in self.bb_sets:
-                    if not bb_set.has_smiles:
-                        raise EnumerationRunError(
-                            f"cannot enumerate library {self.library_id}; "
-                            f"building block set {bb_set.bb_set_id} lacks SMILES"
-                        )
-                # this error is unreachable, but here to help with clarity,
-                # as the above loop must raise an enumeration error
-                raise EnumerationRunError(
-                    f"cannot enumerate library {self.library_id}; building blocks missing SMILES"
-                )
+        return all([bb_set.has_smiles for bb_set in self.bb_sets])
 
     def can_enumerate(self) -> bool:
         """
@@ -263,7 +294,7 @@ class Library(DeliDataLoadable):
         -------
         bool
         """
-        return hasattr(self, "_valid_reaction_workflow")
+        return self._can_enumerate
 
     @overload
     def enumerate(
@@ -291,6 +322,8 @@ class Library(DeliDataLoadable):
         """
         Run reactions for all possible products of the building block set
 
+        Notes
+        -----
         The default behavior is to yield all compounds,
         whether they failed enumeration or not.
         This behavior can be controlled with the `dropped_failed` and `fail_on_error` parameters.
@@ -311,7 +344,7 @@ class Library(DeliDataLoadable):
         Yields
         ------
         EnumeratedDELCompound | DELCompound
-            if dropped_failed is False, will yield EnumeratedDELCompound
+            if dropped_failed is True, will yield only EnumeratedDELCompound
 
         Raises
         ------
@@ -324,105 +357,24 @@ class Library(DeliDataLoadable):
         If `dropped_failed` is set to True and `fail_on_error` is also set to True,
         `fail_on_error` will take precedence
         """
-        _reaction_workflow = self._get_reaction_workflow()
+        _enumerator = self.enumerator  # check it exists
 
-        if dropped_failed and fail_on_error:
-            warnings.warn(
-                "'dropped_failed' is set to True, "
-                "but 'fail_on_error' is also set to True; "
-                "ignoring 'dropped_failed' and will raise "
-                "an error if any compound fails enumeration",
-                stacklevel=1,
-            )
-
-        bb_set_dict = {bb_set.bb_set_id: bb_set for bb_set in self.bb_sets}
-
-        # get all possible combinations of building blocks
-        bb_combos: iter_product[tuple[tuple[str, BuildingBlock], ...]] = iter_product(
-            *[[(key, bb) for bb in val.building_blocks] for key, val in bb_set_dict.items()]
-        )
-
-        return self._enumerate(
-            reaction_workflow=_reaction_workflow,
-            bb_combos=bb_combos,
-            dropped_failed=dropped_failed,
-            fail_on_error=fail_on_error,
-            use_tqdm=use_tqdm,
-        )
-
-    @overload
-    def _enumerate(
-        self,
-        reaction_workflow: ReactionWorkflow,
-        bb_combos,
-        dropped_failed: Literal[True],
-        fail_on_error: bool,
-        use_tqdm: bool,
-    ) -> Iterator[EnumeratedDELCompound]: ...
-
-    @overload
-    def _enumerate(
-        self,
-        reaction_workflow: ReactionWorkflow,
-        bb_combos,
-        dropped_failed: bool,
-        fail_on_error: Literal[True],
-        use_tqdm: bool,
-    ) -> Iterator[EnumeratedDELCompound]: ...
-
-    @overload
-    def _enumerate(
-        self,
-        reaction_workflow: ReactionWorkflow,
-        bb_combos,
-        dropped_failed: Literal[False],
-        fail_on_error: Literal[False],
-        use_tqdm: bool,
-    ) -> Iterator[EnumeratedDELCompound | DELCompound]: ...
-
-    @overload
-    def _enumerate(
-        self,
-        reaction_workflow: ReactionWorkflow,
-        bb_combos,
-        dropped_failed: bool,
-        fail_on_error: bool,
-        use_tqdm: bool,
-    ) -> Iterator[EnumeratedDELCompound | DELCompound]: ...
-
-    def _enumerate(
-        self,
-        reaction_workflow: ReactionWorkflow,
-        bb_combos,
-        dropped_failed: bool,
-        fail_on_error: bool,
-        use_tqdm: bool,
-    ) -> Iterator[EnumeratedDELCompound | DELCompound]:
-        """Run the enumeration after check that enumeration is possible"""
-        for bb_combo in tqdm(bb_combos, total=self.library_size, disable=not use_tqdm):
-            # map to cycle number (required for the ReactionVial)
-            bb_id_map = {bb[0]: bb[1] for bb in bb_combo}
-            try:
-                enumerated_mol = reaction_workflow.run_workflow(
-                    ReactionVial({bb[0]: deepcopy(bb[1].mol) for bb in bb_combo})
-                )
+        for building_blocks, enumerated_mol in _enumerator.enumerate(
+            dropped_failed, fail_on_error, use_tqdm
+        ):
+            if enumerated_mol is not None:
                 enumerated_smile = to_smi(enumerated_mol)
                 yield EnumeratedDELCompound(
                     library=self,
-                    building_blocks=list(bb_id_map.values()),
+                    building_blocks=building_blocks,
                     smiles=enumerated_smile,
                     mol=enumerated_mol,
                 )
-            except ReactionError as e:  # crash is fail_on_error is True
-                if fail_on_error:
-                    raise EnumerationRunError(
-                        f"enumeration failed for compound from library {self.library_id} "
-                        f"with building block: {bb_id_map}; "
-                    ) from e
-                elif dropped_failed:  # skip yield if dropped_failed is True
-                    continue
-                else:  # yield the compound with no SMILES otherwise
-                    yield DELCompound(library=self, building_blocks=list(bb_id_map.values()))
+            else:
+                yield DELCompound(
+                    library=self,
+                    building_blocks=building_blocks,
+                )
 
     def enumerate_by_bbs(self, bbs: list[BuildingBlock]) -> EnumeratedDELCompound:
         """
@@ -443,25 +395,14 @@ class Library(DeliDataLoadable):
         EnumerationRunError
             if enumeration fails
         """
-        _reaction_workflow = self._get_reaction_workflow()
-
-        bb_map = {bb_set.bb_set_id: bb for bb_set, bb in zip(self.bb_sets, bbs)}
-        try:
-            enumerated_mol = _reaction_workflow.run_workflow(
-                ReactionVial({bb_cycle: deepcopy(bb.mol) for bb_cycle, bb in bb_map.items()})
-            )
-            enumerated_smile = to_smi(enumerated_mol)
-            return EnumeratedDELCompound(
-                library=self,
-                building_blocks=list(bb_map.values()),
-                smiles=enumerated_smile,
-                mol=enumerated_mol,
-            )
-        except ReactionError as e:
-            raise EnumerationRunError(
-                f"enumeration failed for compound from library {self.library_id} "
-                f"with building blocks: {[bb.bb_id for bb in bbs]}; "
-            ) from e
+        enumerated_mol = self.enumerator.enumerate_by_bbs(bbs)
+        enumerated_smile = to_smi(enumerated_mol)
+        return EnumeratedDELCompound(
+            library=self,
+            building_blocks=bbs,
+            smiles=enumerated_smile,
+            mol=enumerated_mol,
+        )
 
     def enumerate_by_bb_ids(self, bb_ids: list[str]) -> EnumeratedDELCompound:
         """
@@ -485,13 +426,13 @@ class Library(DeliDataLoadable):
         return self.enumerate_by_bbs(
             [
                 bb_set.get_bb_by_id(bb_id, fail_on_missing=True)
-                for bb_set, bb_id in zip(self.bb_sets, bb_ids)
+                for bb_set, bb_id in zip(self.bb_sets, bb_ids, strict=False)
             ]
         )
 
     def enumerate_to_file(
         self,
-        out_path: Union[str, Path],
+        out_path: str | Path,
         separator: str = "\t",
         dropped_failed: bool = False,
         fail_on_error: bool = False,
@@ -587,8 +528,10 @@ class DELibrary(Library):
         library_id: str,
         barcode_schema: BarcodeSchema,
         bb_sets: Sequence[TaggedBuildingBlockSet],
-        reaction_workflow: Optional[ReactionWorkflow] = None,
+        enumerator: Optional[Enumerator] = None,
         dna_barcode_on: Optional[str] = None,
+        linker: Optional[str] = None,
+        truncated_linker: Optional[str] = None,
         scaffold: Optional[str] = None,
     ):
         """
@@ -604,11 +547,15 @@ class DELibrary(Library):
             the sets of building-block used to build this library
             order in list should be order of synthesis
             must have length >= 2
-        reaction_workflow : ReactionWorkflow
-            The reaction workflow/schema used to build this library
-        dna_barcode_on: str
+        enumerator : ReactionTree
+            The enumerator used to build this library
+        dna_barcode_on: optional, str
             the id of the bb_set that is linked to the DNA bases
             can be 'scaffold' if DNA bases is linked to the scaffold
+        linker: optional, str
+            SMILES of the full linker
+        truncated_linker: optional, str
+            SMILES of the truncated linker; usually [C13]
         scaffold: optional, str
             SMILES of the scaffold
             if no scaffold in library should be `None`
@@ -622,13 +569,15 @@ class DELibrary(Library):
         super().__init__(
             library_id=library_id,
             bb_sets=bb_sets,
-            reaction_workflow=reaction_workflow,
+            enumerator=enumerator,
             scaffold=scaffold,
         )
         self.bb_sets: Sequence[TaggedBuildingBlockSet] = bb_sets  # for type checker
 
         self.barcode_schema = barcode_schema
         self.dna_barcode_on = dna_barcode_on
+        self.linker = linker
+        self.truncated_linker = truncated_linker
 
         self.library_tag = self.barcode_schema.library_section.get_dna_sequence()
 
@@ -675,77 +624,12 @@ class DELibrary(Library):
         -------
         DELibrary
         """
-        _cls = cls(**cls.read_json(path))
+        library_id = Path(path).stem.replace(" ", "_")
+        _cls = cls(
+            library_id=library_id, **_parse_library_json(json.load(open(path)), load_dna=True)
+        )
         _cls.loaded_from = path
         return _cls
-
-    @classmethod
-    def read_json(cls, path: str) -> dict[str, Any]:
-        """
-        Load a DEL from a json file
-
-        Parameters
-        ----------
-        path: str
-            path to file with DEL json
-
-        Returns
-        -------
-        dict[str, Any]
-            argument to construct the DELibrary object
-        """
-        data = json.load(open(path))
-
-        # load bb sets and check for hamming decoding
-        _observed_sets: list[tuple[int, TaggedBuildingBlockSet]] = list()
-        for i, bb_data in enumerate(data["bb_sets"]):
-            cycle = bb_data.get("cycle", None)
-            if cycle is None:
-                raise LibraryBuildError(
-                    f"build block sets require a cycle number;set at index {i} lacks a cycle"
-                )
-            bb_set_name = bb_data.get("bb_set_name", None)
-            file_path = bb_data.get("bb_set_path", None)
-            if file_path is None and bb_set_name is None:
-                raise LibraryBuildError(
-                    f"either 'bb_set_name' or 'bb_set_path' must be provided "
-                    f"for a building block set;"
-                    f"set in index {i} lacks a both"
-                )
-            if file_path is None:
-                file_path = bb_set_name
-            if bb_set_name is None:
-                bb_set_name = os.path.basename(file_path).split(".")[0]
-            _observed_sets.append((cycle, TaggedBuildingBlockSet.load(file_path)))
-
-        # check for right order of sets
-        _bb_cycles = [_[0] for _ in _observed_sets]
-        if _bb_cycles != list(range(1, len(_observed_sets) + 1)):
-            raise LibraryBuildError(
-                f"building block sets must be in consecutive ascending "
-                f"order starting from 1 (1, 2, 3...); "
-                f"observed order: '{_bb_cycles}'"
-            )
-
-        bb_sets: list[TaggedBuildingBlockSet] = [_[1] for _ in _observed_sets]
-        bb_set_ids = set([bb_set.bb_set_id for bb_set in bb_sets] + ["scaffold"])
-
-        if "reactions" in data.keys():
-            reaction_workflow = ReactionWorkflow.load_from_json_list(data["reactions"], bb_set_ids)
-        else:
-            reaction_workflow = None
-
-        # get library id from path
-        library_id = Path(path).stem.replace(" ", "_")
-
-        return {
-            "library_id": library_id,
-            "bb_sets": bb_sets,
-            "reaction_workflow": reaction_workflow,
-            "scaffold": data.get("scaffold"),
-            "barcode_schema": BarcodeSchema.from_dict(data["barcode_schema"]),
-            "dna_barcode_on": data["dna_barcode_on"],
-        }
 
     def iter_bb_barcode_sections_and_sets(
         self,
@@ -757,7 +641,9 @@ class DELibrary(Library):
         ------
         tuple[BuildingBlockBarcodeSection, BuildingBlockSet]
         """
-        for bb_section, bb_set in zip(self.barcode_schema.building_block_sections, self.bb_sets):
+        for bb_section, bb_set in zip(
+            self.barcode_schema.building_block_sections, self.bb_sets, strict=False
+        ):
             yield bb_section, bb_set
 
 
