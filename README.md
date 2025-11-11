@@ -39,4 +39,4 @@ It is true that DELi would be faster as a compiled C++ or Rust program, but we h
 We hope to someday write a Rust version of DELi (at least for decoding and enumeration) but those plans are not yet in motion.
 
 **Note for developers:** DELi is built using poetry. You can use `poetry build` to build from source after
-cloning the repo. Be on the lookup for contribution docs in the near future!
+cloning the repo. Be on the lookout for contribution docs in the near future!
