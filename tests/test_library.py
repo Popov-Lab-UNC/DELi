@@ -30,7 +30,7 @@ def test_load_library():
 def test_load_invalid_library():
     """Test loading a DELibrary"""
     with pytest.raises(
-        LibraryBuildError, match="Number of library cycles does not match barcode schema cycles"
+        LibraryBuildError, match="Number of library cycles does not match observed_barcode schema cycles"
     ):
         DELibrary.load("DEL004_invalid")
 
@@ -65,7 +65,7 @@ def test_bb_set_iter(del_library1: DELibrary):
 
 @pytest.mark.unit
 def test_get_section_length(del_library1: DELibrary):
-    """Test for getting barcode section lengths"""
+    """Test for getting observed_barcode section lengths"""
     assert del_library1.barcode_schema.get_section_length("umi") == 11
     assert del_library1.barcode_schema.get_section_length("library") == 31
     assert del_library1.barcode_schema.get_section_length("pre-umi") == 12

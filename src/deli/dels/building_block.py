@@ -574,6 +574,10 @@ class BuildingBlockSet(DeliDataLoadable):
         """Iterate over the building blocks"""
         return iter(self.building_blocks)
 
+    def __hash__(self):
+        """BuildingBlockSet hash is based on its id"""
+        return hash(self.bb_set_id)
+
     @overload
     def get_bb_by_id(
         self, query: str, fail_on_missing: Literal[False]
@@ -911,12 +915,12 @@ class TaggedBuildingBlockSet(BuildingBlockSet):
                 _tag = splits[extra_cols[BB_FILE_TAG_COLUMN]]
 
                 if _id in _building_block_map.keys():
-                    if _smiles != _building_block_map[_id].smi:
+                    if (_smiles is not None) and (_smiles != _building_block_map[_id].smi):
                         raise BuildingBlockSetError(
                             f"duplicate building block id '{_id}' with conflicting SMILES: "
                             f"'{_smiles}', '{_building_block_map[_id].smi}' "
                         )
-                    elif _subset != _building_block_map[_id].subset_id:
+                    elif (_subset is not None) and (_subset != _building_block_map[_id].subset_id):
                         raise BuildingBlockSetError(
                             f"duplicate building block id '{_id}' with conflicting subset_ids: "
                             f"'{_subset}', '{_building_block_map[_id].subset_id}' "
@@ -934,6 +938,7 @@ class TaggedBuildingBlockSet(BuildingBlockSet):
                     _building_blocks.append(
                         TaggedBuildingBlock(bb_id=_id, smiles=_smiles, tag=_tag, subset_id=_subset)
                     )
+                    _building_block_map[_id] = _building_blocks[-1]
         return cls(_set_id, _building_blocks)
 
     @overload

@@ -97,7 +97,7 @@ class DecodingSettings(dict):
             the algorithm to use for bb_calling
             right now only "alignment" mode is supported
         disable_error_correction: bool, default = False
-            disable error correction for barcode sections
+            disable error correction for observed_barcode sections
             that can be error corrected
         umi_clustering: bool, default = False
             when doing degeneration, consider two similar UMIs to be the same
@@ -506,7 +506,7 @@ class DecodingRunner:
         save_failed_to: str | PathLike | None, default = None
             if provided, will save failed reads to this directory
             file will be named <selection_id>_decode_failed.tsv
-            will include the read_id, the observed_seq, the quality chain,
+            will include the read_id, the observed_barcode, the quality chain,
             and reason failed
         use_tqdm: bool, default = False
             turn on a tqdm tracking bar
@@ -533,7 +533,7 @@ class DecodingRunner:
 
         # write header to the failed reads CSV
         if fail_csv_file is not None:
-            fail_csv_file.write("read_id\tobserved_seq\tquality\treason_failed\tlib_call\n")
+            fail_csv_file.write("read_id\tobserved_barcode\tquality\treason_failed\tlib_call\n")
 
         # look through all sequences in the selection
         for i, seq_record in enumerate(
@@ -631,7 +631,7 @@ class DecodingRunner:
         runner.
 
         The exception to this is when 'ignore_decode_seqs' is set to `True`.
-        In this case, the observed_seq files used will always be the one provided
+        In this case, the observed_barcode files used will always be the one provided
         to the function and the decode file sequences will be ignored.
 
         NOTE: it is best practice to add the sequences to the decode file.
@@ -646,9 +646,9 @@ class DecodingRunner:
             path to load experiment from
         fastq_files: list[str], default = None
             list of paths to fastq files to decode
-            if `None`, will use the observed_seq files from the decode file
+            if `None`, will use the observed_barcode files from the decode file
         ignore_decode_seqs: bool, default = False
-            if true, will ignore the observed_seq files in the decode file
+            if true, will ignore the observed_barcode files in the decode file
             in this case, the `fastq_files` parameter must be provided
         debug: bool, default = False
             if true, will enable debug logging

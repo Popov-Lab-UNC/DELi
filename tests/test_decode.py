@@ -5,7 +5,7 @@ import shutil
 
 import pytest
 
-from deli.decode.bb_calling import HashMapCollisionError
+from deli.decode.barcode_calling import HashMapCollisionError
 from deli.decode.runner import DecodingRunner, DecodingRunnerResults, DecodingRunParsingError
 
 

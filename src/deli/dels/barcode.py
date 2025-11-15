@@ -3,8 +3,11 @@
 import abc
 import math
 import re
+from collections import defaultdict
+from random import shuffle
 from typing import Optional
-from typing_extensions import Self
+
+from Levenshtein import distance as levenshtein_distance
 
 
 class BarcodeSchemaError(Exception):
@@ -49,7 +52,7 @@ class BarcodeSection(abc.ABC):
 
     def get_dna_sequence(self) -> str:
         """
-        Get the full DNA observed_seq of the barcode section
+        Get the full DNA barcode of the barcode section
 
         Will substitute "N" for any variable nucleotides
         """
@@ -58,6 +61,25 @@ class BarcodeSection(abc.ABC):
     def has_overhang(self) -> bool:
         """Returns true if the barcode section has overhang"""
         return self.section_overhang is not None
+
+    def has_identical_tag(self, other: "BarcodeSection") -> bool:
+        """
+        Check if this static barcode section has identical tag and overhang to another
+
+        Parameters
+        ----------
+        other: BarcodeSection
+            the other barcode section to compare to
+
+        Returns
+        -------
+        bool
+            True if both sections have identical tag and overhang, else False
+        """
+        return (
+            self.section_tag == other.section_tag
+            and self.section_overhang == other.section_overhang
+        )
 
     def __len__(self) -> int:
         """Gets the full length of the barcode section including the overhang"""
@@ -74,6 +96,7 @@ class BarcodeSection(abc.ABC):
                     if self.section_name == other.section_name:
                         return True
         return False
+
 
     @abc.abstractmethod
     def to_regex_pattern(self, error_tolerance: int = 0) -> str:
@@ -214,20 +237,14 @@ class StaticBarcodeSection(BarcodeSection):
         return _pattern
 
 
-class HeadpieceBarcodeSection(StaticBarcodeSection):
-    """Class for headpiece barcode sections"""
+class PrimerBarcodeSection(StaticBarcodeSection):
+    """Class for Primer barcode sections"""
 
     pass
 
 
 class LibraryBarcodeSection(StaticBarcodeSection):
     """Class for library barcode sections"""
-
-    pass
-
-
-class ClosingBarcodeSection(StaticBarcodeSection):
-    """Class for closing barcode sections"""
 
     pass
 
@@ -348,20 +365,16 @@ class BarcodeSchema:
                 self.umi_section = _umi_section[0][1]
                 self._umi_section_idx = _umi_section[0][0]
 
-        # check for closing section (optional)
-        self.closing_section: Optional[ClosingBarcodeSection] = None
-        _closing_section = [
-            section
-            for section in self.barcode_sections
-            if isinstance(section, ClosingBarcodeSection)
-        ]
-        if len(_closing_section) > 1:
-            raise BarcodeSchemaError(
-                "barcode schemas must contain at most one closing barcode section"
-            )
-        else:
-            if _closing_section:
-                self.closing_section = _closing_section[0]
+        # located other static sections that aren't library
+        self.static_sections: list[StaticBarcodeSection] = list()
+        self._static_sections_idxs: list[int] = list()
+
+        for i, section in enumerate(self.barcode_sections):
+            if isinstance(section, StaticBarcodeSection) and not isinstance(
+                section, LibraryBarcodeSection
+            ):
+                self.static_sections.append(section)
+                self._static_sections_idxs.append(i)
 
         # check that library section is not inbetween building block sections
         _found_library = False
@@ -386,20 +399,21 @@ class BarcodeSchema:
         required_section_indexes = [self._library_section_idx] + self._building_block_section_idxs
         if self.umi_section:
             required_section_indexes.append(self._umi_section_idx)
+        # position required
         start = min(required_section_indexes)
         end = max(required_section_indexes)
         self.min_length = sum([len(section) for section in self.barcode_sections[start : end + 1]])
+        self.section_spans = self.get_section_spans(exclude_overhangs=False)
+        self.required_start = self.section_spans[self.barcode_sections[start].section_name][0]
+        self.required_end = self.section_spans[self.barcode_sections[end].section_name][1]
 
     def __eq__(self, other):
         """Return `True` if two barcode schemas are the same"""
         if isinstance(other, BarcodeSchema):
             if len(self.barcode_sections) != len(other.barcode_sections):
                 return False
-            for section in self.barcode_sections:
-                if section not in other.barcode_sections:
-                    return False
-            for section in other.barcode_sections:
-                if section not in self.barcode_sections:
+            for section, other_section in zip(self.barcode_sections, other.barcode_sections):
+                if section != other_section:
                     return False
             return True
         return False
@@ -409,13 +423,13 @@ class BarcodeSchema:
         return sum([len(section) for section in self.barcode_sections])
 
     @classmethod
-    def from_dict(cls, data: dict) -> Self:
+    def from_dict(cls, data: dict) -> "BarcodeSchema":
         """
         Load a barcode schema from a dictionary defining
 
         Notes
         -----
-        Primarily used to load a barcode schema from a the library json file
+        Primarily used to load a barcode schema from a library JSON file
         Should not be used outside this context.
 
         Parameters
@@ -431,6 +445,7 @@ class BarcodeSchema:
         -------
         BarcodeSchema
         """
+        _primer_counter = 1
         _sections: list[BarcodeSection] = list()
         for section_name, section_info in data.items():
             if re.match(r"^library$", section_name):
@@ -441,9 +456,9 @@ class BarcodeSchema:
                         section_overhang=section_info.get("overhang"),
                     )
                 )
-            elif re.match(r"^headpiece$", section_name):
+            elif re.match(r"^primer_", section_name):
                 _sections.append(
-                    HeadpieceBarcodeSection(
+                    PrimerBarcodeSection(
                         section_name=section_name,
                         section_tag=section_info["tag"],
                         section_overhang=section_info.get("overhang"),
@@ -458,14 +473,6 @@ class BarcodeSchema:
                         section_tag=section_info["tag"],
                         section_overhang=section_info.get("overhang", None),
                         error_correction_mode=section_info.get("error_correction", None),
-                    )
-                )
-            elif re.match(r"^closing$", section_name):
-                _sections.append(
-                    ClosingBarcodeSection(
-                        section_name=section_name,
-                        section_tag=section_info["tag"],
-                        section_overhang=section_info.get("overhang"),
                     )
                 )
             elif re.match(r"^umi$", section_name):
@@ -499,7 +506,29 @@ class BarcodeSchema:
 
     def __getitem__(self, item: str) -> BarcodeSection:
         """Given a barcode section name, return that BarcodeSection object"""
-        return self._barcode_section_map[item]
+        return self.get_section(item)
+
+    def get_section(self, section_name: str) -> BarcodeSection:
+        """
+        Given a barcode section name, return that BarcodeSection object
+
+        Parameters
+        ----------
+        section_name: str
+            the name of the barcode section
+
+        Returns
+        -------
+        BarcodeSection
+
+        Raises
+        ------
+        KeyError
+            if the section name is not found in the schema
+        """
+        if section_name not in self._barcode_section_map:
+            raise KeyError(f"Barcode section '{section_name}' not found in schema")
+        return self._barcode_section_map[section_name]
 
     def to_regex_pattern(self, error_tolerance: float = 0.1) -> str:
         """
@@ -566,9 +595,124 @@ class BarcodeSchema:
             curr_pos += len(section)
         return spans
 
+    def get_section_span(self, section: str, exclude_overhangs: bool = False) -> slice:
+        """
+        Get the spans of each barcode section as a dict
+
+        Parameters
+        ----------
+        section: str
+            the barcode section name
+        exclude_overhangs: bool, default=False
+            exclude the overhang region of a tag when
+            calculating the spans
+
+        Returns
+        -------
+        dict[str, slice]
+            keys are section ids and values are spans (as a `slice`)
+        """
+        _section = self.get_section(section)
+
+        len_before = self.get_length_before_section(_section)
+        len_section = len(_section) - (len(getattr(_section, "section_overhang", "")) * exclude_overhangs)
+        return slice(len_before, len_before + len_section)
+
+    def get_required_sections(self) -> list[str]:
+        """
+        Get the names of all required barcode sections
+
+        Required sections are the library tag, the building block tags,
+        and the umi (if present)
+
+        Returns
+        -------
+        list[str]
+            list of required barcode section names
+        """
+        required_sections: list[str] = [self.library_section.section_name]
+        required_sections.extend([section.section_name for section in self.building_block_sections])
+        if self.umi_section:
+            required_sections.append(self.umi_section.section_name)
+        return required_sections
+
+    def get_required_span(self, include_sections: Optional[list[str]]) -> tuple[int, int]:
+        """
+        Get the start and end span of the barcode that has all required sections
+
+        Notes
+        -----
+        the library tag, building block tags, and UMI tag (if present) are
+        all considered required sections, and will be automatically included
+        in the span calculation, alongside any additional sections specified
+
+        Parameters
+        ----------
+        include_sections: Optional[list[str]]
+            list of barcode sections names to include in the span calculation
+            that should also be included alongside the default required sections.
+
+        Returns
+        -------
+        tuple[int, int]
+            start and end positions (0-indexed, end exclusive)
+        """
+        required_sections: set[BarcodeSection] = {self.library_section}
+        required_sections.update(self.building_block_sections)
+        if self.umi_section:
+            required_sections.add(self.umi_section)
+
+        if include_sections is not None:
+            for section in include_sections:
+                required_sections.add(self.get_section(section))
+
+        min_start: int = len(self)
+        max_end: int = 0
+        for section in self.barcode_sections:
+            if section in required_sections:
+                section_start = self.get_length_before_section(section)
+                section_end = section_start + len(section)
+                if section_start < min_start:
+                    min_start = section_start
+                if section_end > max_end:
+                    max_end = section_end
+        return min_start, max_end
+
     def get_num_building_block_sections(self) -> int:
         """Get number of building block sections"""
         return len(self.building_block_sections)
+
+    def get_building_block_section_names(self) -> list[str]:
+        """Get list of building block section names"""
+        return [section.section_name for section in self.building_block_sections]
+
+    def get_static_sections_before_library(self) -> list[BarcodeSection]:
+        """
+        Get list of static barcode sections before the library section
+
+        Returns
+        -------
+        list[BarcodeSection]
+        """
+        static_sections: list[BarcodeSection] = list()
+        for i in self._static_sections_idxs:
+            if i < self._library_section_idx:
+                static_sections.append(self.barcode_sections[i])
+        return static_sections
+
+    def get_static_sections_after_library(self) -> list[BarcodeSection]:
+        """
+        Get list of static barcode sections before the library section
+
+        Returns
+        -------
+        list[BarcodeSection]
+        """
+        static_sections: list[BarcodeSection] = list()
+        for i in self._static_sections_idxs:
+            if i < self._library_section_idx:
+                static_sections.append(self.barcode_sections[i])
+        return static_sections
 
     def is_library_tag_in_front(self) -> bool:
         """
@@ -600,39 +744,90 @@ class BarcodeSchema:
         """
         return not self._library_in_front
 
-    def get_length_before_library(self) -> int:
+    def get_length_before_section(self, section: str | BarcodeSection) -> int:
         """
-        Get the number of base pairs before the start of the library tag section
+        Get the number of base pairs before the start of a specific barcode section
 
         Notes
         -----
         'Before' always referees to the 'left' of the section
         which is towards the 5' end of the barcode
 
+        Parameters
+        ----------
+        section: str | BarcodeSection
+            the barcode section or its name
+
         Returns
         -------
         int
         """
-        return sum(
-            [len(section) for section in self.barcode_sections[: self._library_section_idx]]
-        )
+        if isinstance(section, str):
+            _section = self.get_section(section)
+        else:
+            _section = section
 
-    def get_length_after_library(self) -> int:
+        section_idx = self.barcode_sections.index(_section)
+        return sum([len(s) for s in self.barcode_sections[:section_idx]])
+
+    def get_length_after_section(self, section: str | BarcodeSection) -> int:
         """
-        Get the number of base pairs after the end of the library tag section
+        Get the number of base pairs after the end of a specific barcode section
 
         Notes
         -----
         'After' always referees to the 'right' of the section
         which is towards the 3' end of the barcode
 
+        Parameters
+        ----------
+        section: str | BarcodeSection
+            the barcode section or its name
+
         Returns
         -------
         int
         """
-        return sum(
-            [len(section) for section in self.barcode_sections[self._library_section_idx + 1 :]]
-        )
+        if isinstance(section, str):
+            _section = self.get_section(section)
+        else:
+            _section = section
+
+        section_idx = self.barcode_sections.index(_section)
+        return sum([len(s) for s in self.barcode_sections[section_idx + 1 :]])
+
+    def get_length_between_sections(
+        self, section1: str, section2: str, include_direction: bool = False
+    ) -> int:
+        """
+        Get the number of base pairs between two barcode sections
+
+        Parameters
+        ----------
+        section1: str
+            the first barcode section name
+        section2: str
+            the second barcode section name
+        include_direction: bool
+            if True, will return negative length if section2 is before section1
+            in the barcode. If False, will always return positive length
+
+        Returns
+        -------
+        distacne: int
+        """
+        _section1 = self.get_section(section1)
+        _section2 = self.get_section(section2)
+
+        idx1 = self.barcode_sections.index(_section1)
+        idx2 = self.barcode_sections.index(_section2)
+
+        if idx1 == idx2:
+            return 0
+        elif idx1 < idx2:
+            return sum([len(s) for s in self.barcode_sections[idx1 + 1 : idx2]])
+        else:
+            return sum([len(s) for s in self.barcode_sections[idx2 + 1 : idx1]]) * (-1 if include_direction else 1)
 
     def has_umi(self) -> bool:
         """True is library has UMI barcode section, else False"""
@@ -651,6 +846,5 @@ class BarcodeSchema:
         -------
         int: length of the barcode section
         """
-        if section_name not in self._barcode_section_map:
-            raise KeyError(f"Barcode section '{section_name}' not found in schema")
-        return len(self._barcode_section_map[section_name])
+        return len(self.get_section(section_name))
+

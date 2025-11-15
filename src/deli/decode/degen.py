@@ -1,4 +1,4 @@
-"""code for degenerating barcode reads"""
+"""code for degenerating observed_barcode reads"""
 
 import abc
 import gzip
@@ -470,7 +470,7 @@ class DELCollectionCounter(abc.ABC, Generic[DEL_COUNTER_TYPE]):
     @abc.abstractmethod
     def count_barcode(self, barcode: DecodedDELCompound) -> bool:
         """
-        Given a barcode, add it to the current degen count
+        Given a observed_barcode, add it to the current degen count
 
         Will handle separating based on DEL ID and UMI
         correction (if UMI is used)
@@ -478,12 +478,12 @@ class DELCollectionCounter(abc.ABC, Generic[DEL_COUNTER_TYPE]):
         Parameters
         ----------
         barcode: DecodedDELCompound
-            the barcode to add to the counter
+            the observed_barcode to add to the counter
 
         Returns
         -------
         bool
-            `True` is added barcode is new (not degenerate), else `False`
+            `True` is added observed_barcode is new (not degenerate), else `False`
         """
         raise NotImplementedError()
 
@@ -610,7 +610,7 @@ class DELCollectionIdUmiCounter(DELCollectionCounter):
 
     def count_barcode(self, barcode: DecodedDELCompound) -> bool:
         """
-        Given a barcode, add it to the current degen count
+        Given a observed_barcode, add it to the current degen count
 
         Will handle separating based on DEL ID and UMI
         correction
@@ -618,17 +618,17 @@ class DELCollectionIdUmiCounter(DELCollectionCounter):
         Parameters
         ----------
         barcode: DecodedDELCompound
-            the barcode to add to the counter
+            the observed_barcode to add to the counter
 
         Returns
         -------
         bool
-            `True` is added barcode is new (not degenerate), else `False`
+            `True` is added observed_barcode is new (not degenerate), else `False`
 
         Raises
         ------
         RuntimeError
-            if the decoded barcode is missing a UMI
+            if the decoded observed_barcode is missing a UMI
         """
         if barcode.umi is None:
             raise RuntimeError("cannot UMI degen on read missing UMI")
@@ -733,19 +733,19 @@ class DELCollectionIdCounter(DELCollectionCounter):
 
     def count_barcode(self, barcode: DecodedDELCompound) -> bool:
         """
-        Given a barcode, add it to the current degen count
+        Given a observed_barcode, add it to the current degen count
 
         Will handle separating based on DEL ID
 
         Parameters
         ----------
         barcode: DecodedDELCompound
-            the barcode to add to the counter
+            the observed_barcode to add to the counter
 
         Returns
         -------
         bool
-            `True` is added barcode is new (not degenerate), else `False`
+            `True` is added observed_barcode is new (not degenerate), else `False`
         """
         self.del_counter[barcode.library.library_id][barcode].add_id()
         return True  # always not degenerate with this counter

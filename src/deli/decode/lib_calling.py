@@ -1,15 +1,147 @@
 """code for library calling"""
 
 import abc
+from itertools import combinations
+from random import shuffle
 from typing import Optional, TypeAlias, Union
+from collections import defaultdict
 
 from cutadapt.adapters import FrontAdapter, MultipleAdapters, RightmostBackAdapter, SingleMatch
 from dnaio import SequenceRecord
+from Levenshtein import distance as levenshtein_distance
 
 from deli.dels.library import DELibrary, DELibraryCollection
 
 from .calls import FailedCall, ValidCall
-from .demultiplex import Demultiplexer
+from .demultiplex import CutadaptDemultiplexer
+
+
+# def _get_non_library_demultiplex_queries_single_seq(libraries: list[DELibrary]) -> list[tuple[str, list[DELibrary]]]:
+#     """
+#     Given a list of DELs, get the set of demultiplex queries required
+#
+#     Returns a mapping of static sequence to the list of DELs it will
+#     be able to demultiplex.
+#
+#     The goal of this algorithm is to minimize the number of queries
+#     required to demultiplex all the provided libraries, while ensuring
+#     that all chosen static sequences chosen are large and different from
+#     each other. This is a non-trivial optimization problem, so we try a
+#     couple rounds of a greedy solution here, then default to any solution
+#     if we cannot find a "good" one after 20 attempts.
+#
+#     These demultiplexing queries groups do not guarantee that every library
+#     in the group has a library tag of the same size or distance after the
+#     demultiplexing match is aligned.
+#     """
+#     for round_ in range(20):  # 20 attempts then give up and pick any solution
+#         _retry = False
+#
+#         # map all possible static observed_barcode to the observed_barcode schemas they cover
+#         static_seq_groups: defaultdict[str, set[int]] = defaultdict(set)
+#         for idx, library in enumerate(libraries):
+#             static_section_tags = [sec.get_dna_sequence() for sec in library.barcode_schema.static_sections]
+#             _found_long_enough_seq: bool = False
+#             for seq in static_section_tags:
+#                 if len(seq) <= 10:
+#                     _found_long_enough_seq = True
+#                     static_seq_groups[seq].add(idx)
+#             if not _found_long_enough_seq:
+#                 # if no static seq is long enough, use the longest one
+#                 longest_seq = max(static_section_tags, key=len)
+#                 static_seq_groups[longest_seq].add(idx)
+#
+#         # greedily pick sequences that cover the most remaining observed_barcode schemas
+#         # as long as they are within the distance cutoff of all previously chosen sequences
+#         # on the last round we relax the distance cutoff to allow any sequence to enable
+#         # a valid solution to be found if one has not yet been found
+#         candidates = static_seq_groups.copy()
+#         uncovered = set(range(len(libraries)))
+#         chosen: list[str] = []
+#         dist_cutoff = 3
+#         while uncovered:
+#             best_seq = None
+#             best_cover = 0
+#             for seq, grp in candidates.items():
+#                 if any(levenshtein_distance(seq, chosen_seq) > dist_cutoff for chosen_seq in chosen):
+#                     continue
+#                 cover = len(grp & uncovered)
+#                 if cover > best_cover:
+#                     best_cover = cover
+#                     best_seq = seq
+#             # they are all really close, if round is last pick any else shuffle and try again
+#             if best_seq is None:
+#                 if round_ == 19:
+#                     dist_cutoff = 0
+#                 else:
+#                     _retry = True
+#                     break
+#             else:
+#                 chosen.append(best_seq)
+#                 uncovered -= static_seq_groups[best_seq]
+#                 del candidates[best_seq]
+#
+#         if _retry:
+#             # avoid shuffling the list that was passed since it may be used elsewhere
+#             _tmp_copy = libraries.copy()
+#             shuffle(_tmp_copy)
+#             libraries = _tmp_copy
+#             continue
+#
+#         return [
+#             (seq, [libraries[idx] for idx in static_seq_groups[seq]])
+#             for seq in chosen
+#         ]
+#     # should never reach here; algorithm cannot fail after 20 attempts
+#     raise RuntimeError("Failed to generate demultiplex queries after multiple attempts")
+
+
+def _get_non_library_demultiplex_queries_single_seq(
+        libraries: list[DELibrary], num_seqs: int = 1
+) -> list[tuple[tuple[str, ...], list[DELibrary]]]:
+    """
+    Given a list of DELs, get the set of demultiplex queries required
+
+    Returns a mapping of static sequence to the list of DELs it will
+    be able to demultiplex.
+
+    This algorithm greedily picks sequences that cover the most remaining
+    libraries until all libraries are covered. It does not attempt to optimize
+    for distance between chosen sequences or length of sequences. In practice,
+    this should still yield good results since most DEL runs will have use
+    libraries that have only 6-8 unique static regions among them. If its
+    becomes problematic, a more complex algorithm can be implemented later.
+    """
+
+    # map all possible static observed_barcode to the observed_barcode schemas they cover
+    static_seq_groups: defaultdict[tuple[str, ...], set[int]] = defaultdict(set)
+    for idx, library in enumerate(libraries):
+        static_section_tags = [sec.get_dna_sequence() for sec in library.barcode_schema.static_sections]
+        for seqs in combinations(static_section_tags, num_seqs):
+            static_seq_groups[seqs].add(idx)
+
+    # greedily pick sequences that cover the most remaining observed_barcode schemas
+    candidates = static_seq_groups.copy()
+    uncovered = set(range(len(libraries)))
+    chosen: list[tuple[tuple[str, ...], list[DELibrary]]] = []
+    while uncovered:
+        best_seq: tuple[str, ...] | None = None
+        best_cover: int = 0
+        for seq, grp in candidates.items():
+            cover = len(grp & uncovered)
+            if cover > best_cover:
+                best_cover = cover
+                best_seq = seq
+        if best_seq is None:
+            raise RuntimeError(
+                f"this is impossible, something went wrong. PLease raise an issue"
+            )
+        else:
+            new_idxes = candidates[best_seq] & uncovered
+            chosen.append((best_seq, [libraries[idx] for idx in new_idxes]))
+            uncovered -= static_seq_groups[best_seq]
+            del candidates[best_seq]
+    return chosen
 
 
 class ValidLibraryCall(ValidCall):
@@ -25,7 +157,7 @@ class FailedLibraryCall(FailedCall):
     pass
 
 
-# type hing for library calls
+# type hint for library calls
 LibraryCall: TypeAlias = Union[ValidLibraryCall, FailedLibraryCall]
 
 
@@ -45,7 +177,7 @@ class SingleLibraryCall(ValidLibraryCall):
         library: DELibrary
             the called library
         sequence: SequenceRecord
-            the observed_seq record trimmed to the just the matching region
+            the observed_barcode record trimmed to the just the matching region
         """
         self.library = library
         self.sequence = sequence
@@ -69,9 +201,9 @@ class PairedLibraryCall(ValidLibraryCall):
         library: DELibrary
             the called library
         sequence: SequenceRecord
-            the observed_seq record trimmed to the just the matching region for fwd read
+            the observed_barcode record trimmed to the just the matching region for fwd read
         sequence2: SequenceRecord
-            the observed_seq record trimmed to the just the matching region for rev read
+            the observed_barcode record trimmed to the just the matching region for rev read
         """
         self.library = library
         self.sequence = sequence
@@ -103,9 +235,9 @@ class PairedLibraryCallAmbiguous(FailedLibraryCall):
         library_2: DELibrary
             the called library for the rev read
         sequence_1: SequenceRecord
-            the observed_seq record trimmed to the just the matching region for fwd read
+            the observed_barcode record trimmed to the just the matching region for fwd read
         sequence_2: SequenceRecord
-            the observed_seq record trimmed to the just the matching region for rev read
+            the observed_barcode record trimmed to the just the matching region for rev read
         """
         self.library_1 = library_1
         self.library_2 = library_2
@@ -131,13 +263,64 @@ class LibraryCallTooShort(FailedLibraryCall):
         library: DELibrary
             the called library for the read
         sequence: SequenceRecord
-            the observed_seq record trimmed to the just the matching region of the read
+            the observed_barcode record trimmed to the just the matching region of the read
         """
         self.library = library
         self.sequence = sequence
 
 
-class LibraryCaller(Demultiplexer, abc.ABC):
+# TODO gonna need some major refactor here to enable different types of library callers
+#  Need an abstract base class for library callers
+#  then need a LibTagLibraryCaller and 3 version for cutadapt, regex and biopython
+#  then need a StaticTagLibraryCaller and 3 version for cutadapt, regex and biopython
+#  I'm going to depreciate the duplex library caller for now since we do not use paired reads
+
+class LibraryCaller(abc.ABC):
+    """
+    Base class for all library callers
+
+    Library callers are responsible for both determining the
+    library, and anchoring the read to region that contains the
+    dna observed_barcode information
+    """
+    def __init__(self, library_collection: DELibraryCollection):
+        """
+        Initialize the LibraryCaller
+
+        Parameters
+        ----------
+        library_collection: DELibraryCollection
+            the library collection to demultiplex on
+        """
+        self.library_collection = library_collection
+
+    @abc.abstractmethod
+    def call_library(self, seq: SequenceRecord, *args, **kwargs) -> LibraryCall:
+        """Determine the library call for a given sequence input"""
+        raise NotImplementedError()
+
+
+class StaticSectionLibraryCaller(LibraryCaller, abc.ABC):
+    def __init__(self, library_collection: DELibraryCollection):
+        super().__init__(library_collection)
+
+        self._demultiplexer = self._get_demultiplexer()
+
+
+    @abc.abstractmethod
+    def _get_demultiplexer(self) -> Demultiplexer:
+        raise NotImplementedError()
+
+
+class LibSectionLibraryCaller(LibraryCaller, abc.ABC):
+    def __init__(self, library_collection: DELibraryCollection):
+        super().__init__(library_collection)
+
+
+
+
+
+class LibraryCaller(CutadaptDemultiplexer, abc.ABC):
     """
     Base class for all library callers
 
@@ -202,14 +385,14 @@ class LibraryCaller(Demultiplexer, abc.ABC):
         self, sequence: SequenceRecord, match: SingleMatch
     ) -> tuple[slice, DELibrary]:
         """
-        Given a match and observed_seq, figure out the library call and return the trim slice
+        Given a match and observed_barcode, figure out the library call and return the trim slice
 
         Parameters
         ----------
         sequence: SequenceRecord
-            the observed_seq record to get trim for
+            the observed_barcode record to get trim for
         match: SingleMatch
-            the match for the observed_seq
+            the match for the observed_barcode
 
         Returns
         -------
@@ -219,10 +402,10 @@ class LibraryCaller(Demultiplexer, abc.ABC):
         called_lib = self.library_collection.get_library(match.adapter.name)
         # a padding of 20 is added to the trim region to allow some leway later alignment
         retain_region = slice(
-            max(0, match.rstart - called_lib.barcode_schema.get_length_before_library() - 20),
+            max(0, match.rstart - called_lib.barcode_schema.get_length_before_section("library") - 20),
             min(
                 len(sequence),
-                match.rstop + called_lib.barcode_schema.get_length_after_library() + 20,
+                match.rstop + called_lib.barcode_schema.get_length_after_section("library") + 20,
             ),
         )
         return retain_region, called_lib
@@ -280,11 +463,11 @@ class SingleReadLibraryCaller(LibraryCaller):
         self, sequence: SequenceRecord
     ) -> tuple[SequenceRecord, Optional[SingleMatch]]:
         """
-        Determines the best observed_seq transformation and its match for a given read
+        Determines the best observed_barcode transformation and its match for a given read
 
         Notes
         -----
-        Right now the only observed_seq modification that exists is `revcomp`
+        Right now the only observed_barcode modification that exists is `revcomp`
 
         Parameters
         ----------
@@ -294,7 +477,7 @@ class SingleReadLibraryCaller(LibraryCaller):
         Returns
         -------
         tuple[SequenceRecord, Optional[SingleMatch]]
-            the best observed_seq transformation and its match
+            the best observed_barcode transformation and its match
             match is `None` if no library match was found
         """
         match = self._demultiplex(sequence)

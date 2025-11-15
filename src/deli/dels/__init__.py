@@ -1,6 +1,6 @@
-"""DNA barcode classes and functions"""
+"""DNA observed_barcode classes and functions"""
 #
-# from .barcode import BarcodeSchema, BuildingBlockBarcodeSection
+# from .observed_barcode import BarcodeSchema, BuildingBlockBarcodeSection
 # from .building_block import (
 #     BaseBuildingBlock,
 #     BuildingBlock,

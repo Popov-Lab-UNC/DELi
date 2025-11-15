@@ -51,6 +51,7 @@ dependencies = [
     "scikit-learn>=1.4.2",
     "matplotlib-venn==0.11.10",
     "typing-extensions>=4.0.0",
+    "regex (>=2025.11.3,<2026.0.0)",
 ]
 
 [project.urls]
@@ -146,7 +147,7 @@ lint.select = [
     "D"
 ]
 src = ["src", "tests"]
-line-length = 99
+line-length = 120
 lint.ignore = [
     "D400",
     "D401",

@@ -208,6 +208,16 @@ class Library(DeliDataLoadable):
         """Represent the library as its name"""
         return f"{self.__class__}({self.library_id})"
 
+    def __hash__(self):
+        """Hash the library by its id"""
+        return hash(self.library_id)
+
+    def __eq__(self, other):
+        """Check equality of libraries by their id"""
+        if isinstance(other, Library):
+            return True
+        return False
+
     @classmethod
     @accept_deli_data_name("libraries", "json")
     def load(cls, path: str) -> "Library":
@@ -542,7 +552,7 @@ class DELibrary(Library):
         library_id : str
             name/id of the library
         barcode_schema : BarcodeSchema
-            The barcode schema defining how the barcodes are designed
+            The observed_barcode schema defining how the barcodes are designed
         bb_sets : Sequence[TaggedBuildingBlockSet]
             the sets of building-block used to build this library
             order in list should be order of synthesis
@@ -584,7 +594,7 @@ class DELibrary(Library):
         ### VALIDATION ###
         if self.num_cycles != barcode_schema.get_num_building_block_sections():
             raise LibraryBuildError(
-                f"Number of library cycles does not match barcode schema cycles; "
+                f"Number of library cycles does not match observed_barcode schema cycles; "
                 f"got {self.num_cycles} and {barcode_schema.get_num_building_block_sections()}"
             )
 
@@ -592,10 +602,10 @@ class DELibrary(Library):
             if self.dna_barcode_on not in [bb_set.bb_set_id for bb_set in self.bb_sets]:
                 if scaffold is not None and self.dna_barcode_on != "scaffold":
                     raise LibraryBuildError(
-                        f"cannot find cycle {self.dna_barcode_on} to put DNA barcode on"
+                        f"cannot find cycle {self.dna_barcode_on} to put DNA observed_barcode on"
                     )
                 if scaffold is None and self.dna_barcode_on == "scaffold":
-                    raise LibraryBuildError("no scaffold to attach DNA barcode to")
+                    raise LibraryBuildError("no scaffold to attach DNA observed_barcode to")
 
     @classmethod
     @accept_deli_data_name("libraries", "json")
@@ -635,7 +645,7 @@ class DELibrary(Library):
         self,
     ) -> Iterator[tuple[BuildingBlockBarcodeSection, TaggedBuildingBlockSet]]:
         """
-        Iterate through building block sets and their respective barcode sections sections
+        Iterate through building block sets and their respective observed_barcode sections sections
 
         Yields
         ------

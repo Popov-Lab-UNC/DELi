@@ -2,16 +2,12 @@
 
 import pytest
 
-from deli.decode.bb_calling import (
-    HammingDistHashMap,
-    HashMapCollisionError,
-    LevenshteinDistHashMap,
-)
+from deli.decode.barcode_calling import HashMapCollisionError, LevenshteinDistBarcodeCaller, HammingDistBarcodeCaller
 from deli.dels.building_block import TaggedBuildingBlock, TaggedBuildingBlockSet
 
 
 class TestHammingHashCorrectors:
-    """test the accuracy of the HammingDistHashMap correctors"""
+    """test the accuracy of the HammingDistBarcodeCaller correctors"""
 
     @pytest.fixture
     def tagged_hamming3_bb_set(self) -> TaggedBuildingBlockSet:
@@ -73,9 +69,9 @@ class TestHammingHashCorrectors:
 
     @pytest.mark.unit
     def test_hamming3_1_hashmap_corrector(self, tagged_hamming3_bb_set):
-        """Test HammingDistHashMap on a hamming 3 set with non-asym dist cutoff 3"""
+        """Test HammingDistBarcodeCaller on a hamming 3 set with non-asym dist cutoff 3"""
         # set up the hamming 3 correctors
-        hamming3_1_corrector = HammingDistHashMap(bb_set=tagged_hamming3_bb_set, distance_cutoff=1)
+        hamming3_1_corrector = HammingDistBarcodeCaller(bb_set=tagged_hamming3_bb_set, distance_cutoff=1)
 
         # test the correctors
         res = hamming3_1_corrector.correct_sequence("TGGGCGTT")  # direct lookup should pass
@@ -89,11 +85,11 @@ class TestHammingHashCorrectors:
 
     @pytest.mark.unit
     def test_hamming3_2_hashmap_corrector(self, tagged_hamming3_bb_set):
-        """Test HammingDistHashMap on a hamming 3 set with asym dist cutoff 2"""
+        """Test HammingDistBarcodeCaller on a hamming 3 set with asym dist cutoff 2"""
         # set up the hamming 3 correctors
         with pytest.raises(HashMapCollisionError):
-            HammingDistHashMap(bb_set=tagged_hamming3_bb_set, distance_cutoff=2)
-        hamming3_2_corrector = HammingDistHashMap(
+            HammingDistBarcodeCaller(bb_set=tagged_hamming3_bb_set, distance_cutoff=2)
+        hamming3_2_corrector = HammingDistBarcodeCaller(
             bb_set=tagged_hamming3_bb_set, distance_cutoff=2, asymmetrical=True
         )
 
@@ -112,9 +108,9 @@ class TestHammingHashCorrectors:
 
     @pytest.mark.unit
     def test_hamming5_1_hashmap_corrector(self, tagged_hamming5_bb_set):
-        """Test HammingDistHashMap on a hamming 5 set with non-asym dist cutoff 1"""
+        """Test HammingDistBarcodeCaller on a hamming 5 set with non-asym dist cutoff 1"""
         # set up the hamming 5 correctors
-        hamming5_1_corrector = HammingDistHashMap(bb_set=tagged_hamming5_bb_set, distance_cutoff=1)
+        hamming5_1_corrector = HammingDistBarcodeCaller(bb_set=tagged_hamming5_bb_set, distance_cutoff=1)
 
         res = hamming5_1_corrector.correct_sequence("ACCTTCAACCGT")  # direct lookup should pass
         assert res == "ACCTTCAACCGT"
@@ -127,9 +123,9 @@ class TestHammingHashCorrectors:
 
     @pytest.mark.unit
     def test_hamming5_2_hashmap_corrector(self, tagged_hamming5_bb_set):
-        """Test HammingDistHashMap on a hamming 5 set with non-asym dist cutoff 2"""
+        """Test HammingDistBarcodeCaller on a hamming 5 set with non-asym dist cutoff 2"""
         # set up the hamming 5 correctors
-        hamming5_2_corrector = HammingDistHashMap(bb_set=tagged_hamming5_bb_set, distance_cutoff=2)
+        hamming5_2_corrector = HammingDistBarcodeCaller(bb_set=tagged_hamming5_bb_set, distance_cutoff=2)
 
         res = hamming5_2_corrector.correct_sequence("ACCTTCAACCGT")  # direct lookup should pass
         assert res == "ACCTTCAACCGT"
@@ -144,11 +140,11 @@ class TestHammingHashCorrectors:
 
     @pytest.mark.unit
     def test_hamming5_3_hashmap_corrector(self, tagged_hamming5_bb_set):
-        """Test HammingDistHashMap on a hamming 5 set with asym dist cutoff 3"""
+        """Test HammingDistBarcodeCaller on a hamming 5 set with asym dist cutoff 3"""
         # set up the hamming 5 correctors
         with pytest.raises(HashMapCollisionError):
-            HammingDistHashMap(bb_set=tagged_hamming5_bb_set, distance_cutoff=3)
-        hamming5_3_corrector = HammingDistHashMap(
+            HammingDistBarcodeCaller(bb_set=tagged_hamming5_bb_set, distance_cutoff=3)
+        hamming5_3_corrector = HammingDistBarcodeCaller(
             bb_set=tagged_hamming5_bb_set, distance_cutoff=3, asymmetrical=True
         )
 
@@ -169,7 +165,7 @@ class TestHammingHashCorrectors:
 
 
 class TestLevenshteinHashCorrectors:
-    """Test the accuracy of the LevenshteinDistHashMap correctors"""
+    """Test the accuracy of the LevenshteinDistBarcodeCaller correctors"""
 
     @pytest.fixture
     def tagged_levenshtein3_bb_set(self) -> TaggedBuildingBlockSet:
@@ -216,9 +212,9 @@ class TestLevenshteinHashCorrectors:
 
     @pytest.mark.unit
     def test_levenshtein3_1_hashmap_corrector(self, tagged_levenshtein3_bb_set):
-        """Test LevenshteinDistHashMap on a Levenshtein 3 set with non-asym dist cutoff 3"""
+        """Test LevenshteinDistBarcodeCaller on a Levenshtein 3 set with non-asym dist cutoff 3"""
         # set up the levenshtein 3 correctors
-        leven3_1_corrector = LevenshteinDistHashMap(
+        leven3_1_corrector = LevenshteinDistBarcodeCaller(
             bb_set=tagged_levenshtein3_bb_set, distance_cutoff=1
         )
 
@@ -238,11 +234,11 @@ class TestLevenshteinHashCorrectors:
 
     @pytest.mark.unit
     def test_levenshtein3_2_hashmap_corrector(self, tagged_levenshtein3_bb_set):
-        """Test LevenshteinDistHashMap on a Levenshtein 3 set with asym dist cutoff 2"""
+        """Test LevenshteinDistBarcodeCaller on a Levenshtein 3 set with asym dist cutoff 2"""
         # set up the levenshtein 3 correctors
         with pytest.raises(HashMapCollisionError):
-            LevenshteinDistHashMap(bb_set=tagged_levenshtein3_bb_set, distance_cutoff=2)
-        leven3_2_corrector = LevenshteinDistHashMap(
+            LevenshteinDistBarcodeCaller(bb_set=tagged_levenshtein3_bb_set, distance_cutoff=2)
+        leven3_2_corrector = LevenshteinDistBarcodeCaller(
             bb_set=tagged_levenshtein3_bb_set, distance_cutoff=2, asymmetrical=True
         )
 
@@ -273,9 +269,9 @@ class TestLevenshteinHashCorrectors:
 
     @pytest.mark.unit
     def test_levenshtein5_1_hashmap_corrector(self, tagged_levenshtein5_bb_set):
-        """Test LevenshteinDistHashMap on a Levenshtein 5 set with non-asym dist cutoff 1"""
+        """Test LevenshteinDistBarcodeCaller on a Levenshtein 5 set with non-asym dist cutoff 1"""
         # set up the levenshtein 5 correctors
-        leven5_1_corrector = LevenshteinDistHashMap(
+        leven5_1_corrector = LevenshteinDistBarcodeCaller(
             bb_set=tagged_levenshtein5_bb_set, distance_cutoff=1
         )
 
@@ -298,9 +294,9 @@ class TestLevenshteinHashCorrectors:
 
     @pytest.mark.unit
     def test_levenshtein5_2_hashmap_corrector(self, tagged_levenshtein5_bb_set):
-        """Test LevenshteinDistHashMap on a Levenshtein 5 set with non-asym dist cutoff 2"""
+        """Test LevenshteinDistBarcodeCaller on a Levenshtein 5 set with non-asym dist cutoff 2"""
         # set up the levenshtein 5 correctors
-        leven5_2_corrector = LevenshteinDistHashMap(
+        leven5_2_corrector = LevenshteinDistBarcodeCaller(
             bb_set=tagged_levenshtein5_bb_set, distance_cutoff=2
         )
 
@@ -331,11 +327,11 @@ class TestLevenshteinHashCorrectors:
 
     @pytest.mark.unit
     def test_levenshtein5_3_hashmap_corrector(self, tagged_levenshtein5_bb_set):
-        """Test LevenshteinDistHashMap on a Levenshtein 5 set with asym dist cutoff 3"""
+        """Test LevenshteinDistBarcodeCaller on a Levenshtein 5 set with asym dist cutoff 3"""
         # set up the levenshtein 5 correctors
         with pytest.raises(HashMapCollisionError):
-            LevenshteinDistHashMap(bb_set=tagged_levenshtein5_bb_set, distance_cutoff=3)
-        leven5_3_corrector = LevenshteinDistHashMap(
+            LevenshteinDistBarcodeCaller(bb_set=tagged_levenshtein5_bb_set, distance_cutoff=3)
+        leven5_3_corrector = LevenshteinDistBarcodeCaller(
             bb_set=tagged_levenshtein5_bb_set, distance_cutoff=3, asymmetrical=True
         )
 

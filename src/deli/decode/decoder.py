@@ -18,7 +18,7 @@ from deli.dels.compound import DELCompound
 from deli.dels.library import DELibrary, DELibraryCollection
 from deli.dna import Aligner, HybridSemiGlobalAligner, SemiGlobalAligner
 
-from .bb_calling import BuildingBlockSetTagCaller, FailedBuildingBlockCall, ValidBuildingBlockCall
+from .calling import BuildingBlockSetTagCaller, FailedBuildingBlockCall, ValidBuildingBlockCall
 from .lib_calling import LibraryCaller, SingleReadLibraryCaller, ValidLibraryCall
 from .umi import UMI
 
@@ -42,9 +42,9 @@ class DecodeStatistics:
     num_seqs_degen_per_lib: defaultdict[str, int]
         the number of sequences degened per library
     num_failed_too_short: int
-        the number of decoded failed because observed_seq read was too short
+        the number of decoded failed because observed_barcode read was too short
     num_failed_too_long: int
-        the number of decoded failed because observed_seq read was too long
+        the number of decoded failed because observed_barcode read was too long
     num_failed_library_call: int
         the number of decoded failed because the library was not called
     num_failed_library_match_too_short: int
@@ -200,7 +200,7 @@ class DecodeStatistics:
 
 class DecodedDELCompound(DELCompound):
     """
-    Holds information about a decoded barcode
+    Holds information about a decoded observed_barcode
 
     Can handle both successful and failed decodes
 
@@ -229,7 +229,7 @@ class DecodedDELCompound(DELCompound):
             the building block calls
         umi: UMI or `None`
             the UMI for the read
-            if not using umi or no umi in the barcode, use a `None`
+            if not using umi or no umi in the observed_barcode, use a `None`
         """
         super().__init__(library=library, building_blocks=building_blocks)
         self.umi = umi
@@ -361,7 +361,7 @@ class DELCollectionDecoder:
             the algorithm to use for bb_calling
             right now only "alignment" mode is supported
         disable_error_correction: bool, default = False
-            disable error correction for any barcode section
+            disable error correction for any observed_barcode section
             capable of it
         decode_statistics: DecodeStatistics or None, default = None
             the statistic tracker for the decoding run
@@ -435,7 +435,7 @@ class DELCollectionDecoder:
 
     def decode_read(self, sequence: SequenceRecord) -> DecodedDELCompound | FailedDecode:
         """
-        Given a observed_seq read, decode its barcode
+        Given a observed_barcode read, decode its observed_barcode
 
         """
         # check lengths
@@ -486,7 +486,7 @@ class LibraryDecoder(abc.ABC):
             the statistic tracker for the decoding run
             if `None` will initialize a new, empty statistic object
         disable_error_correction: bool, default False
-            disable error correction for any barcode section
+            disable error correction for any observed_barcode section
             capable of it
         """
         self.disable_error_correction = disable_error_correction
@@ -500,13 +500,13 @@ class LibraryDecoder(abc.ABC):
 
     @abc.abstractmethod
     def call_barcode(self, library_call: ValidLibraryCall) -> DecodedDELCompound | FailedDecode:
-        """Given a library call, decode the barcode"""
+        """Given a library call, decode the observed_barcode"""
         raise NotImplementedError()
 
 
 class DynamicAlignmentLibraryDecoder(LibraryDecoder):
     """
-    Uses a dynamic programing alignment algorithm to call the barcode
+    Uses a dynamic programing alignment algorithm to call the observed_barcode
 
     Will align to the library tag (and other known static regions) and use
     that alignment to locate the required sections to call
@@ -534,7 +534,7 @@ class DynamicAlignmentLibraryDecoder(LibraryDecoder):
             semi is a semi global and hybrid is a hybrid semi global alignment
             see aligning docs for more details
         disable_error_correction: bool, default False
-            disable error correction for any barcode section
+            disable error correction for any observed_barcode section
             capable of it
         """
         super().__init__(
@@ -582,7 +582,7 @@ class DynamicAlignmentLibraryDecoder(LibraryDecoder):
         if len(_missing_sections) != 0:
             raise ValueError(
                 f"building block caller for section(s) '{_missing_sections}'"
-                f"are missing from the library barcode"
+                f"are missing from the library observed_barcode"
             )
 
     def call_barcode(self, library_call: ValidLibraryCall) -> DecodedDELCompound | FailedDecode:
@@ -641,7 +641,7 @@ class DynamicAlignmentLibraryDecoder(LibraryDecoder):
 
 class BioAlignmentLibraryDecoder(LibraryDecoder):
     """
-    Uses a dynamic programing alignment algorithm to call the barcode
+    Uses a dynamic programing alignment algorithm to call the observed_barcode
 
     Will align to the library tag (and other known static regions) and use
     that alignment to locate the required sections to call
@@ -664,7 +664,7 @@ class BioAlignmentLibraryDecoder(LibraryDecoder):
             the statistic tracker for the decoding run
             if `None` will initialize a new, empty statistic object
         disable_error_correction: bool, default False
-            disable error correction for any barcode section
+            disable error correction for any observed_barcode section
             capable of it
         """
         super().__init__(
@@ -727,7 +727,7 @@ class BioAlignmentLibraryDecoder(LibraryDecoder):
         if len(_missing_sections) != 0:
             raise ValueError(
                 f"building block caller for section(s) '{_missing_sections}'"
-                f"are missing from the library barcode"
+                f"are missing from the library observed_barcode"
             )
 
         # pre compile _query_to_ref_map with dummy data
@@ -797,7 +797,7 @@ class BioAlignmentLibraryDecoder(LibraryDecoder):
                     f"{self.library.barcode_schema.get_section_length('umi')}; "
                     f"This is likely the result of a major gap in an otherwise "
                     f"perfect (decodable) the alignment. "
-                    f"This may indicate a problem with missing or extra barcode "
+                    f"This may indicate a problem with missing or extra observed_barcode "
                     f"sections in your library definition.",
                     stacklevel=1,
                 )
@@ -909,7 +909,7 @@ def _query_to_ref_map(coords):
 #     match: FullBarcodeMatch
 #         the match to generate the alignment for
 #     barcode_schema:
-#         the schema defining the barcode to align to
+#         the schema defining the observed_barcode to align to
 #
 #     Returns
 #     -------

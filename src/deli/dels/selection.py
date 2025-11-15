@@ -208,7 +208,7 @@ class SequencedSelection(Selection):
         library_collection: DELibraryCollection
             the library collection used in the selection
         sequence_files: list[str]
-            the list of observed_seq files for the selection
+            the list of observed_barcode files for the selection
         date_ran: datetime | None
             the date the selection was run, defaults to now if None
         target_id: str | None
@@ -233,10 +233,10 @@ class SequencedSelection(Selection):
 
         if len(self.sequence_files) < 1:
             raise ValueError(
-                "A SequencedSelection must have at least 1 observed_seq file; found 0"
+                "A SequencedSelection must have at least 1 observed_barcode file; found 0"
             )
 
-        # validate observed_seq files
+        # validate observed_barcode files
         SequenceGlobReader(self.sequence_files)
 
     @classmethod
@@ -279,11 +279,11 @@ class SequencedSelection(Selection):
 
     def get_sequence_reader(self) -> SequenceReader:
         """
-        Get a observed_seq reader for the selection's observed_seq files.
+        Get a observed_barcode reader for the selection's observed_barcode files.
 
         Returns
         -------
         SequenceReader
-            a SequenceReader object for the selection's observed_seq files
+            a SequenceReader object for the selection's observed_barcode files
         """
         return SequenceGlobReader(self.sequence_files)
