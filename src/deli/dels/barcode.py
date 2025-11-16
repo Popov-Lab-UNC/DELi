@@ -36,11 +36,15 @@ class BarcodeSection(abc.ABC):
             DNA of overhang directly after section tag
             leave as `None` if no overhang
         """
-        self.section_name = section_name
+        self.section_name = section_name.replace(" ", "_").replace("-", "_")
         self.section_tag = section_tag.upper()
         self.section_overhang = section_overhang.upper() if section_overhang else None
 
         self._validate()
+
+    def __hash__(self):
+        """Return the hash of the object."""
+        return hash(self.section_name)
 
     def _validate(self):
         """Validate the tha barcode section tag(s) are correct"""
@@ -404,8 +408,8 @@ class BarcodeSchema:
         end = max(required_section_indexes)
         self.min_length = sum([len(section) for section in self.barcode_sections[start : end + 1]])
         self.section_spans = self.get_section_spans(exclude_overhangs=False)
-        self.required_start = self.section_spans[self.barcode_sections[start].section_name][0]
-        self.required_end = self.section_spans[self.barcode_sections[end].section_name][1]
+        self.required_start = self.section_spans[self.barcode_sections[start].section_name].start
+        self.required_end = self.section_spans[self.barcode_sections[end].section_name].stop
 
     def __eq__(self, other):
         """Return `True` if two barcode schemas are the same"""
@@ -615,7 +619,7 @@ class BarcodeSchema:
         _section = self.get_section(section)
 
         len_before = self.get_length_before_section(_section)
-        len_section = len(_section) - (len(getattr(_section, "section_overhang", "")) * exclude_overhangs)
+        len_section = len(_section) - ((len(_section.section_overhang) if _section.section_overhang else 0) * exclude_overhangs)
         return slice(len_before, len_before + len_section)
 
     def get_required_sections(self) -> list[str]:
@@ -710,7 +714,7 @@ class BarcodeSchema:
         """
         static_sections: list[BarcodeSection] = list()
         for i in self._static_sections_idxs:
-            if i < self._library_section_idx:
+            if i > self._library_section_idx:
                 static_sections.append(self.barcode_sections[i])
         return static_sections
 

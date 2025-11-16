@@ -1,22 +1,22 @@
 """code for demultiplexing in DELi"""
 import abc
 import itertools
+import sys
 import warnings
 from collections import defaultdict
 from typing import Optional, Iterator, no_type_check, TypeVar, Generic
 
 import numpy as np
 from Bio.Align import PairwiseAligner, substitution_matrices
-from cutadapt.adapters import MultipleAdapters, SingleMatch, SingleAdapter, AnywhereAdapter, FrontAdapter, \
-    RightmostBackAdapter, LinkedAdapter, Adapter, LinkedMatch
+from cutadapt.adapters import SingleMatch, SingleAdapter, AnywhereAdapter, FrontAdapter, \
+    RightmostBackAdapter, LinkedAdapter, LinkedMatch
 from cutadapt.adapters import Match as OGCutadaptMatch
 from dnaio import SequenceRecord
 from numba import njit
 from regex import Pattern, Match, compile, BESTMATCH
 
-from deli.dels.building_block import TaggedBuildingBlockSet
 from deli.dels.library import DELibraryCollection, DELibrary
-from deli.dels.barcode import BarcodeSection, BarcodeSchema
+from deli.dels.barcode import BarcodeSchema
 
 from .barcode_calling import ValidCall, BarcodeCaller, get_barcode_caller
 from ._base import FailedDecodeAttempt
@@ -26,6 +26,7 @@ from ._base import FailedDecodeAttempt
 Q_co = TypeVar("Q_co", bound="_Query", covariant=True)
 M_co = TypeVar("M_co", bound="_Match", covariant=True)
 Q = TypeVar("Q", bound="_Query")
+
 
 class AlignedSeq:
     """A sequence that has been aligned to a reference"""
@@ -51,13 +52,13 @@ class SectionSequenceAligner:
 
         self._adjustment_table: dict[str, dict[str, tuple[int, int]]] = dict()
         for alignment_section in self.alignment_sections:
-            alignment_section_span = self._spans[alignment_section]
+            # alignment_section_span = self._spans[alignment_section]
             self._adjustment_table[alignment_section] = dict()
             for required_section in _required_sections:
                 required_barcode_section = self.barcode_schema.get_section(required_section)
                 dist = self.barcode_schema.get_length_between_sections(alignment_section, required_section, include_direction=True)
                 if dist < 0:
-                    adjusted_stop = dist - 1 - len(getattr(required_barcode_section, "section_overhang", ""))
+                    adjusted_stop = dist - 1 - (len(required_barcode_section.section_overhang) if required_barcode_section.section_overhang else 0)
                     adjusted_start = adjusted_stop - len(required_barcode_section.section_tag)
                 else:
                     adjusted_start = dist + 1
@@ -127,7 +128,7 @@ class LibraryAligner:
 
     def align(self, sequence: SequenceRecord) -> Iterator[tuple[AlignedSeq, float]]:
         aligned_sec_spans: dict[str, tuple[int, int]] = dict()
-        alignments = self.aligner.align(sequence, self.barcode_ref)
+        alignments = self.aligner.align(sequence.sequence, self.barcode_ref)
         for alignment in alignments:
             _reverse_idx = _query_to_ref_map(alignment.coordinates)
             for barcode_sec in self._required_sections:
@@ -176,7 +177,7 @@ class _Query(Generic[M_co], abc.ABC):
                         f"expected {self._sec_name2seq[sec.section_name]}, found {sec.get_dna_sequence()}"
                     )
                 cur_idx = library.barcode_schema.barcode_sections.index(sec)
-                if cur_idx >= _last_idx:
+                if cur_idx <= _last_idx:
                     raise LibraryDemultiplexerError(
                         f"Barcode section {section_name} for library {library.library_id} is out of order; "
                         f"expected order {section_names}"
@@ -203,8 +204,8 @@ class _Query(Generic[M_co], abc.ABC):
             _max_sec_end = 0
             for section_name in section_names:
                 static_section_span = library.barcode_schema.section_spans[section_name]
-                _min_sec_start = min(_min_sec_start, static_section_span[0])
-                _max_sec_end = max(_max_sec_end, static_section_span[1])
+                _min_sec_start = min(_min_sec_start, static_section_span.start)
+                _max_sec_end = max(_max_sec_end, static_section_span.stop)
             start_adj = min(library.barcode_schema.required_start - _min_sec_start, 0)
             end_adj = max(library.barcode_schema.required_end - _max_sec_end, 0)
             self.trim_adjustments[library] = (start_adj, end_adj)
@@ -257,7 +258,7 @@ class _RegexQuery(_Query["_RegexMatch"]):
     def search(self, sequence: str) -> Optional["_RegexMatch"]:
         """Search for the pattern in the sequence"""
         match = self.compiled_pattern.search(sequence)
-        return _RegexMatch(self, match.fuzzy_counts.sum(), match) if match is not None else None
+        return _RegexMatch(self, sum(match.fuzzy_counts), match) if match is not None else None
 
 
 class _RegexMatch(_Match[_RegexQuery]):
@@ -268,7 +269,7 @@ class _RegexMatch(_Match[_RegexQuery]):
     def get_section_spans(self) -> dict[str, tuple[int, int]]:
         """Get the spans of the sections from a regex match"""
         return {
-            section_name: span for (section_name, _), span in zip(
+            section_name: span for section_name, span in zip(
                 self.query.section_names, self.match.regs[1:], strict=True
             )
         }
@@ -417,11 +418,20 @@ class LibraryDemultiplexerError(Exception):
     pass
 
 
-class LibraryDemultiplexer(Generic[Q], abc.ABC):
-    def __init__(self, libraries: DELibraryCollection, realign: bool = False, build_dynamic_aligners_: bool = False,
-                 build_section_seq_aligners_: bool = False):
-        self.libraries: DELibraryCollection = libraries
+class LibraryDemultiplexer(abc.ABC):
+    def __init__(self, libraries: DELibraryCollection, revcomp: bool = True):
+        self.revcomp = revcomp
+        self.libraries = libraries
+
+    @abc.abstractmethod
+    def demultiplex(self, sequence: SequenceRecord) -> tuple[ValidCall[DELibrary], Iterator[tuple[AlignedSeq, float]]] | FailedDecodeAttempt:
+        raise NotImplementedError()
+
+
+class QueryBasesLibraryDemultiplexer(LibraryDemultiplexer, Generic[Q], abc.ABC):
+    def __init__(self, *args, realign: bool = False, build_dynamic_aligners_: bool = False, build_section_seq_aligners_: bool = False, **kwargs):
         self.realign = realign
+        super().__init__(*args, **kwargs)
 
         self._library_aligners: dict[DELibrary, LibraryAligner] = dict()
         self._section_seq_aligners: dict[DELibrary, SectionSequenceAligner] = dict()
@@ -441,10 +451,6 @@ class LibraryDemultiplexer(Generic[Q], abc.ABC):
                     if id(aligner) not in aligner_group_ids:
                         aligner_group.append(aligner)
                 self._unique_section_seq_aligners[query] = aligner_group
-
-    @abc.abstractmethod
-    def demultiplex(self, sequence: SequenceRecord) -> AlignedSeq:
-        raise NotImplementedError()
 
     @abc.abstractmethod
     def _get_queries(self) -> list[Q]:
@@ -485,9 +491,35 @@ class LibraryDemultiplexer(Generic[Q], abc.ABC):
             match = query.search(sequence.sequence)
             if match is None:
                 continue
-            if match.score < best_score:
+            elif match.score < best_score:
                 best_match = match
                 best_score = match.score
+                if best_score == 0:
+                    break  # perfect match found
+
+        if self.revcomp and (best_score > 0):
+            best_revcomp_match: _Match | None = None
+            best_revcomp_score: float = float('inf')
+
+            # try the reverse complement
+            revcomp_seq = sequence.reverse_complement()
+            for query in self._queries:
+                match = query.search(revcomp_seq.sequence)
+                if match is None:
+                    continue
+                elif match.score < best_score:
+                    best_revcomp_match = match
+                    best_revcomp_score = match.score
+                    if best_revcomp_score == 0:
+                        break  # perfect match found
+
+            if best_revcomp_score < best_score:
+                best_match = best_revcomp_match
+                # update sequence record in place to be revcomp
+                sequence.sequence = revcomp_seq.sequence
+                sequence.name += " [revcomp]"
+                if sequence.qualities is not None:
+                    sequence.qualities = revcomp_seq.qualities
 
         return best_match
 
@@ -503,11 +535,11 @@ class LibraryDemultiplexer(Generic[Q], abc.ABC):
                 sequence, _static_alignment_spans
             ), 0.0)])
 
-class LibraryTagLibraryDemultiplexer(LibraryDemultiplexer[Q], abc.ABC):
+class LibraryTagLibraryDemultiplexer(QueryBasesLibraryDemultiplexer[Q], abc.ABC):
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, build_static_sec_aligners_=True, **kwargs)
+        super().__init__(*args, build_section_seq_aligners_=True, **kwargs)
 
-    def demultiplex(self, sequence: SequenceRecord) -> Iterator[tuple[AlignedSeq, float]] | FailedDecodeAttempt:
+    def demultiplex(self, sequence: SequenceRecord) -> tuple[ValidCall[DELibrary], Iterator[tuple[AlignedSeq, float]]] | FailedDecodeAttempt:
         # query, score, regex.Match object
         best_match = self._get_best_match(sequence)
 
@@ -516,12 +548,55 @@ class LibraryTagLibraryDemultiplexer(LibraryDemultiplexer[Q], abc.ABC):
             return FailedStaticAlignment(sequence)
         else:
             library_call = ValidCall(best_match.query.libraries[0], best_match.score)
-            return self._make_alignments(best_match, library_call, sequence)
+            return library_call, self._make_alignments(best_match, library_call, sequence)
 
 
-class NoLibraryTagLibraryDemultiplexer(LibraryDemultiplexer[Q], abc.ABC):
+class LibraryTagRegexLibraryDemultiplexer(LibraryTagLibraryDemultiplexer[_RegexQuery]):
+    def __init__(self, libraries: DELibraryCollection, error_tolerance: int = 1, realign: bool = True, revcomp: bool = True):
+        self.error_tolerance = error_tolerance
+        super().__init__(libraries=libraries, realign=realign, revcomp=revcomp)
+
+    def _get_queries(self) -> list[_RegexQuery]:
+        queries: list[_RegexQuery] = list()
+        for library in self.libraries:
+            before_lib_section_names = [
+                sec.section_name for sec in library.barcode_schema.get_static_sections_before_library()
+            ]
+            after_lib_section_names = [
+                sec.section_name for sec in library.barcode_schema.get_static_sections_after_library()
+            ]
+            queries.append(
+                _RegexQuery(
+                    libraries=[library],
+                    section_names=tuple(before_lib_section_names + ["library"] + after_lib_section_names),
+                    error_tolerance=self.error_tolerance
+                )
+            )
+        return queries
+
+
+class LibraryTagCutadaptLibraryDemultiplexer(LibraryTagLibraryDemultiplexer[_CutadaptQuery]):
+    def __init__(self, libraries: DELibraryCollection, error_tolerance: int = 1, realign: bool = True, min_overlap: int = 8, revcomp: bool = True):
+        self.error_tolerance = error_tolerance
+        self.min_overlap = min_overlap
+        super().__init__(libraries=libraries, realign=realign, revcomp=revcomp)
+
+    def _get_queries(self) -> list[_CutadaptQuery]:
+        queries: list[_CutadaptQuery] = list()
+        for library in self.libraries:
+            queries.append(
+                _CutadaptQuery(
+                    libraries=[library],
+                    section_names=tuple(["library"]),
+                    error_tolerance=self.error_tolerance
+                )
+            )
+        return queries
+
+
+class NoLibraryTagLibraryDemultiplexer(QueryBasesLibraryDemultiplexer[Q], abc.ABC):
     def __init__(self, *args, error_correction_mode_str: str = "levenshtein_dist:1,asymmetrical", **kwargs):
-        super().__init__(*args, build_static_sec_aligners_=True, **kwargs)
+        super().__init__(*args, build_section_seq_aligners_=True, **kwargs)
 
         # maps queries to barcode callers for the libraries in that query
         self._library_callers: dict[_RegexQuery, BarcodeCaller[DELibrary]] = {
@@ -532,10 +607,10 @@ class NoLibraryTagLibraryDemultiplexer(LibraryDemultiplexer[Q], abc.ABC):
         }
 
     @abc.abstractmethod
-    def _get_query_constructor(self) -> type[Q]:
+    def _get_query_object(self, libraries: list[DELibrary], section_names: tuple[str, ...]) -> type[Q]:
         raise NotImplementedError()
 
-    def demultiplex(self, sequence: SequenceRecord) -> Iterator[tuple[AlignedSeq, float]] | FailedDecodeAttempt:
+    def demultiplex(self, sequence: SequenceRecord) -> tuple[ValidCall[DELibrary], Iterator[tuple[AlignedSeq, float]]] | FailedDecodeAttempt:
         best_match = self._get_best_match(sequence)
 
         # failed to match any static region query
@@ -585,50 +660,7 @@ class NoLibraryTagLibraryDemultiplexer(LibraryDemultiplexer[Q], abc.ABC):
         if library_call is None:
             return FailedLibraryBarcodeLookup(sequence)
         else:
-            return self._make_alignments(best_match, library_call, sequence, _static_alignment_spans=_static_alignment_spans)
-
-
-class LibraryTagRegexLibraryDemultiplexer(LibraryTagLibraryDemultiplexer[_RegexQuery]):
-    def __init__(self, libraries: DELibraryCollection, error_tolerance: int = 1, realign: bool = True):
-        super().__init__(libraries=libraries, realign=realign)
-        self.error_tolerance = error_tolerance
-
-    def _get_queries(self) -> list[_RegexQuery]:
-        queries: list[_RegexQuery] = list()
-        for library in self.libraries:
-            before_lib_section_names = [
-                sec.section_name for sec in library.barcode_schema.get_static_sections_before_library()
-            ]
-            after_lib_section_names = [
-                sec.section_name for sec in library.barcode_schema.get_static_sections_after_library()
-            ]
-            queries.append(
-                _RegexQuery(
-                    libraries=[library],
-                    section_names=tuple(before_lib_section_names + ["library"] + after_lib_section_names),
-                    error_tolerance=self.error_tolerance
-                )
-            )
-        return queries
-
-
-class LibraryTagCutadaptLibraryDemultiplexer(LibraryTagLibraryDemultiplexer[_CutadaptQuery]):
-    def __init__(self, libraries: DELibraryCollection, error_tolerance: int = 1, realign: bool = True, min_overlap: int = 8):
-        super().__init__(libraries=libraries, realign=realign)
-        self.error_tolerance = error_tolerance
-        self.min_overlap = min_overlap
-
-    def _get_queries(self) -> list[_CutadaptQuery]:
-        queries: list[_CutadaptQuery] = list()
-        for library in self.libraries:
-            queries.append(
-                _CutadaptQuery(
-                    libraries=[library],
-                    section_names=tuple(["library"]),
-                    error_tolerance=self.error_tolerance
-                )
-            )
-        return queries
+            return library_call, self._make_alignments(best_match, library_call, sequence, _static_alignment_spans=_static_alignment_spans)
 
 
 class SinglePrimerLibraryDemultiplexer(NoLibraryTagLibraryDemultiplexer[Q], abc.ABC):
@@ -648,8 +680,8 @@ class SinglePrimerLibraryDemultiplexer(NoLibraryTagLibraryDemultiplexer[Q], abc.
             If also will use the regex alignment
             This can be prone to higher error rates
         """
-        super().__init__(*args, **kwargs)
         self.error_tolerance = error_tolerance
+        super().__init__(*args, **kwargs)
 
     def _get_queries(self) -> list[Q]:
         """generate the regex query sets for the single primer demultiplexer"""
@@ -692,12 +724,11 @@ class SinglePrimerLibraryDemultiplexer(NoLibraryTagLibraryDemultiplexer[Q], abc.
                 )
             else:
                 new_idxes = set(candidates[best_seq]) & uncovered
-                libraries = [self.libraries.libraries[i] for i in new_idxes]
+                libraries: list[DELibrary] = [self.libraries.libraries[i] for i in new_idxes]
 
-                chosen.append(self._get_query_constructor()(
+                chosen.append(self._get_query_object(
                     libraries=libraries,
-                    section_names=(best_seq[1],),
-                    error_tolerance=self.error_tolerance
+                    section_names=(best_seq[1],)
                 ))
 
                 uncovered -= static_seq_groups[best_seq]
@@ -722,8 +753,8 @@ class FlankingPrimersLibraryDemultiplexer(NoLibraryTagLibraryDemultiplexer[Q], a
             If also will use the regex alignment
             This can be prone to higher error rates
         """
-        super().__init__(*args, **kwargs)
         self.error_tolerance = error_tolerance
+        super().__init__(*args, **kwargs)
 
     def _get_queries(self) -> list[Q]:
         """generate the regex query sets for the flanking primer demultiplexer"""
@@ -741,8 +772,8 @@ class FlankingPrimersLibraryDemultiplexer(NoLibraryTagLibraryDemultiplexer[Q], a
                     f"cannot use a FlankingPrimersRegexLibraryDemultiplexer"
                 )
 
-            before_seqs_and_names = [(sec.get_dna_sequence(), sec.section_name) for sec in before_lib_sections]
-            after_seqs_and_names = [(sec.get_dna_sequence(), sec.section_name) for sec in after_lib_sections]
+            before_seqs_and_names = [(sec.section_name, sec.get_dna_sequence()) for sec in before_lib_sections]
+            after_seqs_and_names = [(sec.section_name, sec.get_dna_sequence()) for sec in after_lib_sections]
 
             possible_combos = itertools.product(before_seqs_and_names, after_seqs_and_names)
 
@@ -767,12 +798,11 @@ class FlankingPrimersLibraryDemultiplexer(NoLibraryTagLibraryDemultiplexer[Q], a
                 )
             else:
                 new_idxes = set(candidates[best_seq]) & uncovered
-                libraries = [self.libraries.libraries[i] for i in new_idxes]
+                libraries: list[DELibrary] = [self.libraries.libraries[i] for i in new_idxes]
 
-                chosen.append(self._get_query_constructor()(
+                chosen.append(self._get_query_object(
                     libraries=libraries,
                     section_names=tuple(list(sec_name for sec_name, _ in best_seq)),
-                    error_tolerance=self.error_tolerance
                 ))
 
                 uncovered -= static_seq_groups[best_seq]
@@ -780,14 +810,11 @@ class FlankingPrimersLibraryDemultiplexer(NoLibraryTagLibraryDemultiplexer[Q], a
         return chosen
 
 
-
-
-
 class SinglePrimerCutadaptLibraryDemultiplexer(SinglePrimerLibraryDemultiplexer[_CutadaptQuery]):
     """
     Demultiplexer for single primer regex style demultiplexing
     """
-    def __init__(self, libraries: DELibraryCollection, realign: bool = False, error_tolerance: int = 1, error_correction_mode_str: str = "levenshtein_dist:1,asymmetrical", min_overlap: int = 8):
+    def __init__(self, libraries: DELibraryCollection, revcomp: bool = True, realign: bool = False, error_tolerance: int = 1, error_correction_mode_str: str = "levenshtein_dist:1,asymmetrical", min_overlap: int = 8):
         """
         Initialize the SinglePrimerDemultiplexer
 
@@ -800,19 +827,80 @@ class SinglePrimerCutadaptLibraryDemultiplexer(SinglePrimerLibraryDemultiplexer[
             If also will use the regex alignment
             This can be prone to higher error rates
         """
-        super().__init__(libraries=libraries, realign=realign, error_correction_mode_str=error_correction_mode_str, error_tolerance=error_tolerance)
-        self.error_tolerance = error_tolerance
         self.min_overlap = min_overlap
+        super().__init__(libraries=libraries, realign=realign, error_correction_mode_str=error_correction_mode_str, error_tolerance=error_tolerance, revcomp=revcomp)
 
-    def _get_query_constructor(self) -> type[_CutadaptQuery]:
-        return _CutadaptQuery
+    def _get_query_object(self, libraries: list[DELibrary], section_names: tuple[str, ...]) -> _CutadaptQuery:
+        return _CutadaptQuery(
+            libraries=libraries,
+            section_names=section_names,
+            error_tolerance=self.error_tolerance,
+            min_overlap=self.min_overlap
+        )
 
 
 class FlankingPrimersCutadaptLibraryDemultiplexer(FlankingPrimersLibraryDemultiplexer[_CutadaptQuery]):
     """
     Demultiplexer for single primer regex style demultiplexing
     """
-    def __init__(self, libraries: DELibraryCollection, realign: bool = False, error_tolerance: int = 1,
+    def __init__(self, libraries: DELibraryCollection, revcomp: bool = True, realign: bool = False, error_tolerance: int = 1,
+                 error_correction_mode_str: str = "levenshtein_dist:1,asymmetrical", min_overlap: int = 8):
+        """
+        Initialize the SinglePrimerDemultiplexer
+
+        Parameters
+        ----------
+        libraries: DELibraryCollection
+            the libraries to use for demultiplexing
+        realign: bool
+            whether to realign the sequences after demultiplexing
+            If also will use the regex alignment
+            This can be prone to higher error rates
+        """
+        self.min_overlap = min_overlap
+        super().__init__(libraries=libraries, realign=realign, error_correction_mode_str=error_correction_mode_str, error_tolerance=error_tolerance, revcomp=revcomp)
+
+    def _get_query_object(self, libraries: list[DELibrary], section_names: tuple[str, ...]) -> _CutadaptQuery:
+        return _CutadaptQuery(
+            libraries=libraries,
+            section_names=section_names,
+            error_tolerance=self.error_tolerance,
+            min_overlap=self.min_overlap
+        )
+
+
+class SinglePrimerRegexLibraryDemultiplexer(SinglePrimerLibraryDemultiplexer[_RegexQuery]):
+    """
+    Demultiplexer for single primer regex style demultiplexing
+    """
+    def __init__(self, libraries: DELibraryCollection, realign: bool = False, revcomp: bool = True, error_tolerance: int = 1, error_correction_mode_str: str = "levenshtein_dist:1,asymmetrical"):
+        """
+        Initialize the SinglePrimerDemultiplexer
+
+        Parameters
+        ----------
+        libraries: DELibraryCollection
+            the libraries to use for demultiplexing
+        realign: bool
+            whether to realign the sequences after demultiplexing
+            If also will use the regex alignment
+            This can be prone to higher error rates
+        """
+        super().__init__(libraries=libraries, realign=realign, error_correction_mode_str=error_correction_mode_str, error_tolerance=error_tolerance, revcomp=revcomp)
+
+    def _get_query_object(self, libraries: list[DELibrary], section_names: tuple[str, ...]) -> _RegexQuery:
+        return _RegexQuery(
+            libraries=libraries,
+            section_names=section_names,
+            error_tolerance=self.error_tolerance,
+        )
+
+
+class FlankingPrimersRegexLibraryDemultiplexer(FlankingPrimersLibraryDemultiplexer[_RegexQuery]):
+    """
+    Demultiplexer for single primer regex style demultiplexing
+    """
+    def __init__(self, libraries: DELibraryCollection, revcomp: bool = True, realign: bool = False, error_tolerance: int = 1,
                  error_correction_mode_str: str = "levenshtein_dist:1,asymmetrical"):
         """
         Initialize the SinglePrimerDemultiplexer
@@ -826,61 +914,88 @@ class FlankingPrimersCutadaptLibraryDemultiplexer(FlankingPrimersLibraryDemultip
             If also will use the regex alignment
             This can be prone to higher error rates
         """
-        super().__init__(libraries=libraries, realign=realign, error_correction_mode_str=error_correction_mode_str, error_tolerance=error_tolerance)
+        super().__init__(libraries=libraries, realign=realign, error_correction_mode_str=error_correction_mode_str, error_tolerance=error_tolerance, revcomp=revcomp)
 
-    def _get_queries(self) -> list[_RegexQuery]:
-        """generate the regex query sets for the flanking primer demultiplexer"""
+    def _get_query_object(self, libraries: list[DELibrary], section_names: tuple[str, ...]) -> _RegexQuery:
+        return _RegexQuery(
+            libraries=libraries,
+            section_names=section_names,
+            error_tolerance=self.error_tolerance,
+        )
 
-        # map all possible static observed_barcode to the observed_barcode schemas they cover
-        static_seq_groups: defaultdict[tuple[tuple[str, str], tuple[str, str]], set[int]] = defaultdict(set)
-        for idx, library in enumerate(self.libraries):
-            before_lib_sections = library.barcode_schema.get_static_sections_before_library()
-            after_lib_sections = library.barcode_schema.get_static_sections_after_library()
 
-            if len(before_lib_sections) == 0 or len(after_lib_sections) == 0:
-                raise LibraryDemultiplexerError(
-                    f"Library {library.library_id} does not have static sections both "
-                    f"before and after the library barcode section; "
-                    f"cannot use a FlankingPrimersRegexLibraryDemultiplexer"
-                )
+class FailedFullBarcodeAlignment(FailedDecodeAttempt):
+    """
+    Failed to align full barcode to any library
+    """
+    def __init__(self, sequence: SequenceRecord):
+        super().__init__(sequence, "Failed to align full barcode to any library")
 
-            before_seqs_and_names = [(sec.get_dna_sequence(), sec.section_name) for sec in before_lib_sections]
-            after_seqs_and_names = [(sec.get_dna_sequence(), sec.section_name) for sec in after_lib_sections]
 
-            possible_combos = itertools.product(before_seqs_and_names, after_seqs_and_names)
+class FullSeqAlignmentLibraryDemultiplexer(LibraryDemultiplexer):
+    """
+    Demultiplexer that aligns the full sequence to each library
+    """
+    def __init__(self, libraries: DELibraryCollection, revcomp: bool = True):
+        """
+        Initialize the FullSeqAlignmentLibraryDemultiplexer
 
-            for combo in possible_combos:
-                static_seq_groups[combo].add(idx)
+        Notes
+        -----
+        For full sequence alignments there is no heuristic to avoid
+        running the revcomp everytime, doubling the amount of work to
+        do. It would be better to use a separate external software to
+        do standardize all reads into a single orientation before
+        demultiplexing with this method.
 
-        # greedily pick sequences that cover the most remaining observed_barcode schemas
-        candidates = static_seq_groups.copy()
-        uncovered = set(range(len(self.libraries)))
-        chosen: list[_RegexQuery] = []
-        while uncovered:
-            best_seq: tuple[tuple[str, str], tuple[str, str]] | None = None
-            best_cover: int = 0
-            for _sec_seq, grp in candidates.items():
-                cover = len(grp & uncovered)
-                if cover > best_cover:
-                    best_cover = cover
-                    best_seq = _sec_seq
-            if best_seq is None:
-                raise RuntimeError(
-                    f"this is impossible, something went wrong. Please raise an issue"
-                )
-            else:
-                new_idxes = set(candidates[best_seq]) & uncovered
-                libraries = [self.libraries.libraries[i] for i in new_idxes]
+        Parameters
+        ----------
+        libraries: DELibraryCollection
+            the libraries to use for demultiplexing
+        revcomp: bool, default=True
+            whether to also consider the reverse complement of the sequence
+        """
+        super().__init__(libraries=libraries, revcomp=revcomp)
 
-                chosen.append(_RegexQuery(
-                    libraries=libraries,
-                    section_names=tuple(list(sec_name for sec_name, _ in best_seq)),
-                    error_tolerance=self.error_tolerance
-                ))
+        self.libraries = self.libraries
+        self.aligner = [LibraryAligner(library.barcode_schema, include_library_section=False) for library in self.libraries]
 
-                uncovered -= static_seq_groups[best_seq]
-                del candidates[best_seq]
-        return chosen
+    def demultiplex(self, sequence: SequenceRecord) -> tuple[ValidCall[DELibrary], Iterator[tuple[AlignedSeq, float]]] | FailedDecodeAttempt:
+        best_alignments: tuple[ValidCall[DELibrary], Iterator[tuple[AlignedSeq, float]]] | None = None
+        best_score = 0
+        for library, aligner in zip(self.libraries, self.aligner):
+            alignments = aligner.align(sequence)
+            alignment, score = alignments.__next__()
+            if score > best_score:
+                best_alignments = (ValidCall(library, score=0), itertools.chain(iter([(alignment, score), ]), alignments))
+                best_score = score
+
+        # biopython alignments do not track errors; it won't be possible to know
+        # if the match that exists already is perfect with processing the alignment
+        # but that processing part is so expensive that it is not worth doing here
+        if self.revcomp:
+            revcomp_seq = sequence.reverse_complement()
+            best_revcomp_alignments: tuple[ValidCall[DELibrary], Iterator[tuple[AlignedSeq, float]]] | None = None
+            best_revcomp_score = 0
+            for library, aligner in zip(self.libraries, self.aligner):
+                alignments = aligner.align(revcomp_seq)
+                alignment, score = alignments.__next__()
+                if score > best_revcomp_score:
+                    best_revcomp_alignments = (ValidCall(library, score=0), itertools.chain(iter([(alignment, score), ]), alignments))
+                    best_revcomp_score = score
+            if best_revcomp_score > best_score:
+                best_alignments = best_revcomp_alignments
+                # update sequence record in place to be revcomp
+                sequence.sequence = revcomp_seq.sequence
+                sequence.name += " [revcomp]"
+                if sequence.qualities is not None:
+                    sequence.qualities = revcomp_seq.qualities
+        return best_alignments if best_alignments is not None else FailedFullBarcodeAlignment(sequence)
+
+
+# TODO for some reason, this is needed to prevent crash when running as a CMD,
+#  but not in a python interpreter... not sure why?
+sys.setrecursionlimit(3000)
 
 
 @no_type_check
@@ -920,6 +1035,3 @@ def _query_to_ref_map(coords):
             if mapping[i] == -1:
                 mapping[i] = query_len
     return mapping
-
-
-

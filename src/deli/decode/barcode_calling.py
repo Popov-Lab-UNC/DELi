@@ -1,6 +1,7 @@
 import abc
 import math
 from collections import defaultdict
+from enum import Enum
 from typing import TypeVar, Generic
 
 from deli._hamming import BaseQuaternaryHamming
@@ -389,7 +390,9 @@ class HashMapBarcodeCaller(BarcodeCaller[T], abc.ABC):
         """
         obj = self._hash_map.get(observed_barcode, None)
         if obj is not None:
-            return ValidCall(obj, 0)
+            if obj[0] is None:
+                return None
+            return ValidCall(obj[0], obj[1])
         else:
             return None
 

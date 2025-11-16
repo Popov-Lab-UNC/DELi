@@ -5,7 +5,7 @@ import logging
 import os
 import random
 import warnings
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 import yaml
 from tqdm import tqdm
@@ -17,6 +17,7 @@ from deli.enumeration.enumerator import EnumerationRunError
 
 from .decoder import DecodedDELCompound, DecodeStatistics, DELCollectionDecoder
 from .degen import DELCollectionCounter, DELCollectionIdCounter, DELCollectionIdUmiCounter
+from .library_demultiplex import LibraryDemultiplexer, FlankingPrimersCutadaptLibraryDemultiplexer, FlankingPrimersRegexLibraryDemultiplexer, SinglePrimerCutadaptLibraryDemultiplexer, SinglePrimerRegexLibraryDemultiplexer, LibraryTagCutadaptLibraryDemultiplexer, LibraryTagRegexLibraryDemultiplexer, FullSeqAlignmentLibraryDemultiplexer
 from .report import build_decoding_report
 
 
@@ -37,17 +38,16 @@ class DecodingSettings(dict):
 
     def __init__(
         self,
-        library_error_tolerance: float = 0.1,
-        min_library_overlap: int | None = 10,
-        alignment_algorithm: Literal["semi", "hybrid"] = "semi",
-        bb_calling_approach: Literal["alignment", "bio"] = "bio",
+        demultiplexer_algorithm: Literal["cutadapt", "regex", "full"] = "regex",
+        demultiplexer_sections: Literal["library", "single", "flanking"] = "flanking",
+        realign: bool = False,
+        library_error_tolerance: int = 1,
+        min_library_overlap: int = 8,
         revcomp: bool = False,
-        max_read_length: int | None = None,
-        min_read_length: int | None = None,
-        read_type: Literal["single", "paired"] = "single",
-        disable_error_correction: bool = False,
-        umi_clustering: bool = False,
-        umi_min_distance: int = 2,
+        wiggle: bool = False,
+        max_read_length: Optional[int] = None,
+        min_read_length: Optional[int] = None,
+        default_error_correction_mode_str: str = "levenshtein_dist:1,asymmetrical",
     ):
         """
         Initialize the decoder settings
@@ -59,31 +59,40 @@ class DecodingSettings(dict):
 
         Parameters
         ----------
-        library_error_tolerance: float, default = 0.2
-            the percent error to be tolerated in the library section
-            this will be converted to number of errors based on tag size
-            and down to the nearest whole number
-            for example, a library with 14 nucleotides would tolerate
-            1, 2, and 4 errors for an error tolerance of 0.1, 0.2 and 0.3 respectively
-        min_library_overlap: int or None, default = 7
-            the minimum number of nucleotides required to match
-            the library tag
-            This is because the demultiplexing will accept truncated matches
-            at the front/back of the tag. For example a tag of AGCTGGTTC
-            could match a read of GTTC if the min overlap was <=4
-            If `None`, will default to the exact length of the tag, meaning
-            the whole tag is expected.
-            The recommended value is greater than 8, as the odds of a match this strong
-            to be accidental are low
-        alignment_algorithm: Literal["semi", "hybrid"], default = "semi"
-            the algorithm to use for alignment
-            only used if bb_calling_approach is "alignment"
-        read_type: Literal["single", "paired"], default = "single"
-            the type of read
-            paired are for paired reads
-            all other read types are single
+        demultiplexer_algorithm: Literal["cutadapt", "regex", "full"], default = "regex"
+            The demultiplexing algorithm to use.
+            - "cutadapt": use a cutadapt to locate sections
+            - "regex": use a regular expression based demultiplexer
+            - "full": use a full alignment based demultiplexer
+        demultiplexer_sections: Literal["library", "single", "flanking"], default = "flanking"
+            The demultiplexing section strategy to use.
+            - "library": demultiplex by matching just the library tag
+            - "single": demultiplex by matching a single static barcode section
+            - "flanking": demultiplex by matching barcode sections that flank the library tag
+            (flanking means one before and one after the tag)
+        realign: bool, default = False
+            if true, will perform a local realignment of the read to the
+            libraries barcode schema *after* demultiplexing determine the library.
+            This could help recover reads that have complex alignments due multiple indels
+        library_error_tolerance: int, default = 1
+            The number of errors you are willing to tolerate in any given barcode
+            section during library demultiplexing. Will apply to each section
+            independently. For example, a flanking demultiplexer will allow for
+            1 error in *each* of the flanking sections.
+        min_library_overlap: int , default = 8
+            if using a cutadapt style demultiplexer, this is the minimum number of bases
+            that must align to the expected barcode section for a match to be called.
+            See the cutadapt documentation for more details on this parameter.
+        wiggle: bool, default = False
+            if true, will extend aligned sections by 1 bp on each side
+            and then and scan all possible chunks of the expected barcode length,
+            1 smaller and 1 larger than expected length (in that order). If not
+            using a local realignment post demultiplexing this can help recover
+            reads lost to indels in the barcode region.
         revcomp: bool, default = False
-            If true, search the reverse compliment as well
+            If true, search the reverse compliment as well.
+            In most cases it is faster to use an external tools
+            to align and reverse compliment reads before decoding
         max_read_length: int or None, default = None
             maximum length of a read to be considered for decoding
             if above the max, decoding will fail
@@ -93,31 +102,24 @@ class DecodingSettings(dict):
             if below the min, decoding will fail
             if `None` will default to smallest min match length of
             any library in the collection considered for decoding
-        bb_calling_approach: Literal["alignment"], default = "alignment"
-            the algorithm to use for bb_calling
-            right now only "alignment" mode is supported
-        disable_error_correction: bool, default = False
-            disable error correction for observed_barcode sections
-            that can be error corrected
-        umi_clustering: bool, default = False
-            when doing degeneration, consider two similar UMIs to be the same
-            similarity is based on levenshtein distance and `umi_min_distance`
-        umi_min_distance: int, default = 2
-            the minimum distance between two UMIs to be considered unique
-            only used `umi_clustering` is `True`
+            with 10bp of buffer
+        default_error_correction_mode_str: str, default = "levenshtein_dist:1,asymmetrical"
+            The default error correction mode string to use for decoding.
+            If a barcode section lacks a specified error correction mode,
+            this mode will be used.
+            See the documentation for more details on the format of this string.
         """
         super().__init__(
+            demultiplexer_algorithm=demultiplexer_algorithm,
+            demultiplexer_sections=demultiplexer_sections,
+            realign=realign,
             library_error_tolerance=library_error_tolerance,
             min_library_overlap=min_library_overlap,
-            alignment_algorithm=alignment_algorithm,
-            read_type=read_type,
             revcomp=revcomp,
+            wiggle=wiggle,
             max_read_length=max_read_length,
             min_read_length=min_read_length,
-            bb_calling_approach=bb_calling_approach,
-            disable_error_correction=disable_error_correction,
-            umi_clustering=umi_clustering,
-            umi_min_distance=umi_min_distance,
+            default_error_correction_mode_str=default_error_correction_mode_str,
         )
 
     def to_file(self, path: str):
@@ -400,6 +402,7 @@ class DecodingRunnerResults:
                         if include_raw_count_col:
                             _row += f"{delimiter}{counts.get_raw_count()}"
                         _row += f"{delimiter}{counts.get_degen_count()}\n"
+                        f.write(_row)
         else:
             raise RuntimeError("Cannot write cube, no degeneration counter found")
 
@@ -457,19 +460,77 @@ class DecodingRunner:
             decode_settings if decode_settings is not None else DecodingSettings()
         )
 
+        # parse the demultiplexer settings
+        demultiplexer: LibraryDemultiplexer
+
+        demultiplex_algorithm = self.decode_settings["demultiplexer_algorithm"]
+        demultiplex_sections = self.decode_settings["demultiplexer_sections"]
+
+        if demultiplex_algorithm == "full":
+            demultiplexer =  FullSeqAlignmentLibraryDemultiplexer(
+                libraries=self.selection.library_collection,
+                revcomp=self.decode_settings["revcomp"],
+            )
+        elif demultiplex_algorithm == "cutadapt":
+            if demultiplex_sections == "library":
+                demultiplexer = LibraryTagCutadaptLibraryDemultiplexer(
+                    libraries=self.selection.library_collection,
+                    min_overlap=self.decode_settings["min_library_overlap"],
+                    error_tolerance=self.decode_settings["library_error_tolerance"],
+                    revcomp=self.decode_settings["revcomp"],
+                )
+            elif demultiplex_sections == "single":
+                demultiplexer = SinglePrimerCutadaptLibraryDemultiplexer(
+                    libraries=self.selection.library_collection,
+                    min_overlap=self.decode_settings["min_library_overlap"],
+                    error_tolerance=self.decode_settings["library_error_tolerance"],
+                    revcomp=self.decode_settings["revcomp"],
+                    error_correction_mode_str=self.decode_settings["default_error_correction_mode_str"],
+                )
+            elif demultiplex_sections == "flanking":
+                demultiplexer = FlankingPrimersCutadaptLibraryDemultiplexer(
+                    libraries=self.selection.library_collection,
+                    min_overlap=self.decode_settings["min_library_overlap"],
+                    error_tolerance=self.decode_settings["library_error_tolerance"],
+                    revcomp=self.decode_settings["revcomp"],
+                    error_correction_mode_str=self.decode_settings["default_error_correction_mode_str"],
+                )
+            else:
+                raise DecodingRunParsingError(f"demultiplexer_sections '{demultiplex_sections}' not recognized for approach 'cutadapt'")
+        elif demultiplex_algorithm == "regex":
+            if demultiplex_sections == "library":
+                demultiplexer = LibraryTagRegexLibraryDemultiplexer(
+                    libraries=self.selection.library_collection,
+                    error_tolerance=self.decode_settings["library_error_tolerance"],
+                    revcomp=self.decode_settings["revcomp"],
+                )
+            elif demultiplex_sections == "single":
+                demultiplexer = SinglePrimerRegexLibraryDemultiplexer(
+                    libraries=self.selection.library_collection,
+                    error_tolerance=self.decode_settings["library_error_tolerance"],
+                    revcomp=self.decode_settings["revcomp"],
+                    error_correction_mode_str=self.decode_settings["default_error_correction_mode_str"],
+                )
+            elif demultiplex_sections == "flanking":
+                demultiplexer = FlankingPrimersRegexLibraryDemultiplexer(
+                    libraries=self.selection.library_collection,
+                    error_tolerance=self.decode_settings["library_error_tolerance"],
+                    revcomp=self.decode_settings["revcomp"],
+                    error_correction_mode_str=self.decode_settings["default_error_correction_mode_str"],
+                )
+            else:
+                raise DecodingRunParsingError(f"demultiplexer_sections '{demultiplex_sections}' not recognized for approach 'regex'")
+        else:
+            raise DecodingRunParsingError(f"demultiplexer_algorithm '{demultiplex_algorithm}' not recognized")
+
         # initialize all the decoding object required
         self.decoder = DELCollectionDecoder(
-            library_collection=self.selection.library_collection,
+            library_demultiplexer=demultiplexer,
             decode_statistics=DecodeStatistics(),
-            library_error_tolerance=self.decode_settings.get("library_error_tolerance", 0.1),
-            min_library_overlap=self.decode_settings.get("min_library_overlap", 10),
-            alignment_algorithm=self.decode_settings.get("alignment_algorithm", "semi"),
-            bb_calling_approach=self.decode_settings.get("bb_calling_approach", "bio"),
-            revcomp=self.decode_settings.get("revcomp", False),
-            max_read_length=self.decode_settings.get("max_read_length", None),
-            min_read_length=self.decode_settings.get("min_read_length", None),
-            read_type=self.decode_settings.get("read_type", "single"),
-            disable_error_correction=self.decode_settings.get("disable_error_correction", False),
+            wiggle=self.decode_settings["wiggle"],
+            max_read_length=self.decode_settings["max_read_length"],
+            min_read_length=self.decode_settings["min_read_length"],
+            default_error_correction_mode_str=self.decode_settings["default_error_correction_mode_str"]
         )
 
         _has_umi = all(
@@ -488,10 +549,7 @@ class DecodingRunner:
 
         self.degen: DELCollectionCounter
         if _has_umi:
-            self.degen = DELCollectionIdUmiCounter(
-                umi_clustering=self.decode_settings.get("umi_clustering", False),
-                min_umi_cluster_dist=self.decode_settings.get("umi_min_distance", 2),
-            )
+            self.degen = DELCollectionIdUmiCounter()
         else:
             self.degen = DELCollectionIdCounter()
 
@@ -533,7 +591,7 @@ class DecodingRunner:
 
         # write header to the failed reads CSV
         if fail_csv_file is not None:
-            fail_csv_file.write("read_id\tobserved_barcode\tquality\treason_failed\tlib_call\n")
+            fail_csv_file.write("read_id\tobserved_barcode\tquality\tfail_type\tfail_desc\n")
 
         # look through all sequences in the selection
         for i, seq_record in enumerate(
@@ -563,10 +621,11 @@ class DecodingRunner:
                     f"{seq_record.id}\t"
                     f"{seq_record.sequence}\t"
                     f"{seq_record.qualities}\t"
-                    f"{decoded_barcode.__class__.__name__}\n"
+                    f"{decoded_barcode.__class__.__name__}\t"
+                    f"{decoded_barcode.reason}\n"
                 )
 
-            if ((i + 1) % 1000) == 0:
+            if ((i + 1) % 10000) == 0:
                 self.logger.debug(
                     f"Decoded {i + 1} reads for selection {self.selection.selection_id}"
                 )
