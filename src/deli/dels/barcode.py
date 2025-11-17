@@ -3,11 +3,7 @@
 import abc
 import math
 import re
-from collections import defaultdict
-from random import shuffle
 from typing import Optional
-
-from Levenshtein import distance as levenshtein_distance
 
 
 class BarcodeSchemaError(Exception):
@@ -512,6 +508,32 @@ class BarcodeSchema:
         """Given a barcode section name, return that BarcodeSection object"""
         return self.get_section(item)
 
+    def is_schema_compatible(self, other: "BarcodeSchema") -> bool:
+        """
+        Check if this barcode schema is compatible with another barcode schema
+
+        Two barcode schemas are compatible if they have the same number of sections,
+        and each section has the same length and barcode section names in the same order.
+        The actual nucleotide sequences can differ.
+
+        Parameters
+        ----------
+        other: BarcodeSchema
+            the other barcode schema to compare to
+
+        Returns
+        -------
+        bool
+        """
+        if len(self.barcode_sections) != len(other.barcode_sections):
+            return False
+        for section, other_section in zip(self.barcode_sections, other.barcode_sections):
+            if section.section_name != other_section.section_name:
+                return False
+            if len(section) != len(other_section):
+                return False
+        return True
+
     def get_section(self, section_name: str) -> BarcodeSection:
         """
         Given a barcode section name, return that BarcodeSection object
@@ -832,6 +854,37 @@ class BarcodeSchema:
             return sum([len(s) for s in self.barcode_sections[idx1 + 1 : idx2]])
         else:
             return sum([len(s) for s in self.barcode_sections[idx2 + 1 : idx1]]) * (-1 if include_direction else 1)
+
+    def get_direction_of_sections(self, section1: str, section2: str) -> int:
+        """
+        Get the direction of two barcode sections
+
+        Parameters
+        ----------
+        section1: str
+            the first barcode section name
+        section2: str
+            the second barcode section name
+
+        Returns
+        -------
+        direction: int
+            1 if section2 is after section1
+            -1 if section2 is before section1
+            0 if both sections are the same
+        """
+        _section1 = self.get_section(section1)
+        _section2 = self.get_section(section2)
+
+        idx1 = self.barcode_sections.index(_section1)
+        idx2 = self.barcode_sections.index(_section2)
+
+        if idx1 == idx2:
+            return 0
+        elif idx1 < idx2:
+            return 1
+        else:
+            return -1
 
     def has_umi(self) -> bool:
         """True is library has UMI barcode section, else False"""

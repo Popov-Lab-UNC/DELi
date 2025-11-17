@@ -599,6 +599,8 @@ class DELCollectionIdUmiCounter(DELCollectionCounter):
         if barcode.umi is None:
             raise RuntimeError("cannot UMI degen on read missing UMI")
         else:
+            if len(barcode.umi.umi_tags[-1]) > 15:
+                print("oops")
             return self.del_counter[barcode.library.library_id][barcode].add_umi(barcode.umi)
 
     def to_json(self, path: str | Path, compress: bool = False):

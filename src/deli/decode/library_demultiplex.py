@@ -48,7 +48,7 @@ class SectionSequenceAligner:
 
         _required_sections = self.barcode_schema.get_required_sections()
         self._spans = self.barcode_schema.get_section_spans(exclude_overhangs=False)
-        self._span_map = {sec_nam: (0, 100000) for sec_nam in _required_sections}
+        self._span_map = {sec_nam: (100000, 0) for sec_nam in _required_sections}
 
         self._adjustment_table: dict[str, dict[str, tuple[int, int]]] = dict()
         for alignment_section in self.alignment_sections:
@@ -57,7 +57,7 @@ class SectionSequenceAligner:
             for required_section in _required_sections:
                 required_barcode_section = self.barcode_schema.get_section(required_section)
                 dist = self.barcode_schema.get_length_between_sections(alignment_section, required_section, include_direction=True)
-                if dist < 0:
+                if self.barcode_schema.get_direction_of_sections(alignment_section, required_section) < 0:
                     adjusted_stop = dist - 1 - (len(required_barcode_section.section_overhang) if required_barcode_section.section_overhang else 0)
                     adjusted_start = adjusted_stop - len(required_barcode_section.section_tag)
                 else:
@@ -70,15 +70,20 @@ class SectionSequenceAligner:
         for alignment_section, (align_start, align_stop) in alignment_section_spans.items():
             for required_section, (adj_start, adj_stop) in self._adjustment_table[alignment_section].items():
                 cur_start, cur_stop = _span_map[required_section]
-                _span_map[required_section] = (min(align_start + adj_start, 0, cur_start), max(align_stop + adj_stop, len(sequence), cur_stop))
-
+                if adj_start < 0:
+                    _span_map[required_section] = (max(min(align_start + adj_start + 1, cur_start), 0), max(align_start + adj_stop + 1, cur_stop))
+                else:
+                    _span_map[required_section] = (max(min(align_stop + adj_start - 1, cur_start), 0), max(align_stop + adj_stop - 1, cur_stop))
         return AlignedSeq(sequence=sequence, section_spans=_span_map)
 
     def get_library_seq(self, sequence: SequenceRecord, alignment_section_spans: dict[str, tuple[int, int]]) -> str:
-        _library_span = (0, 100000)
+        _library_span = (100000, 0)
         for alignment_section, (align_start, align_stop) in alignment_section_spans.items():
             adj_start, adj_stop = self._adjustment_table[alignment_section]["library"]
-            _library_span = (min(align_start + adj_start, 0, _library_span[0]), max(align_stop + adj_stop, len(sequence), _library_span[1]))
+            if adj_start < 0:
+                _library_span = (max(min(align_start + adj_start + 1, _library_span[0]), 0), max(align_start + adj_stop + 1, _library_span[1]))
+            else:
+                _library_span = (max(min(align_stop + adj_start - 1, _library_span[0]), 0), max(align_stop + adj_stop - 1, _library_span[1]))
         return sequence.sequence[_library_span[0]:_library_span[1]]
 
     def iter_possible_library_seqs(self, sequence: SequenceRecord, alignment_section_spans: dict[str, tuple[int, int]]) -> Iterator[str]:
@@ -140,13 +145,13 @@ class LibraryAligner:
 class FailedStaticAlignment(FailedDecodeAttempt):
     """A sequence that failed to align to a static reference"""
     def __init__(self, sequence: SequenceRecord):
-        super().__init__(sequence, "Failed to locate static observed_barcode regions")
+        super().__init__(sequence, "Failed to locate static barcode regions")
 
 
 class FailedLibraryBarcodeLookup(FailedDecodeAttempt):
     """A sequence that failed to align to a static reference"""
     def __init__(self, sequence: SequenceRecord):
-        super().__init__(sequence, "Failed to locate static observed_barcode regions")
+        super().__init__(sequence, "Failed to lookup the library codon")
 
 
 class _Query(Generic[M_co], abc.ABC):
@@ -307,7 +312,9 @@ class _CutadaptQuery(_Query["_CutadaptMatch"]):
             distance_from_front_percent: float = 0.0
             distance_from_back_percent: float = 0.0
             for library in self.libraries:
-                start, end = library.barcode_schema.section_spans[section]
+                span = library.barcode_schema.section_spans[section]
+                start = span.start
+                end = span.stop
                 distance_from_front_percent = max(distance_from_front_percent, start/len(library.barcode_schema))
                 distance_from_back_percent = max(distance_from_back_percent, (len(library.barcode_schema) - end)/len(library.barcode_schema))
 
@@ -324,14 +331,14 @@ class _CutadaptQuery(_Query["_CutadaptMatch"]):
                 ))
             elif distance_from_front_percent <= 0.1 :
                 adapters.append(FrontAdapter(
-                    seq=self._sec_name2seq[section],
+                    sequence=self._sec_name2seq[section],
                     max_errors=error_tolerance,
                     min_overlap=min_overlap,
                     name=section,
                 ))
             else:
                 adapters.append(RightmostBackAdapter(
-                    seq=self._sec_name2seq[section],
+                    sequence=self._sec_name2seq[section],
                     max_errors=error_tolerance,
                     min_overlap=min_overlap,
                     name=section,
@@ -345,7 +352,7 @@ class _CutadaptQuery(_Query["_CutadaptMatch"]):
                 back_adapter=adapters[1],
                 front_required=True,
                 back_required=True,
-                name=None
+                name=adapters[0].name
             )
         else:
             self.adapter = adapters[0]
@@ -382,7 +389,7 @@ class _LinkedCutadaptMatch(_CutadaptMatch):
 
         return {
             front_match.adapter.name: (front_match.rstart, front_match.rstop),
-            back_match.adapter.name: (back_match.rstart, back_match.rstop),
+            back_match.adapter.name: (back_match.rstart + front_match.rstop, back_match.rstop + front_match.rstop),
         }
 
     def trim_seq(self, library_call: ValidCall[DELibrary], sequence: SequenceRecord) -> SequenceRecord:
@@ -450,6 +457,7 @@ class QueryBasesLibraryDemultiplexer(LibraryDemultiplexer, Generic[Q], abc.ABC):
                     aligner = self._section_seq_aligners[library]
                     if id(aligner) not in aligner_group_ids:
                         aligner_group.append(aligner)
+                        aligner_group_ids.add(id(aligner))
                 self._unique_section_seq_aligners[query] = aligner_group
 
     @abc.abstractmethod
@@ -475,7 +483,7 @@ class QueryBasesLibraryDemultiplexer(LibraryDemultiplexer, Generic[Q], abc.ABC):
             for library in query.libraries:
                 _found_existing: bool = False
                 for other_library, aligner in aligners.items():
-                    if library.barcode_schema == other_library.barcode_schema:
+                    if library.barcode_schema.is_schema_compatible(other_library.barcode_schema):
                         aligners[library] = aligner
                         _found_existing = True
                         break
@@ -602,7 +610,7 @@ class NoLibraryTagLibraryDemultiplexer(QueryBasesLibraryDemultiplexer[Q], abc.AB
         self._library_callers: dict[_RegexQuery, BarcodeCaller[DELibrary]] = {
             query: get_barcode_caller(
                 {library.library_tag: library for library in query.libraries},
-                error_correction_mode_str=error_correction_mode_str
+                error_correction_mode_str="levenshtein_dist:2,asymmetrical"
             ) for query in self._queries
         }
 
@@ -649,16 +657,24 @@ class NoLibraryTagLibraryDemultiplexer(QueryBasesLibraryDemultiplexer[Q], abc.AB
                     if _library_call is not None:
                         if _library_call.score < _best_internal_score:
                             _best_internal_call = _library_call
-                            _best_call_score = _library_call.score
+                            _best_internal_score = _library_call.score
+                    if _best_internal_score == 0:
+                        library_call = _best_internal_call
+                        break  # perfect match found
 
                 if _best_internal_call is not None:
-                    if _best_call_score < _best_call_score:
+                    if _best_internal_score == 0:
                         library_call = _best_internal_call
-                        _best_call_score = _best_call_score
+                        break  # perfect match found
+                    elif _best_internal_score < _best_call_score:
+                        library_call = _best_internal_call
+                        _best_call_score = _best_internal_score
 
         # at this point we did everything we can to try and call the library
         if library_call is None:
             return FailedLibraryBarcodeLookup(sequence)
+        elif self.realign:
+            return library_call, self._library_aligners[library_call.obj].align(sequence)
         else:
             return library_call, self._make_alignments(best_match, library_call, sequence, _static_alignment_spans=_static_alignment_spans)
 
@@ -814,7 +830,7 @@ class SinglePrimerCutadaptLibraryDemultiplexer(SinglePrimerLibraryDemultiplexer[
     """
     Demultiplexer for single primer regex style demultiplexing
     """
-    def __init__(self, libraries: DELibraryCollection, revcomp: bool = True, realign: bool = False, error_tolerance: int = 1, error_correction_mode_str: str = "levenshtein_dist:1,asymmetrical", min_overlap: int = 8):
+    def __init__(self, libraries: DELibraryCollection, revcomp: bool = True, realign: bool = False, error_tolerance: int = 1, error_correction_mode_str: str = "levenshtein_dist:2,asymmetrical", min_overlap: int = 8):
         """
         Initialize the SinglePrimerDemultiplexer
 

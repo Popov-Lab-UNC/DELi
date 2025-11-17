@@ -429,7 +429,7 @@ class LibraryDecoder:
         if self.library.barcode_schema.has_umi():
             self._dist_from_final_bb_to_umi = self.library.barcode_schema.get_length_between_sections(
                 self.library.barcode_schema.building_block_sections[-1].section_name,
-                "umi", include_direction=True
+                "umi", include_direction=False # UMI should always be after BBs
             ) - (len(self.library.barcode_schema.building_block_sections[-1].section_overhang) if self.library.barcode_schema.building_block_sections[-1].section_overhang else 0)
             self._umi_length = len(self.library.barcode_schema.get_section("umi"))
         self._last_bb_idx: int = -1

@@ -478,6 +478,7 @@ class DecodingRunner:
                     min_overlap=self.decode_settings["min_library_overlap"],
                     error_tolerance=self.decode_settings["library_error_tolerance"],
                     revcomp=self.decode_settings["revcomp"],
+                    realign=self.decode_settings["realign"]
                 )
             elif demultiplex_sections == "single":
                 demultiplexer = SinglePrimerCutadaptLibraryDemultiplexer(
@@ -486,6 +487,7 @@ class DecodingRunner:
                     error_tolerance=self.decode_settings["library_error_tolerance"],
                     revcomp=self.decode_settings["revcomp"],
                     error_correction_mode_str=self.decode_settings["default_error_correction_mode_str"],
+                    realign=self.decode_settings["realign"]
                 )
             elif demultiplex_sections == "flanking":
                 demultiplexer = FlankingPrimersCutadaptLibraryDemultiplexer(
@@ -494,6 +496,7 @@ class DecodingRunner:
                     error_tolerance=self.decode_settings["library_error_tolerance"],
                     revcomp=self.decode_settings["revcomp"],
                     error_correction_mode_str=self.decode_settings["default_error_correction_mode_str"],
+                    realign=self.decode_settings["realign"]
                 )
             else:
                 raise DecodingRunParsingError(f"demultiplexer_sections '{demultiplex_sections}' not recognized for approach 'cutadapt'")
@@ -503,6 +506,7 @@ class DecodingRunner:
                     libraries=self.selection.library_collection,
                     error_tolerance=self.decode_settings["library_error_tolerance"],
                     revcomp=self.decode_settings["revcomp"],
+                    realign=self.decode_settings["realign"]
                 )
             elif demultiplex_sections == "single":
                 demultiplexer = SinglePrimerRegexLibraryDemultiplexer(
@@ -510,6 +514,7 @@ class DecodingRunner:
                     error_tolerance=self.decode_settings["library_error_tolerance"],
                     revcomp=self.decode_settings["revcomp"],
                     error_correction_mode_str=self.decode_settings["default_error_correction_mode_str"],
+                    realign=self.decode_settings["realign"]
                 )
             elif demultiplex_sections == "flanking":
                 demultiplexer = FlankingPrimersRegexLibraryDemultiplexer(
@@ -517,6 +522,7 @@ class DecodingRunner:
                     error_tolerance=self.decode_settings["library_error_tolerance"],
                     revcomp=self.decode_settings["revcomp"],
                     error_correction_mode_str=self.decode_settings["default_error_correction_mode_str"],
+                    realign=self.decode_settings["realign"]
                 )
             else:
                 raise DecodingRunParsingError(f"demultiplexer_sections '{demultiplex_sections}' not recognized for approach 'regex'")
