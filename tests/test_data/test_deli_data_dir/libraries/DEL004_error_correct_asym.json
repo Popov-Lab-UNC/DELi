@@ -19,7 +19,7 @@
             "overhang": "TT",
             "error_correction": "levenshtein_dist:1,asymmetrical"
         },
-        "pre-umi": {
+        "preumi": {
             "tag": "AATGCCAGTACG"
         },
         "umi": {

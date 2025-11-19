@@ -1,26 +1,24 @@
 """code for calling DNA barcodes"""
 
-import abc
 import json
 import os
-import sys
-import warnings
 from collections import defaultdict
-from typing import Literal, Optional, no_type_check
+from typing import Optional
 
-import numpy as np
-from Bio.Align import PairwiseAligner, substitution_matrices
 from dnaio import SequenceRecord
-from numba import njit
 
-from deli.dels.building_block import BuildingBlock
+from deli.dels.barcode import BarcodeSection
+from deli.dels.building_block import TaggedBuildingBlock
 from deli.dels.compound import DELCompound
-from deli.dels.library import DELibrary, DELibraryCollection
-from deli.dna import Aligner, HybridSemiGlobalAligner, SemiGlobalAligner
+from deli.dels.library import DELibrary
 
-from .bb_calling import BuildingBlockSetTagCaller, FailedBuildingBlockCall, ValidBuildingBlockCall
-from .lib_calling import LibraryCaller, SingleReadLibraryCaller, ValidLibraryCall
+from ._base import FailedDecodeAttempt
+from .barcode_calling import AmbiguousBarcodeCall, BarcodeCaller, FailedBarcodeLookup, ValidCall, get_barcode_caller
+from .library_demultiplex import AlignedSeq, FailedStaticAlignment, LibraryDemultiplexer
 from .umi import UMI
+
+
+MAX_RETRIES = 50  # number of alignments to attempt before giving up
 
 
 class DecodeStatistics:
@@ -37,22 +35,26 @@ class DecodeStatistics:
     ----------
     num_seqs_read: int
         the number of sequences read during decoding
-    num_seqs_decoded_per_lib: defaultdict[str, int]
+    seq_lengths: dict[int, int]
+        the distribution of read lengths observed
+    num_seqs_decoded_per_lib: dict[str, int]
         the number of sequences decoded per library
-    num_seqs_degen_per_lib: defaultdict[str, int]
+    num_seqs_degen_per_lib: dict[str, int]
         the number of sequences degened per library
     num_failed_too_short: int
-        the number of decoded failed because observed_seq read was too short
+        the number of decoded failed because barcode read was too short
     num_failed_too_long: int
-        the number of decoded failed because observed_seq read was too long
+        the number of decoded failed because barcode read was too long
+    num_failed_alignment: int
+        the number of decoded failed because initial alignment failed
     num_failed_library_call: int
         the number of decoded failed because the library was not called
-    num_failed_library_match_too_short: int
-        the number of decoded failed because the library match was too short
     num_failed_building_block_call: int
         the number of decoded failed because a building block was not called
-    num_failed_alignment: int
-        the number of decoded failed because alignment failed
+    num_failed_ambiguous_building_block_call: int
+        the number of decoded failed because a building block call was ambiguous
+    num_failed_umi: int
+        the number of decoded failed because UMI calling failed
     """
 
     def __init__(self):
@@ -65,11 +67,11 @@ class DecodeStatistics:
         # track the unique failures
         self.num_failed_too_short: int = 0
         self.num_failed_too_long: int = 0
-        self.num_failed_library_call: int = 0
-        self.num_failed_library_match_too_short: int = 0
-        self.num_failed_building_block_call: int = 0
         self.num_failed_alignment: int = 0
-        self.num_failed_umi_match_too_short: int = 0
+        self.num_failed_library_call: int = 0
+        self.num_failed_building_block_call: int = 0
+        self.num_failed_ambiguous_building_block_call: int = 0
+        self.num_failed_umi: int = 0
 
     def __add__(self, other) -> "DecodeStatistics":
         """Add two DecodeStatistics objects together"""
@@ -79,27 +81,20 @@ class DecodeStatistics:
         result.num_seqs_read = self.num_seqs_read + other.num_seqs_read
         result.num_failed_too_short = self.num_failed_too_short + other.num_failed_too_short
         result.num_failed_too_long = self.num_failed_too_long + other.num_failed_too_long
-        result.num_failed_library_call = (
-            self.num_failed_library_call + other.num_failed_library_call
-        )
-        result.num_failed_library_match_too_short = (
-            self.num_failed_library_match_too_short + other.num_failed_library_match_too_short
-        )
+        result.num_failed_library_call = self.num_failed_library_call + other.num_failed_library_call
+        result.num_failed_alignment = self.num_failed_alignment + other.num_failed_alignment
         result.num_failed_building_block_call = (
             self.num_failed_building_block_call + other.num_failed_building_block_call
         )
-        result.num_failed_alignment = self.num_failed_alignment + other.num_failed_alignment
-        result.num_failed_umi_match_too_short = (
-            self.num_failed_umi_match_too_short + other.num_failed_umi_match_too_short
+        result.num_failed_ambiguous_building_block_call = (
+            self.num_failed_ambiguous_building_block_call + other.num_failed_ambiguous_building_block_call
         )
+        result.num_failed_umi = self.num_failed_umi + other.num_failed_umi
 
         # Merge defaultdicts
         result.seq_lengths = defaultdict(
             int,
-            {
-                k: self.seq_lengths[k] + other.seq_lengths[k]
-                for k in set(self.seq_lengths) | set(other.seq_lengths)
-            },
+            {k: self.seq_lengths[k] + other.seq_lengths[k] for k in set(self.seq_lengths) | set(other.seq_lengths)},
         )
         result.num_seqs_decoded_per_lib = defaultdict(
             int,
@@ -139,6 +134,8 @@ class DecodeStatistics:
         """
         Write the statistics to a file
 
+        Notes
+        -----
         Will be in JSON format
 
         Parameters
@@ -176,9 +173,7 @@ class DecodeStatistics:
 
         result.num_seqs_read = data.get("num_seqs_read", 0)
 
-        result.seq_lengths = defaultdict(
-            int, {int(key): int(val) for key, val in data.get("seq_lengths", {}).items()}
-        )
+        result.seq_lengths = defaultdict(int, {int(key): int(val) for key, val in data.get("seq_lengths", {}).items()})
         result.num_seqs_decoded_per_lib = defaultdict(
             int,
             {str(key): int(val) for key, val in data.get("num_seqs_decoded_per_lib", {}).items()},
@@ -187,14 +182,14 @@ class DecodeStatistics:
             int,
             {str(key): int(val) for key, val in data.get("num_seqs_degen_per_lib", {}).items()},
         )
+        # collect error info
         result.num_failed_too_short = data.get("num_failed_too_short", 0)
         result.num_failed_too_long = data.get("num_failed_too_long", 0)
-        result.num_failed_library_call = data.get("num_failed_library_call", 0)
-        result.num_failed_library_match_too_short = data.get(
-            "num_failed_library_match_too_short", 0
-        )
-        result.num_failed_building_block_call = data.get("num_failed_building_block_call", 0)
         result.num_failed_alignment = data.get("num_failed_alignment", 0)
+        result.num_failed_library_call = data.get("num_failed_library_call", 0)
+        result.num_failed_building_block_call = data.get("num_failed_building_block_call", 0)
+        result.num_failed_ambiguous_building_block_call = data.get("num_failed_ambiguous_building_block_call", 0)
+        result.num_failed_umi = data.get("num_failed_umi", 0)
         return result
 
 
@@ -210,222 +205,143 @@ class DecodedDELCompound(DELCompound):
     DEL_IDs are the same, even if they have different UMIs.
     This might not seem intuitive, but is needed to help with
     degeneration (based on UMI) that happens later
+
+    Parameters
+    ----------
+    library_call : ValidCall[DELibrary]
+        the called library
+    building_block_calls : list[ValidCall[TaggedBuildingBlock]]
+        the building block calls *in order of the library's building block sections*
+    umi: UMI or `None`
+        the UMI for the read
+        if not using umi or no umi in the barcode, use a `None`
+
+    Attributes
+    ----------
+    compound_id: str
+        the unique ID of the decoded compound
+        composed of the library ID and building block IDs
+    library: DELibrary
+        the library associated with the decoded compound
+    building_blocks: list[TaggedBuildingBlock]
+        the building blocks associated with the decoded compound
     """
 
     def __init__(
         self,
-        library: DELibrary,
-        building_blocks: list[BuildingBlock],
+        library_call: ValidCall[DELibrary],
+        building_block_calls: list[ValidCall[TaggedBuildingBlock]],
         umi: UMI | None = None,
     ):
-        """
-        Initialize the DecodedDELCompound object
-
-        Parameters
-        ----------
-        library : LibraryCall
-            the called library
-        building_blocks : list[BuildingBlock]
-            the building block calls
-        umi: UMI or `None`
-            the UMI for the read
-            if not using umi or no umi in the barcode, use a `None`
-        """
-        super().__init__(library=library, building_blocks=building_blocks)
+        self.library_call = library_call
+        self.building_block_calls = building_block_calls
         self.umi = umi
+        super().__init__(library=library_call.obj, building_blocks=[bb_call.obj for bb_call in building_block_calls])
 
 
-class FailedDecode:
-    """
-    Base class for all failed decodes
-
-    Failed decodes are really just placeholders
-    to help track why a decode failed.
-    """
-
-    pass
-
-
-class ReadTooShort(FailedDecode):
+class ReadTooShort(FailedDecodeAttempt):
     """returned if read to decode was too short (based on settings)"""
 
-    pass
+    def __init__(self, sequence):
+        super().__init__(sequence=sequence, reason="Read too short")
 
 
-class ReadTooLong(FailedDecode):
+class ReadTooLong(FailedDecodeAttempt):
     """returned if read to decode was too long (based on settings)"""
 
-    pass
+    def __init__(self, sequence):
+        super().__init__(sequence=sequence, reason="Read too long")
 
 
-class LibraryLookupFailed(FailedDecode):
-    """returned if library lookup was not successful"""
+class FailedBuildingBlockCall(FailedDecodeAttempt):
+    """returned if building block call failed"""
 
-    pass
-
-
-class LibraryMatchTooShort(FailedDecode):
-    """returned if library lookup resulted in a match that was too short to call"""
-
-    pass
+    def __init__(self, sequence, barcode: str, bb_section_name: str):
+        super().__init__(
+            sequence=sequence,
+            reason=f"failed to call building block barcode '{barcode}' for section '{bb_section_name}'",
+        )
 
 
-class BuildingBlockLookupFailed(FailedDecode):
-    """
-    Returned if building block lookup was not successful
+class AmbiguousBuildingBlockBarcode(FailedDecodeAttempt):
+    """returned if building block barcode is ambiguous"""
 
-    This will be true if any of the building blocks failed
-    Even if you got 99/100, it is still a failure
-    """
-
-    pass
-
-
-class AlignmentFailed(FailedDecode):
-    """Returned if the alignment is not successful during calling"""
-
-    pass
+    def __init__(self, sequence, barcode: str, bb_section_name: str):
+        super().__init__(
+            sequence=sequence,
+            reason=f"ambiguous barcode for building block barcode '{barcode}' in section '{bb_section_name}'",
+        )
 
 
-class UMIMatchTooShort(FailedDecode):
-    """Returned if UMI match is too short to call post decode"""
+class AlignmentFailed(FailedDecodeAttempt):
+    """returned if alignment appears to be poor"""
 
-    pass
+    def __init__(self, sequence):
+        super().__init__(sequence=sequence, reason="alignment of read to barcode is poor")
 
 
 class DELCollectionDecoder:
     """
-    A decoder used to decode barcodes from selection using a collection of libraries
+    Decodes reads into DEL compounds
 
-    For most use cases, this is the main entry point for decoding.
-    Use one of the LibraryDecoders if you only have one (1) DEL in your selection
-    As this will be far faster
+    Parameters
+    ----------
+    library_demultiplexer: LibraryDemultiplexer
+        the library demultiplexer to use for calling libraries
+    wiggle: bool, default = False
+        If true, allow for wiggling the tag to find the best match
+    max_read_length: int or None, default = None
+        maximum length of a read to be considered for decoding
+        if above the max, decoding will fail
+        if `None` will default to 5x the min_read_length
+    min_read_length: int or None, default = None
+        minimum length of a read to be considered for decoding
+        if below the min, decoding will fail
+        if `None` will default to the smallest min match length of
+        any library in the collection considered for decoding
+    default_error_correction_mode_str: str, default = "levenshtein_dist:1,asymmetrical"
+        If a decodable section does not have an error correction mode defined,
+        use this one by default.
+    decode_statistics: DecodeStatistics or None, default = None
+        the statistic tracker for the decoding run
+        if None, will initialize a new, empty statistic object
+
+    Attributes
+    ----------
+    library_decoders: dict[DELibrary, LibraryDecoder]
+        the library decoders for each library in the demultiplexer
     """
 
     def __init__(
         self,
-        library_collection: DELibraryCollection,
-        library_error_tolerance: float = 0.1,
-        min_library_overlap: Optional[int] = None,
-        revcomp: bool = False,
-        read_type: Literal["single", "paired"] = "single",
-        alignment_algorithm: Literal["semi", "hybrid"] = "semi",
-        bb_calling_approach: Literal["alignment", "bio"] = "bio",
+        library_demultiplexer: LibraryDemultiplexer,
+        wiggle: bool = False,
         max_read_length: Optional[int] = None,
         min_read_length: Optional[int] = None,
-        disable_error_correction: bool = False,
+        default_error_correction_mode_str: str = "levenshtein_dist:1,asymmetrical",
         decode_statistics: Optional[DecodeStatistics] = None,
     ):
-        """
-        Initialize the DELCollectionDecoder
-
-        Parameters
-        ----------
-        library_collection: DELibraryCollection
-            the library collection used for the selection to decode
-        library_error_tolerance: float, default = 0.2
-            the percent error to be tolerated in the library section
-            this will be converted to number of errors based on tag size
-            and down to the nearest whole number.
-            for example, a library with 14 nucleotides would tolerate
-            1, 2, and 4 errors for an error tolerance of 0.1, 0.2 and 0.3 respectively
-        min_library_overlap: int or None, default = 7
-            the minimum number of nucleotides required to match
-            the library tag
-            This is because the demultiplexing will accept truncated matches
-            at the front/back of the tag. For example, a tag of AGCTGGTTC
-            could match a read of GTTC if the min overlap was <=4
-            If `None`, will default to the exact length of the tag, meaning
-            the whole tag is expected.
-            The recommended value is greater than 8, as the odds of a match this strong
-            to be accidental are low
-        alignment_algorithm: Literal["semi", "hybrid"], default = "semi"
-            the algorithm to use for alignment
-            only used if bb_calling_approach is "alignment"
-        read_type: Literal["single", "paired"], default = "single"
-            the type of read
-            paired are for paired reads
-            all other read types are single
-        revcomp: bool, default = False
-            If true, search the reverse compliment as well
-        max_read_length: int or None, default = None
-            maximum length of a read to be considered for decoding
-            if above the max, decoding will fail
-            if `None` will default to 5x the min_read_length
-        min_read_length: int or None, default = None
-            minimum length of a read to be considered for decoding
-            if below the min, decoding will fail
-            if `None` will default to smallest min match length of
-            any library in the collection considered for decoding
-        bb_calling_approach: Literal["alignment"], default = "alignment"
-            the algorithm to use for bb_calling
-            right now only "alignment" mode is supported
-        disable_error_correction: bool, default = False
-            disable error correction for any barcode section
-            capable of it
-        decode_statistics: DecodeStatistics or None, default = None
-            the statistic tracker for the decoding run
-            if None, will initialize a new, empty statistic object
-        """
+        self.library_demultiplexer = library_demultiplexer
         self.decode_statistics: DecodeStatistics = (
             decode_statistics if decode_statistics is not None else DecodeStatistics()
         )
 
-        self.library_caller: LibraryCaller
-        if read_type == "single":
-            self.library_caller = SingleReadLibraryCaller(
-                library_collection,
-                error_rate=library_error_tolerance,
-                min_overlap=min_library_overlap,
-                revcomp=revcomp,
+        # build library decoders
+        self.library_decoders: dict[DELibrary, LibraryDecoder] = {
+            library: LibraryDecoder(
+                library=library, wiggle=wiggle, default_error_correction_mode_str=default_error_correction_mode_str
             )
-        elif read_type == "paired":
-            warnings.warn(
-                "DELi only support single reads currently; if a paired mode would be nice"
-                "please raise an issue to request it",
-                stacklevel=1,
-            )
-            self.library_caller = SingleReadLibraryCaller(
-                library_collection,
-                error_rate=library_error_tolerance,
-                min_overlap=min_library_overlap,
-                revcomp=revcomp,
-            )
-        else:
-            raise ValueError(f"Unknown read_type '{read_type}'")
-
-        # determine library caller class
-        self.library_decoders: dict[str, LibraryDecoder]
-        if bb_calling_approach == "alignment":
-            self.library_decoders = {
-                library.library_id: DynamicAlignmentLibraryDecoder(
-                    library,
-                    decode_statistics=decode_statistics,
-                    disable_error_correction=disable_error_correction,
-                    alignment_algorithm=alignment_algorithm,
-                )
-                for library in library_collection.libraries
-            }
-        elif bb_calling_approach == "bio":
-            self.library_decoders = {
-                library.library_id: BioAlignmentLibraryDecoder(
-                    library,
-                    decode_statistics=self.decode_statistics,
-                    disable_error_correction=disable_error_correction,
-                )
-                for library in library_collection.libraries
-            }
-        else:
-            raise ValueError(f"unrecognized bb_calling_approach {bb_calling_approach}")
+            for library in self.library_demultiplexer.libraries
+        }
 
         # set the min/max lengths
         self._min_read_length: int
         if isinstance(min_read_length, int):
             self._min_read_length = min_read_length
         else:
-            self._min_read_length = min(
-                [lib.barcode_schema.min_length for lib in library_collection.libraries]
-            )
+            self._min_read_length = (
+                min([lib.barcode_schema.min_length for lib in library_demultiplexer.libraries]) - 10
+            )  # allow some slack for seq errors
 
         self._max_read_length: int
         if isinstance(max_read_length, int):
@@ -433,516 +349,246 @@ class DELCollectionDecoder:
         else:
             self._max_read_length = 5 * self._min_read_length
 
-    def decode_read(self, sequence: SequenceRecord) -> DecodedDELCompound | FailedDecode:
+    def decode_read(self, sequence: SequenceRecord) -> DecodedDELCompound | FailedDecodeAttempt:
         """
-        Given a observed_seq read, decode its barcode
+        Given a raw read, decode it into a DecodedDELCompound
 
+        Notes
+        -----
+        If decoding fails, will return a FailedDecodeAttempt object
+        explaining why it failed
+
+        Parameters
+        ----------
+        sequence: SequenceRecord
+            the raw read to decode
+
+        Returns
+        -------
+        DecodedDELCompound or FailedDecodeAttempt
         """
         # check lengths
         if len(sequence) > self._max_read_length:
             self.decode_statistics.num_failed_too_long += 1
-            return ReadTooLong()
+            return ReadTooLong(sequence)
         if len(sequence) < self._min_read_length:
             self.decode_statistics.num_failed_too_short += 1
-            return ReadTooShort()
+            return ReadTooShort(sequence)
 
         self.decode_statistics.seq_lengths[len(sequence)] += 1
-        library_call = self.library_caller.call_library(sequence)
-        if isinstance(library_call, ValidLibraryCall):
-            return self.library_decoders[library_call.library.library_id].call_barcode(
-                library_call
-            )
-        else:
-            # if library calling fails cannot continue decoding
-            self.decode_statistics.num_failed_library_call += 1
-            return LibraryLookupFailed()
 
-
-class LibraryDecoder(abc.ABC):
-    """
-    Abstract class for all library decoders
-
-    A library decoder assumes the library the read is from is already known.
-    These decoders are only concerned with calling or locating all other sections.
-    Currently, that is the building block sections and UMI.
-    If you would like support for calling another section too, raise an issue
-    to add that feature
-    """
-
-    def __init__(
-        self,
-        library: DELibrary,
-        decode_statistics: DecodeStatistics | None = None,
-        disable_error_correction: bool = False,
-    ):
-        """
-        Initialize the LibraryDecoder
-
-        Parameters
-        ----------
-        library: DELibrary
-            the library to decode from
-        decode_statistics: DecodeStatistics or `None`, default = `None`
-            the statistic tracker for the decoding run
-            if `None` will initialize a new, empty statistic object
-        disable_error_correction: bool, default False
-            disable error correction for any barcode section
-            capable of it
-        """
-        self.disable_error_correction = disable_error_correction
-        self.library = library
-
-        self.decode_statistics: DecodeStatistics
-        if decode_statistics is None:
-            self.decode_statistics = DecodeStatistics()
-        else:
-            self.decode_statistics = decode_statistics
-
-    @abc.abstractmethod
-    def call_barcode(self, library_call: ValidLibraryCall) -> DecodedDELCompound | FailedDecode:
-        """Given a library call, decode the barcode"""
-        raise NotImplementedError()
-
-
-class DynamicAlignmentLibraryDecoder(LibraryDecoder):
-    """
-    Uses a dynamic programing alignment algorithm to call the barcode
-
-    Will align to the library tag (and other known static regions) and use
-    that alignment to locate the required sections to call
-    """
-
-    def __init__(
-        self,
-        library: DELibrary,
-        decode_statistics: DecodeStatistics | None = None,
-        alignment_algorithm: Literal["semi", "hybrid"] = "semi",
-        disable_error_correction: bool = False,
-    ):
-        """
-        Initialize the DynamicAlignmentLibraryDecoder
-
-        Parameters
-        ----------
-        library: DELibrary
-            the library to decode from
-        decode_statistics: DecodeStatistics or `None`, default = `None`
-            the statistic tracker for the decoding run
-            if `None` will initialize a new, empty statistic object
-        alignment_algorithm: Literal["semi", "hybrid"], default "semi"
-            the type alignment algorithm to use
-            semi is a semi global and hybrid is a hybrid semi global alignment
-            see aligning docs for more details
-        disable_error_correction: bool, default False
-            disable error correction for any barcode section
-            capable of it
-        """
-        super().__init__(
-            library=library,
-            decode_statistics=decode_statistics,
-            disable_error_correction=disable_error_correction,
-        )
-
-        # assign the aligner
-        self.aligner: Aligner
-        if alignment_algorithm == "semi":
-            self.aligner = SemiGlobalAligner()
-        elif alignment_algorithm == "hybrid":
-            self.aligner = HybridSemiGlobalAligner()
-        else:
-            raise ValueError(
-                f"unknown building block alignment algorithm: '{alignment_algorithm}';"
-                f"currently supported values are ['semi', 'hybrid']"
-            )
-
-        self._bb_callers: dict[str, BuildingBlockSetTagCaller] = {
-            bb_section.section_name: BuildingBlockSetTagCaller(
-                building_block_tag_section=bb_section,
-                building_block_set=bb_set,
-                disable_error_correction=self.disable_error_correction,
-            )
-            for bb_section, bb_set in self.library.iter_bb_barcode_sections_and_sets()
-        }
-
-        self._barcode_reference = self.library.barcode_schema.get_full_barcode()
-
-        _barcode_section_spans = self.library.barcode_schema.get_section_spans(
-            exclude_overhangs=True
-        )
-        self._bb_sections_spans_to_search_for: dict[str, slice] = {
-            section.section_name: _barcode_section_spans[section.section_name]
-            for section in self.library.barcode_schema.building_block_sections
-        }
-        self._umi_span: slice | None = _barcode_section_spans.get("umi", None)
-
-        # check the alignment of callers and sections:
-        _missing_sections = set(self._bb_callers.keys()) - set(
-            self._bb_sections_spans_to_search_for.keys()
-        )
-        if len(_missing_sections) != 0:
-            raise ValueError(
-                f"building block caller for section(s) '{_missing_sections}'"
-                f"are missing from the library barcode"
-            )
-
-    def call_barcode(self, library_call: ValidLibraryCall) -> DecodedDELCompound | FailedDecode:
-        """
-        Given a library call, decode the read
-
-        Parameters
-        ----------
-        library_call: ValidLibraryCall
-            the library call to decode
-
-        Returns
-        -------
-        DecodedDELCompound
-        """
-        _alignment = self.aligner.align(self._barcode_reference, library_call.sequence.sequence)
-
-        _barcode_section_alignment: dict[str, str] = dict()
-        for section_name, section_span in self._bb_sections_spans_to_search_for.items():
-            _aligned_span = _alignment.map_seq1_span_to_seq2_span(
-                section_span.start, section_span.stop
-            )
-            _barcode_section_alignment[section_name] = library_call.sequence.sequence[
-                slice(*_aligned_span)
-            ]
-
-        # call the building blocks
-        bb_calls: dict[str, ValidBuildingBlockCall] = dict()
-        for bb_section_name, bb_caller in self._bb_callers.items():
-            bb_call = bb_caller.call_building_block(_barcode_section_alignment[bb_section_name])
-            if isinstance(bb_call, ValidBuildingBlockCall):
-                bb_calls[bb_section_name] = bb_call
+        _call = self.library_demultiplexer.demultiplex(sequence)
+        if isinstance(_call, FailedDecodeAttempt):
+            if isinstance(_call, FailedStaticAlignment):
+                self.decode_statistics.num_failed_alignment += 1
             else:
-                self.decode_statistics.num_failed_building_block_call += 1
-                return BuildingBlockLookupFailed()
+                self.decode_statistics.num_failed_library_call += 1
+            return _call
+        else:
+            library_call, alignment_iter = _call
+            library_decoder = self.library_decoders[library_call.obj]
 
-        # extract the UMI section if there is one
-        _umi: UMI | None = None
-        if self._umi_span is not None:
-            _umi = UMI(
-                library_call.sequence.sequence[
-                    slice(
-                        *_alignment.map_seq1_span_to_seq2_span(
-                            self._umi_span.start, self._umi_span.stop
-                        )
-                    )
-                ]
-            )
+            bb_calls: FailedDecodeAttempt | list[ValidCall[TaggedBuildingBlock]] = FailedBuildingBlockCall(
+                sequence, "Null", "all"
+            )  # a generic default, should never be returned
+            umi_call: UMI | None | FailedDecodeAttempt = None
 
-        return DecodedDELCompound(
-            library=library_call.library,
-            building_blocks=[val.building_block for val in bb_calls.values()],
-            umi=_umi,
-        )
+            # TODO could speed up by just failing if too many alignments
+            for attempt_count, (alignment, _) in enumerate(alignment_iter):
+                if attempt_count > MAX_RETRIES:
+                    break
 
-
-class BioAlignmentLibraryDecoder(LibraryDecoder):
-    """
-    Uses a dynamic programing alignment algorithm to call the barcode
-
-    Will align to the library tag (and other known static regions) and use
-    that alignment to locate the required sections to call
-    """
-
-    def __init__(
-        self,
-        library: DELibrary,
-        decode_statistics: DecodeStatistics | None = None,
-        disable_error_correction: bool = False,
-    ):
-        """
-        Initialize the DynamicAlignmentLibraryDecoder
-
-        Parameters
-        ----------
-        library: DELibrary
-            the library to decode from
-        decode_statistics: DecodeStatistics or `None`, default = `None`
-            the statistic tracker for the decoding run
-            if `None` will initialize a new, empty statistic object
-        disable_error_correction: bool, default False
-            disable error correction for any barcode section
-            capable of it
-        """
-        super().__init__(
-            library=library,
-            decode_statistics=decode_statistics,
-            disable_error_correction=disable_error_correction,
-        )
-
-        # define a custom substitution matrix
-        # when aligning to N we don't want to penalize for mismatches
-        # since N represents an unknown base we need to decode
-        alphabet = "ACGTN"
-        matrix = substitution_matrices.Array(alphabet, dims=2)
-        for base1 in alphabet:
-            for base2 in alphabet:
-                if base1 == base2:
-                    matrix[base1, base2] = 1  # matches score 1
-                elif "N" in (base1, base2):
-                    matrix[base1, base2] = 0  # mismatches with 'N' score 0
-                else:
-                    matrix[base1, base2] = -1  # other mismatches score -1
-
-        # assign the aligner
-        self.aligner = PairwiseAligner(
-            match_score=1,
-            mismatch_score=-1,
-            open_gap_score=-2,
-            extend_gap_score=-1,
-            mode="global",
-            end_open_gap_score=0,
-            end_extend_gap_score=0,
-            substitution_matrix=matrix,
-        )
-
-        self._bb_callers: dict[str, BuildingBlockSetTagCaller] = {
-            bb_section.section_name: BuildingBlockSetTagCaller(
-                building_block_tag_section=bb_section,
-                building_block_set=bb_set,
-                disable_error_correction=self.disable_error_correction,
-            )
-            for bb_section, bb_set in self.library.iter_bb_barcode_sections_and_sets()
-        }
-        self._num_bb_to_call = len(self._bb_callers)
-
-        self._barcode_reference = self.library.barcode_schema.get_full_barcode()
-
-        _barcode_section_spans = self.library.barcode_schema.get_section_spans(
-            exclude_overhangs=True
-        )
-        self._bb_sections_spans_to_search_for: dict[str, slice] = {
-            section.section_name: _barcode_section_spans[section.section_name]
-            for section in self.library.barcode_schema.building_block_sections
-        }
-        self._umi_span: slice | None = _barcode_section_spans.get("umi", None)
-
-        # check the alignment of callers and sections:
-        _missing_sections = set(self._bb_callers.keys()) - set(
-            self._bb_sections_spans_to_search_for.keys()
-        )
-        if len(_missing_sections) != 0:
-            raise ValueError(
-                f"building block caller for section(s) '{_missing_sections}'"
-                f"are missing from the library barcode"
-            )
-
-        # pre compile _query_to_ref_map with dummy data
-        # this could make the initialization of the decoder take longer
-        # if this function has not been compiled yet
-        _tmp_alignment = self.aligner.align("AGCT", "AGCT")[0]
-        _query_to_ref_map(_tmp_alignment.coordinates)
-
-    def call_barcode(self, library_call: ValidLibraryCall) -> DecodedDELCompound | FailedDecode:
-        """
-        Given a library call, decode the read
-
-        Parameters
-        ----------
-        library_call: ValidLibraryCall
-            the library call to decode
-
-        Returns
-        -------
-        DecodedDELCompound
-        """
-        _alignments = self.aligner.align(library_call.sequence.sequence, self._barcode_reference)
-
-        # if biopython finds too many top scoring alignments, break out
-        #  it means that no good alignment exists, so calling is too risky
-        if len(_alignments) > 20:
-            self.decode_statistics.num_failed_alignment += 1
-            return AlignmentFailed()
-
-        # loop through all scoring alignments, skipping if at any point a bb lookup
-        # fails, and exiting and returning the first perfect match
-        for _alignment in _alignments:
-            inverse_indices = _query_to_ref_map(_alignment.coordinates)
-            bb_calls: dict[str, ValidBuildingBlockCall] = dict()
-            for section_name, section_span in self._bb_sections_spans_to_search_for.items():
-                _aligned_bb_codon = library_call.sequence.sequence[
-                    inverse_indices[section_span.start] : inverse_indices[section_span.stop - 1]
-                    + 1
-                ]
-                bb_call = self._bb_callers[section_name].call_building_block(_aligned_bb_codon)
-                if isinstance(bb_call, FailedBuildingBlockCall):
+                # call building blocks
+                bb_calls = library_decoder.call_building_blocks(alignment)
+                if not isinstance(bb_calls, FailedDecodeAttempt):
+                    umi_call = library_decoder.call_umi(alignment)
                     break
                 else:
-                    bb_calls[section_name] = bb_call
+                    continue
 
-            if len(bb_calls) != self._num_bb_to_call:
-                continue
+            if not isinstance(bb_calls, FailedDecodeAttempt):
+                if isinstance(umi_call, FailedDecodeAttempt):
+                    self.decode_statistics.num_failed_umi += 1
+                    return umi_call
+                else:
+                    return DecodedDELCompound(
+                        library_call=library_call,
+                        building_block_calls=bb_calls,
+                        umi=umi_call,
+                    )
+            else:
+                if isinstance(bb_calls, AmbiguousBuildingBlockBarcode):
+                    self.decode_statistics.num_failed_ambiguous_building_block_call += 1
+                else:
+                    self.decode_statistics.num_failed_building_block_call += 1
+                return bb_calls
 
-            # extract the UMI section if there is one
-            _umi: UMI | None = None
-            if self._umi_span is not None:
-                _umi = UMI(
-                    library_call.sequence.sequence[
-                        inverse_indices[self._umi_span.start] : inverse_indices[
-                            self._umi_span.stop - 1
-                        ]
-                        + 1
-                    ]
-                )
 
-            # check umi length
-            if (_umi is not None) and (
-                len(_umi) < self.library.barcode_schema.get_section_length("umi")
-            ):
-                warnings.warn(
-                    f"UMI length {len(_umi)} is shorter than expected "
-                    f"{self.library.barcode_schema.get_section_length('umi')}; "
-                    f"This is likely the result of a major gap in an otherwise "
-                    f"perfect (decodable) the alignment. "
-                    f"This may indicate a problem with missing or extra barcode "
-                    f"sections in your library definition.",
-                    stacklevel=1,
-                )
-                self.decode_statistics.num_failed_umi_match_too_short += 1
-                return UMIMatchTooShort()
+class BarcodeDecodingError(Exception):
+    """raised when there is an error during barcode decoding"""
 
-            return DecodedDELCompound(
-                library=library_call.library,
-                building_blocks=[val.building_block for val in bb_calls.values()],
-                umi=_umi,
+    pass
+
+
+class UMIContainsAmbiguity(FailedDecodeAttempt):
+    """Returned if UMI contains ambiguous bases ('N')"""
+
+    def __init__(self, sequence: SequenceRecord, umi_sequence: str):
+        super().__init__(sequence=sequence, reason=f"UMI contains ambiguous bases: {umi_sequence}")
+
+
+class LibraryDecoder:
+    """
+    Decodes the barcodes for variable sections in a DEL
+
+    Currently only support building block sections
+
+    Parameters
+    ----------
+    library: DELibrary
+        the library to decode from
+    wiggle: bool, default = False
+        If true, allow for wiggling the tag to find the best match
+    default_error_correction_mode_str: str, default = "levenshtein_dist:1,asymmetrical"
+        If a decodable section does not have an error correction mode defined,
+        use this one by default.
+
+    Attributes
+    ----------
+    bb_callers: dict[BarcodeSection, BarcodeCaller]
+        the barcode callers for each building block section in the library
+    """
+
+    def __init__(
+        self,
+        library: DELibrary,
+        wiggle: bool = False,
+        default_error_correction_mode_str: str = "levenshtein_dist:1,asymmetrical",
+    ):
+        self.library = library
+        self.wiggle = wiggle
+
+        self.bb_callers: dict[BarcodeSection, BarcodeCaller] = {}
+        for bb_sec, bb_set in self.library.iter_bb_barcode_sections_and_sets():
+            error_correction_mode_str = getattr(bb_sec, "error_correction_mode", default_error_correction_mode_str)
+            self.bb_callers[bb_sec] = get_barcode_caller(
+                tag_map={tag: bb for bb in bb_set.building_blocks for tag in bb.tags},
+                error_correction_mode_str=error_correction_mode_str,
             )
-        self.decode_statistics.num_failed_building_block_call += 1
-        return BuildingBlockLookupFailed()
 
+        self._dist_from_final_bb_to_umi: int = 0
+        self._umi_length: int = -1
+        if self.library.barcode_schema.has_umi():
+            self._dist_from_final_bb_to_umi = self.library.barcode_schema.get_length_between_sections(
+                self.library.barcode_schema.building_block_sections[-1].section_name,
+                "umi",
+                include_direction=False,  # UMI should always be after BBs
+            ) - (
+                len(self.library.barcode_schema.building_block_sections[-1].section_overhang)
+                if self.library.barcode_schema.building_block_sections[-1].section_overhang
+                else 0
+            )
+            self._umi_length = len(self.library.barcode_schema.get_section("umi"))
+        self._last_bb_idx: int = -1
 
-# TODO for some reason, this is needed to prevent crash when running as a CMD,
-#  but not in a python interpreter... not sure why?
-sys.setrecursionlimit(3000)
+    def call_building_blocks(
+        self, aligned_sequence: AlignedSeq
+    ) -> list[ValidCall[TaggedBuildingBlock]] | FailedDecodeAttempt:
+        """
+        Given a library call, decode the barcode
 
+        Parameters
+        ----------
+        aligned_sequence: AlignedSeq
+            the aligned sequence to decode the building blocks from
 
-@no_type_check
-@njit
-def _query_to_ref_map(coords):
-    """
-    Generate map from query indices to reference indices
+        Returns
+        -------
+        list[ValidCall[TaggedBuildingBlock]] or FailedDecodeAttempt
+            the building block calls if successful,
+            else a FailedDecodeAttempt explaining why it failed
+        """
+        bb_calls: list[ValidCall[TaggedBuildingBlock]] = []
 
-    Map is an array of length equal to the query sequence length
-    Each index indicates the reference index that the query index maps to
+        _last_bb_idx = -1
+        for bb_sec, bb_caller in self.bb_callers.items():
+            section_codon = aligned_sequence.get_section_barcode(bb_sec.section_name)
+            _last_bb_idx = aligned_sequence.section_spans[bb_sec.section_name][1]
+            bb_call = bb_caller.decode_barcode(section_codon)
 
-    Notes
-    -----
-    Uses the coordinates from a Biopython alignment object
-    """
-    query_len = coords[1, -1]
-    mapping = np.full(query_len, -1, dtype=np.int64)
-    n_blocks = coords.shape[1] - 1
-    for i in range(n_blocks):
-        ref_start, ref_end = coords[0, i], coords[0, i + 1]
-        query_start, query_end = coords[1, i], coords[1, i + 1]
-        if (ref_end > ref_start) and (query_end > query_start):
-            block_len = ref_end - ref_start
-            for j in range(block_len):
-                mapping[query_start + j] = ref_start + j
-    next_val = -1
-    for i in range(query_len - 1, -1, -1):
-        if mapping[i] == -1:
-            if next_val != -1:
-                mapping[i] = next_val
+            if isinstance(bb_call, FailedBarcodeLookup) and self.wiggle:
+                true_section_length = len(bb_sec.section_tag)
+                best_score = 100.0
+                # default to failed lookup
+                best_call: ValidCall[DELibrary] | FailedBarcodeLookup = FailedBarcodeLookup("placeholder")
+
+                start, stop = aligned_sequence.section_spans[bb_sec.section_name]
+                adjusted_section_codon = aligned_sequence.sequence.sequence[start - 1 : stop + 1]
+
+                for length in range(true_section_length, true_section_length + 1, true_section_length - 1):
+                    wiggle_start = 0
+                    wiggle_end = wiggle_start + length
+                    while wiggle_end <= true_section_length + 2:
+                        wiggle_codon = adjusted_section_codon[wiggle_start:wiggle_end]
+                        wiggle_call = bb_caller.decode_barcode(wiggle_codon)
+                        if not isinstance(wiggle_call, FailedBarcodeLookup):
+                            # TODO could have an option to first match instead of best match
+                            if wiggle_call.score == 0:  # found perfect match quit now
+                                bb_call = wiggle_call
+                                _last_bb_idx = stop - true_section_length + wiggle_end
+                                break
+                            elif wiggle_call.score < best_score:
+                                best_score = wiggle_call.score
+                                best_call = wiggle_call
+                                _last_bb_idx = stop - true_section_length + wiggle_end
+                            elif wiggle_call.score == best_score:
+                                # if the barcodes are different but have the same score, we cannot decide
+                                if (not isinstance(best_call, FailedBarcodeLookup)) and (
+                                    wiggle_call.obj != best_call.obj
+                                ):
+                                    best_call = AmbiguousBarcodeCall(wiggle_codon)
+                        # move the wiggle window
+                        wiggle_start += 1
+                        wiggle_end = wiggle_start + length
+
+                    if not isinstance(bb_call, FailedBarcodeLookup):
+                        break  # found perfect match quit now
+
+                if best_call is not None:
+                    bb_call = best_call
+
+            if isinstance(bb_call, FailedBarcodeLookup):
+                if isinstance(bb_call, AmbiguousBarcodeCall):
+                    return AmbiguousBuildingBlockBarcode(aligned_sequence.sequence, section_codon, bb_sec.section_name)
+                return FailedBuildingBlockCall(aligned_sequence.sequence, section_codon, bb_sec.section_name)
+            else:
+                bb_calls.append(bb_call)
+        self._last_bb_idx = _last_bb_idx
+        return bb_calls
+
+    def call_umi(self, aligned_sequence: AlignedSeq) -> UMI | None | FailedDecodeAttempt:
+        """
+        Given a library call, decode the UMI if present
+
+        Will return None if no UMI is defined in the library schema
+
+        Parameters
+        ----------
+        aligned_sequence: AlignedSeq
+            the aligned sequence to decode the UMI from
+        """
+        if self._umi_length == -1:
+            return None
+        elif self._last_bb_idx == -1:
+            raise BarcodeDecodingError("Cannot call UMI before building blocks have been called")
         else:
-            next_val = mapping[i]
-    if next_val == -1:
-        mapping[:] = query_len
-    else:
-        for i in range(query_len):
-            if mapping[i] == -1:
-                mapping[i] = query_len
-    return mapping
-
-
-#####
-# Calling by regex alignment has be removed, but these functions
-# will stick around incase we want to roll that back
-#
-#
-# def _between(
-#         val: int,
-#         start: int,
-#         stop: int,
-#         right_inclusive: bool = True,
-#         left_inclusive: bool = False):
-#     """
-#     Helper function for determining if some value is between two values
-#
-#     Parameters
-#     ----------
-#     val: int
-#         value to check if in between
-#     start: int
-#         start of the between range
-#     stop: int
-#         stop of the between range
-#     right_inclusive: bool = True
-#         include the `start` value in the range
-#     left_inclusive: bool = True
-#         include the `stop` value in the range
-#
-#     Returns
-#     -------
-#     bool
-#         if `val` is between `start` and `stop`
-#     """
-#     return (start - right_inclusive) < val < (stop + left_inclusive)
-#
-#
-# def _match_call_mode(
-#         match: FullBarcodeMatch,
-#         barcode_schema: BarcodeSchema
-# ) -> BarcodeAlignment:
-#     """
-#     Call mode function used to generate section alignment in match mode
-#
-#     Notes
-#     -----
-#     Needs FullBarcodeMatches (generated with the `full_match=True` flag
-#     during the matching)
-#
-#     Parameters
-#     ----------
-#     match: FullBarcodeMatch
-#         the match to generate the alignment for
-#     barcode_schema:
-#         the schema defining the barcode to align to
-#
-#     Returns
-#     -------
-#     BarcodeAlignment
-#     """
-#     _tmp_alignment = barcode_schema.barcode_spans.copy()
-#
-#     _errors: List[Tuple[int, str]] =
-#     list(zip(*match.get_sorted_match_sequence_error_idx(exclude_substitute=True)))
-#     if len(_errors) == 0:
-#         return BarcodeAlignment(_tmp_alignment)
-#
-#     (_err_idx, _err_type) = _errors.pop(0)
-#     _buff = 0
-#     _spans = barcode_schema.barcode_spans.copy()
-#     for _key, (_start, _stop) in _tmp_alignment.items():
-#         _start = _start + _buff
-#         _stop = _stop + _buff
-#         _end = _stop
-#         while _err_idx < _end:
-#             if _between(_err_idx, _start, _stop):
-#                 if _err_type == "insert":
-#                     _stop += 1
-#                 elif _err_type == "delete":
-#                     _stop -= 1
-#                 else:
-#                     raise ValueError(f"unrecognized error type {_err_type}")
-#
-#                 try:
-#                     (_err_idx, _err_type) = _errors.pop(0)
-#                 except IndexError:
-#                     (_err_idx, _err_type) = (1e9, "no-more-errors")
-#         _spans[_key] = (_start, _stop)
-#         _buff += (_stop - _end)
-#     return BarcodeAlignment(_spans)
-####
+            umi_start = self._last_bb_idx + self._dist_from_final_bb_to_umi
+            umi_stop = umi_start + self._umi_length
+            umi_codon = aligned_sequence.sequence.sequence[umi_start:umi_stop]
+            aligned_umi_codon = aligned_sequence.get_section_barcode("umi")
+            if ("N" in umi_codon) or ("N" in aligned_umi_codon):
+                return UMIContainsAmbiguity(aligned_sequence.sequence, umi_codon)
+            if umi_codon != aligned_umi_codon:
+                return UMI([umi_codon, aligned_umi_codon])
+            else:
+                return UMI([umi_codon])

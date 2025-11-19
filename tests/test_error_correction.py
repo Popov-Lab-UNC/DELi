@@ -2,16 +2,12 @@
 
 import pytest
 
-from deli.decode.bb_calling import (
-    HammingDistHashMap,
-    HashMapCollisionError,
-    LevenshteinDistHashMap,
-)
+from deli.decode.barcode_calling import HammingDistBarcodeCaller, HashMapCollisionError, LevenshteinDistBarcodeCaller
 from deli.dels.building_block import TaggedBuildingBlock, TaggedBuildingBlockSet
 
 
 class TestHammingHashCorrectors:
-    """test the accuracy of the HammingDistHashMap correctors"""
+    """test the accuracy of the HammingDistBarcodeCaller correctors"""
 
     @pytest.fixture
     def tagged_hamming3_bb_set(self) -> TaggedBuildingBlockSet:
@@ -73,103 +69,101 @@ class TestHammingHashCorrectors:
 
     @pytest.mark.unit
     def test_hamming3_1_hashmap_corrector(self, tagged_hamming3_bb_set):
-        """Test HammingDistHashMap on a hamming 3 set with non-asym dist cutoff 3"""
+        """Test HammingDistBarcodeCaller on a hamming 3 set with non-asym dist cutoff 3"""
         # set up the hamming 3 correctors
-        hamming3_1_corrector = HammingDistHashMap(bb_set=tagged_hamming3_bb_set, distance_cutoff=1)
+        hamming3_1_corrector = HammingDistBarcodeCaller(
+            tag_map={tag: bb for bb in tagged_hamming3_bb_set.building_blocks for tag in bb.tags}, distance_cutoff=1
+        )
 
         # test the correctors
-        res = hamming3_1_corrector.correct_sequence("TGGGCGTT")  # direct lookup should pass
-        assert res == "TGGGCGTT"
-        res = hamming3_1_corrector.correct_sequence("TGGGCGTA")  # 1 error should pass
-        assert res == "TGGGCGTT"
-        res = hamming3_1_corrector.correct_sequence("TGGGCGAA")  # 2 errors should fail
-        assert res is None
-        res = hamming3_1_corrector.correct_sequence("AAAAAAAA")  # not in set should fail
-        assert res is None
+        bb = tagged_hamming3_bb_set.building_blocks[0]
+        res = hamming3_1_corrector._hash_map["TGGGCGTT"]  # direct lookup should pass
+        assert res == (bb, 0)
+        res = hamming3_1_corrector._hash_map["TGGGCGTA"]  # 1 error should pass
+        assert res == (bb, 1)
+        with pytest.raises(KeyError):
+            hamming3_1_corrector._hash_map["TGGGCGAA"]  # 2 errors should fail
+        with pytest.raises(KeyError):
+            hamming3_1_corrector._hash_map["AAAAAAAA"]  # not in set should fail
 
     @pytest.mark.unit
     def test_hamming3_2_hashmap_corrector(self, tagged_hamming3_bb_set):
-        """Test HammingDistHashMap on a hamming 3 set with asym dist cutoff 2"""
+        """Test HammingDistBarcodeCaller on a hamming 3 set with asym dist cutoff 2"""
         # set up the hamming 3 correctors
         with pytest.raises(HashMapCollisionError):
-            HammingDistHashMap(bb_set=tagged_hamming3_bb_set, distance_cutoff=2)
-        hamming3_2_corrector = HammingDistHashMap(
-            bb_set=tagged_hamming3_bb_set, distance_cutoff=2, asymmetrical=True
+            HammingDistBarcodeCaller(
+                tag_map={tag: bb for bb in tagged_hamming3_bb_set.building_blocks for tag in bb.tags},
+                distance_cutoff=2,
+                asymmetrical=False,
+            )
+
+        hamming3_2_corrector = HammingDistBarcodeCaller(
+            tag_map={tag: bb for bb in tagged_hamming3_bb_set.building_blocks for tag in bb.tags},
+            distance_cutoff=2,
+            asymmetrical=True,
         )
 
-        res = hamming3_2_corrector.correct_sequence("TGGGCGTT")  # direct lookup should pass
-        assert res == "TGGGCGTT"
-        res = hamming3_2_corrector.correct_sequence("TGGGCGTA")  # 1 error should pass
-        assert res == "TGGGCGTT"
-        res = hamming3_2_corrector.correct_sequence(
-            "TGGGCGAA"
-        )  # 2 errors but valid asymmetrical should pass
-        assert res == "TGGGCGTT"
-        res = hamming3_2_corrector.correct_sequence("TGGGCAAA")  # 3 errors should fail
-        assert res is None
-        res = hamming3_2_corrector.correct_sequence("AAAAAAAA")  # not in set should fail
-        assert res is None
+        # test the correctors
+        bb = tagged_hamming3_bb_set.building_blocks[0]
+        res = hamming3_2_corrector._hash_map["TGGGCGTT"]  # direct lookup should pass
+        assert res == (bb, 0)
+        res = hamming3_2_corrector._hash_map["TGGGCGTA"]  # 1 error should pass
+        assert res == (bb, 1)
+        res = hamming3_2_corrector._hash_map["TGGGCGAA"]  # 2 errors should pass
+        assert res == (bb, 2)
+        with pytest.raises(KeyError):
+            hamming3_2_corrector._hash_map["AAAAAAAA"]  # not in set should fail
 
     @pytest.mark.unit
     def test_hamming5_1_hashmap_corrector(self, tagged_hamming5_bb_set):
-        """Test HammingDistHashMap on a hamming 5 set with non-asym dist cutoff 1"""
+        """Test HammingDistBarcodeCaller on a hamming 5 set with non-asym dist cutoff 1"""
         # set up the hamming 5 correctors
-        hamming5_1_corrector = HammingDistHashMap(bb_set=tagged_hamming5_bb_set, distance_cutoff=1)
+        hamming5_1_corrector = HammingDistBarcodeCaller(
+            tag_map={tag: bb for bb in tagged_hamming5_bb_set.building_blocks for tag in bb.tags}, distance_cutoff=1
+        )
 
-        res = hamming5_1_corrector.correct_sequence("ACCTTCAACCGT")  # direct lookup should pass
-        assert res == "ACCTTCAACCGT"
-        res = hamming5_1_corrector.correct_sequence("ACCTTCAACCGA")  # 1 error should pass
-        assert res == "ACCTTCAACCGT"
-        res = hamming5_1_corrector.correct_sequence("ACCTTCAACCAA")  # 2 errors should fail
-        assert res is None
-        res = hamming5_1_corrector.correct_sequence("AAAAAAAAAAAA")  # not in set should fail
-        assert res is None
+        # test the correctors
+        bb = tagged_hamming5_bb_set.building_blocks[0]
+        res = hamming5_1_corrector._hash_map["ACCTTCAACCGT"]  # direct lookup should pass
+        assert res == (bb, 0)
+        res = hamming5_1_corrector._hash_map["ACCTTCAACCCT"]  # 1 error should pass
+        assert res == (bb, 1)
+        with pytest.raises(KeyError):
+            hamming5_1_corrector._hash_map["ACCTTCAAGGGT"]  # 2 errors should fail
+        with pytest.raises(KeyError):
+            hamming5_1_corrector._hash_map["AAAAAAAAAAA"]  # not in set should fail
 
     @pytest.mark.unit
     def test_hamming5_2_hashmap_corrector(self, tagged_hamming5_bb_set):
-        """Test HammingDistHashMap on a hamming 5 set with non-asym dist cutoff 2"""
-        # set up the hamming 5 correctors
-        hamming5_2_corrector = HammingDistHashMap(bb_set=tagged_hamming5_bb_set, distance_cutoff=2)
-
-        res = hamming5_2_corrector.correct_sequence("ACCTTCAACCGT")  # direct lookup should pass
-        assert res == "ACCTTCAACCGT"
-        res = hamming5_2_corrector.correct_sequence("ACCTTCAACCGA")  # 1 error should pass
-        assert res == "ACCTTCAACCGT"
-        res = hamming5_2_corrector.correct_sequence("ACCTTCAACCAA")  # 2 errors should pass
-        assert res == "ACCTTCAACCGT"
-        res = hamming5_2_corrector.correct_sequence("ACCTTCAACAAA")  # 3 errors should fail
-        assert res is None
-        res = hamming5_2_corrector.correct_sequence("AAAAAAAAAAAA")  # not in set should fail
-        assert res is None
-
-    @pytest.mark.unit
-    def test_hamming5_3_hashmap_corrector(self, tagged_hamming5_bb_set):
-        """Test HammingDistHashMap on a hamming 5 set with asym dist cutoff 3"""
+        """Test HammingDistBarcodeCaller on a hamming 5 set with non-asym dist cutoff 2"""
         # set up the hamming 5 correctors
         with pytest.raises(HashMapCollisionError):
-            HammingDistHashMap(bb_set=tagged_hamming5_bb_set, distance_cutoff=3)
-        hamming5_3_corrector = HammingDistHashMap(
-            bb_set=tagged_hamming5_bb_set, distance_cutoff=3, asymmetrical=True
+            HammingDistBarcodeCaller(
+                tag_map={tag: bb for bb in tagged_hamming5_bb_set.building_blocks for tag in bb.tags},
+                distance_cutoff=3,
+                asymmetrical=False,
+            )
+
+        hamming5_2_corrector = HammingDistBarcodeCaller(
+            tag_map={tag: bb for bb in tagged_hamming5_bb_set.building_blocks for tag in bb.tags},
+            distance_cutoff=2,
+            asymmetrical=True,
         )
 
-        res = hamming5_3_corrector.correct_sequence("ACCTTCAACCGT")  # direct lookup should pass
-        assert res == "ACCTTCAACCGT"
-        res = hamming5_3_corrector.correct_sequence("ACCTTCAACCGA")  # 1 error should pass
-        assert res == "ACCTTCAACCGT"
-        res = hamming5_3_corrector.correct_sequence("ACCTTCAACCAA")  # 2 errors should pass
-        assert res == "ACCTTCAACCGT"
-        res = hamming5_3_corrector.correct_sequence(
-            "ACCTTCAACAAA"
-        )  # 3 errors but valid asym should pass
-        assert res == "ACCTTCAACCGT"
-        res = hamming5_3_corrector.correct_sequence("ACCTTCAAAAAA")  # 4 errors should fail
-        assert res is None
-        res = hamming5_3_corrector.correct_sequence("AAAAAAAAAAAA")  # not in set should fail
-        assert res is None
+        # test the correctors
+        bb = tagged_hamming5_bb_set.building_blocks[0]
+        res = hamming5_2_corrector._hash_map["ACCTTCAACCGT"]  # direct lookup should pass
+        assert res == (bb, 0)
+        res = hamming5_2_corrector._hash_map["ACCTTCAACCCT"]  # 1 error should pass
+        assert res == (bb, 1)
+        res = hamming5_2_corrector._hash_map["ACCTTCAAGGGT"]  # 2 errors should pass
+        assert res == (bb, 2)
+        with pytest.raises(KeyError):
+            hamming5_2_corrector._hash_map["AAAAAAAAAAA"]  # not in set should fail
 
 
 class TestLevenshteinHashCorrectors:
-    """Test the accuracy of the LevenshteinDistHashMap correctors"""
+    """Test the accuracy of the LevenshteinDistBarcodeCaller correctors"""
 
     @pytest.fixture
     def tagged_levenshtein3_bb_set(self) -> TaggedBuildingBlockSet:
@@ -216,164 +210,142 @@ class TestLevenshteinHashCorrectors:
 
     @pytest.mark.unit
     def test_levenshtein3_1_hashmap_corrector(self, tagged_levenshtein3_bb_set):
-        """Test LevenshteinDistHashMap on a Levenshtein 3 set with non-asym dist cutoff 3"""
+        """Test LevenshteinDistBarcodeCaller on a Levenshtein 3 set with non-asym dist cutoff 3"""
         # set up the levenshtein 3 correctors
-        leven3_1_corrector = LevenshteinDistHashMap(
-            bb_set=tagged_levenshtein3_bb_set, distance_cutoff=1
+        leven3_1_corrector = LevenshteinDistBarcodeCaller(
+            tag_map={tag: bb for bb in tagged_levenshtein3_bb_set.building_blocks for tag in bb.tags},
+            distance_cutoff=1,
+            asymmetrical=False,
         )
 
         # test the correctors
-        res = leven3_1_corrector.correct_sequence("TCGGTGGA")  # direct lookup should pass
-        assert res == "TCGGTGGA"
-        res = leven3_1_corrector.correct_sequence("TCGGTGGG")  # 1 error should pass
-        assert res == "TCGGTGGA"
-        res = leven3_1_corrector.correct_sequence("TCGGTGG")  # 1 error should pass
-        assert res == "TCGGTGGA"
-        res = leven3_1_corrector.correct_sequence("TCGGTGGAA")  # 1 error should pass
-        assert res == "TCGGTGGA"
-        res = leven3_1_corrector.correct_sequence("TCGTGGG")  # 2 errors should fail
-        assert res is None
-        res = leven3_1_corrector.correct_sequence("AAAAAAAA")  # not in set should fail
-        assert res is None
+        bb = tagged_levenshtein3_bb_set.building_blocks[0]
+        res = leven3_1_corrector._hash_map["TCGGTGGA"]  # direct lookup should pass
+        assert res == (bb, 0)
+        res = leven3_1_corrector._hash_map["TCGGTGGG"]  # 1 error should pass
+        assert res == (bb, 1)
+        res = leven3_1_corrector._hash_map["TCGGTGG"]  # 1 error should pass
+        assert res == (bb, 1)
+        res = leven3_1_corrector._hash_map["TCGGTGGAA"]  # 1 error should pass
+        assert res == (bb, 1)
+        with pytest.raises(KeyError):
+            res = leven3_1_corrector._hash_map["TCGTGGG"]  # 2 errors should fail
+        with pytest.raises(KeyError):
+            res = leven3_1_corrector._hash_map["AAAAAAAA"]  # not in set should fail
 
     @pytest.mark.unit
     def test_levenshtein3_2_hashmap_corrector(self, tagged_levenshtein3_bb_set):
-        """Test LevenshteinDistHashMap on a Levenshtein 3 set with asym dist cutoff 2"""
+        """Test LevenshteinDistBarcodeCaller on a Levenshtein 3 set with asym dist cutoff 2"""
         # set up the levenshtein 3 correctors
         with pytest.raises(HashMapCollisionError):
-            LevenshteinDistHashMap(bb_set=tagged_levenshtein3_bb_set, distance_cutoff=2)
-        leven3_2_corrector = LevenshteinDistHashMap(
-            bb_set=tagged_levenshtein3_bb_set, distance_cutoff=2, asymmetrical=True
+            LevenshteinDistBarcodeCaller(
+                tag_map={tag: bb for bb in tagged_levenshtein3_bb_set.building_blocks for tag in bb.tags},
+                distance_cutoff=2,
+                asymmetrical=False,
+            )
+
+        leven3_2_corrector = LevenshteinDistBarcodeCaller(
+            tag_map={tag: bb for bb in tagged_levenshtein3_bb_set.building_blocks for tag in bb.tags},
+            distance_cutoff=2,
+            asymmetrical=True,
         )
 
-        res = leven3_2_corrector.correct_sequence("TCGGTGGA")  # direct lookup should pass
-        assert res == "TCGGTGGA"
-        res = leven3_2_corrector.correct_sequence("TCGGTGGG")  # 1 error should pass
-        assert res == "TCGGTGGA"
-        res = leven3_2_corrector.correct_sequence("TCGGTGG")  # 1 error should pass
-        assert res == "TCGGTGGA"
-        res = leven3_2_corrector.correct_sequence("TCGGTGGAA")  # 1 error should pass
-        assert res == "TCGGTGGA"
-        res = leven3_2_corrector.correct_sequence("TCGTGGG")  # 2 errors valid asym should pass
-        assert res == "TCGGTGGA"
-        res = leven3_2_corrector.correct_sequence("TCTGGA")  # 2 errors valid asym should pass
-        assert res == "TCGGTGGA"
-        res = leven3_2_corrector.correct_sequence("TCGGCCGA")  # 2 errors valid asym should pass
-        assert res == "TCGGTGGA"
-        res = leven3_2_corrector.correct_sequence("TCGGTGGAGG")  # 2 errors valid asym should pass
-        assert res == "TCGGTGGA"
-        res = leven3_2_corrector.correct_sequence("TCGGT")  # 3 errors should fail
-        assert res is None
-        res = leven3_2_corrector.correct_sequence("TCGGTAAAC")  # 3 errors should fail
-        assert res is None
-        res = leven3_2_corrector.correct_sequence("TCCCCGGA")  # 3 errors should fail
-        assert res is None
-        res = leven3_2_corrector.correct_sequence("AAAAAAAA")  # not in set should fail
-        assert res is None
+        bb = tagged_levenshtein3_bb_set.building_blocks[0]
+        res = leven3_2_corrector._hash_map["TCGGTGGA"]  # direct lookup should pass
+        assert res == (bb, 0)
+        res = leven3_2_corrector._hash_map["TCGGTGGG"]  # 1 error should pass
+        assert res == (bb, 1)
+        res = leven3_2_corrector._hash_map["TCGGTGG"]  # 1 error should pass
+        assert res == (bb, 1)
+        res = leven3_2_corrector._hash_map["TCGGTGGAA"]  # 1 error should pass
+        assert res == (bb, 1)
+        res = leven3_2_corrector._hash_map["TCGTGGG"]  # 2 errors valid asym should pass
+        assert res == (bb, 2)
+        res = leven3_2_corrector._hash_map["TCTGGA"]  # 2 errors valid asym should pass
+        assert res == (bb, 2)
+        res = leven3_2_corrector._hash_map["TCGGCCGA"]  # 2 errors valid asym should pass
+        assert res == (bb, 2)
+        res = leven3_2_corrector._hash_map["TCGGTGGAGG"]  # 2 errors valid asym should pass
+        assert res == (bb, 2)
+
+        with pytest.raises(KeyError):
+            leven3_2_corrector._hash_map["TCGGT"]  # 3 errors should fail
+        with pytest.raises(KeyError):
+            leven3_2_corrector._hash_map["TCGGTAAAC"]  # 3 errors should fail
+        with pytest.raises(KeyError):
+            leven3_2_corrector._hash_map["TCCCCGGA"]  # 3 errors should fail
+        with pytest.raises(KeyError):
+            leven3_2_corrector._hash_map["AAAAAAAA"]  # not in set should fail
 
     @pytest.mark.unit
     def test_levenshtein5_1_hashmap_corrector(self, tagged_levenshtein5_bb_set):
-        """Test LevenshteinDistHashMap on a Levenshtein 5 set with non-asym dist cutoff 1"""
+        """Test LevenshteinDistBarcodeCaller on a Levenshtein 5 set with non-asym dist cutoff 1"""
         # set up the levenshtein 5 correctors
-        leven5_1_corrector = LevenshteinDistHashMap(
-            bb_set=tagged_levenshtein5_bb_set, distance_cutoff=1
+        leven5_1_corrector = LevenshteinDistBarcodeCaller(
+            tag_map={tag: bb for bb in tagged_levenshtein5_bb_set.building_blocks for tag in bb.tags},
+            distance_cutoff=1,
+            asymmetrical=False,
         )
 
-        res = leven5_1_corrector.correct_sequence("GATCACGGTTTG")  # direct lookup should pass
-        assert res == "GATCACGGTTTG"
-        res = leven5_1_corrector.correct_sequence("GATCACGTTTG")  # 1 error should pass
-        assert res == "GATCACGGTTTG"
-        res = leven5_1_corrector.correct_sequence("GATCACGGTCTG")  # 1 error should pass
-        assert res == "GATCACGGTTTG"
-        res = leven5_1_corrector.correct_sequence("GATCACGGTTTGA")  # 1 error should pass
-        assert res == "GATCACGGTTTG"
-        res = leven5_1_corrector.correct_sequence("GATCACTTTG")  # 2 errors should fail
-        assert res is None
-        res = leven5_1_corrector.correct_sequence("GATCACGGTTC")  # 2 errors should fail
-        assert res is None
-        res = leven5_1_corrector.correct_sequence("GATCACGGTCCG")  # 2 errors should fail
-        assert res is None
-        res = leven5_1_corrector.correct_sequence("AAAAAAAAAAAA")  # not in set should fail
-        assert res is None
+        bb = tagged_levenshtein5_bb_set.building_blocks[0]
+        res = leven5_1_corrector._hash_map["GATCACGGTTTG"]  # direct lookup should pass
+        assert res == (bb, 0)
+        res = leven5_1_corrector._hash_map["GATCACGTTTG"]  # 1 error should pass
+        assert res == (bb, 1)
+        res = leven5_1_corrector._hash_map["GATCACGGTCTG"]  # 1 error should pass
+        assert res == (bb, 1)
+        res = leven5_1_corrector._hash_map["GATCACGGTTTGA"]  # 1 error should pass
+        assert res == (bb, 1)
+
+        with pytest.raises(KeyError):
+            leven5_1_corrector._hash_map["GATCACTTTG"]  # 2 errors should fail
+        with pytest.raises(KeyError):
+            leven5_1_corrector._hash_map["GATCACGGTTC"]  # 2 errors should fail
+        with pytest.raises(KeyError):
+            leven5_1_corrector._hash_map["GATCACGGTCCG"]  # 2 errors should fail
+        with pytest.raises(KeyError):
+            leven5_1_corrector._hash_map["AAAAAAAAAAAA"]  # not in set should fail
 
     @pytest.mark.unit
     def test_levenshtein5_2_hashmap_corrector(self, tagged_levenshtein5_bb_set):
-        """Test LevenshteinDistHashMap on a Levenshtein 5 set with non-asym dist cutoff 2"""
-        # set up the levenshtein 5 correctors
-        leven5_2_corrector = LevenshteinDistHashMap(
-            bb_set=tagged_levenshtein5_bb_set, distance_cutoff=2
-        )
-
-        res = leven5_2_corrector.correct_sequence("GATCACGGTTTG")  # direct lookup should pass
-        assert res == "GATCACGGTTTG"
-        res = leven5_2_corrector.correct_sequence("GATCACGTTTG")  # 1 error should pass
-        assert res == "GATCACGGTTTG"
-        res = leven5_2_corrector.correct_sequence("GATCACGGTCTG")  # 1 error should pass
-        assert res == "GATCACGGTTTG"
-        res = leven5_2_corrector.correct_sequence("GATCACGGTTTGA")  # 1 error should pass
-        assert res == "GATCACGGTTTG"
-        res = leven5_2_corrector.correct_sequence("GATCACTTTG")  # 2 errors should pass
-        assert res == "GATCACGGTTTG"
-        res = leven5_2_corrector.correct_sequence("GATCACGGTTC")  # 2 errors should pass
-        assert res == "GATCACGGTTTG"
-        res = leven5_2_corrector.correct_sequence("GATCACGGTCCG")  # 2 errors should pass
-        assert res == "GATCACGGTTTG"
-        res = leven5_2_corrector.correct_sequence("GATCACGGG")  # 3 errors should fail
-        assert res is None
-        res = leven5_2_corrector.correct_sequence("GATCACGGTAAGC")  # 3 errors should fail
-        assert res is None
-        res = leven5_2_corrector.correct_sequence("GATCACGGAAAG")  # 3 errors should fail
-        assert res is None
-        res = leven5_2_corrector.correct_sequence("GATCCGGATTGC")  # 3 errors should fail
-        assert res is None
-        res = leven5_2_corrector.correct_sequence("AAAAAAAAAAAA")  # not in set should fail
-        assert res is None
-
-    @pytest.mark.unit
-    def test_levenshtein5_3_hashmap_corrector(self, tagged_levenshtein5_bb_set):
-        """Test LevenshteinDistHashMap on a Levenshtein 5 set with asym dist cutoff 3"""
+        """Test LevenshteinDistBarcodeCaller on a Levenshtein 5 set with non-asym dist cutoff 2"""
         # set up the levenshtein 5 correctors
         with pytest.raises(HashMapCollisionError):
-            LevenshteinDistHashMap(bb_set=tagged_levenshtein5_bb_set, distance_cutoff=3)
-        leven5_3_corrector = LevenshteinDistHashMap(
-            bb_set=tagged_levenshtein5_bb_set, distance_cutoff=3, asymmetrical=True
+            LevenshteinDistBarcodeCaller(
+                tag_map={tag: bb for bb in tagged_levenshtein5_bb_set.building_blocks for tag in bb.tags},
+                distance_cutoff=3,
+                asymmetrical=False,
+            )
+
+        leven5_2_corrector = LevenshteinDistBarcodeCaller(
+            tag_map={tag: bb for bb in tagged_levenshtein5_bb_set.building_blocks for tag in bb.tags},
+            distance_cutoff=2,
+            asymmetrical=True,
         )
 
-        res = leven5_3_corrector.correct_sequence("GATCACGGTTTG")  # direct lookup should pass
-        assert res == "GATCACGGTTTG"
-        res = leven5_3_corrector.correct_sequence("GATCACGTTTG")  # 1 error should pass
-        assert res == "GATCACGGTTTG"
-        res = leven5_3_corrector.correct_sequence("GATCACGGTCTG")  # 1 error should pass
-        assert res == "GATCACGGTTTG"
-        res = leven5_3_corrector.correct_sequence("GATCACGGTTTGA")  # 1 error should pass
-        assert res == "GATCACGGTTTG"
-        res = leven5_3_corrector.correct_sequence("GATCACTTTG")  # 2 errors should pass
-        assert res == "GATCACGGTTTG"
-        res = leven5_3_corrector.correct_sequence("GATCACGGTTC")  # 2 errors should pass
-        assert res == "GATCACGGTTTG"
-        res = leven5_3_corrector.correct_sequence("GATCACGGTCCG")  # 2 errors should pass
-        assert res == "GATCACGGTTTG"
-        res = leven5_3_corrector.correct_sequence("GATCACGGG")  # 3 errors valid asym should pass
-        assert res == "GATCACGGTTTG"
-        res = leven5_3_corrector.correct_sequence(
-            "GATCACGGTAAGC"
-        )  # 3 errors valid asym should pass
-        assert res == "GATCACGGTTTG"
-        res = leven5_3_corrector.correct_sequence(
-            "GATCACGGAAAG"
-        )  # 3 errors valid asym should pass
-        assert res == "GATCACGGTTTG"
-        res = leven5_3_corrector.correct_sequence(
-            "GATCCGGATTGC"
-        )  # 3 errors valid asym should pass
-        assert res == "GATCACGGTTTG"
-        res = leven5_3_corrector.correct_sequence("GATCACGG")  # 4 errors should fail
-        assert res is None
-        res = leven5_3_corrector.correct_sequence("GATCACGGTTTGAAAA")  # 4 errors should fail
-        assert res is None
-        res = leven5_3_corrector.correct_sequence("GATTTTTGTTTG")  # 4 errors should fail
-        assert res is None
-        res = leven5_3_corrector.correct_sequence("AGACACCGTTG")  # 4 errors should fail
-        assert res is None
-        res = leven5_3_corrector.correct_sequence("AAAAAAAAAAAA")  # not in set should fail
-        assert res is None
+        bb = tagged_levenshtein5_bb_set.building_blocks[0]
+        res = leven5_2_corrector._hash_map["GATCACGGTTTG"]  # direct lookup should pass
+        assert res == (bb, 0)
+        res = leven5_2_corrector._hash_map["GATCACGTTTG"]  # 1 error should pass
+        assert res == (bb, 1)
+        res = leven5_2_corrector._hash_map["GATCACGGTCTG"]  # 1 error should pass
+        assert res == (bb, 1)
+        res = leven5_2_corrector._hash_map["GATCACGGTTTGA"]  # 1 error should pass
+        assert res == (bb, 1)
+        res = leven5_2_corrector._hash_map["GATCACTTTG"]  # 2 errors should pass
+        assert res == (bb, 2)
+        res = leven5_2_corrector._hash_map["GATCACGGTTC"]  # 2 errors should pass
+        assert res == (bb, 2)
+        res = leven5_2_corrector._hash_map["GATCACGGTCCG"]  # 2 errors should pass
+        assert res == (bb, 2)
+
+        with pytest.raises(KeyError):
+            leven5_2_corrector._hash_map["GATCACGGG"]  # 3 errors should fail
+        with pytest.raises(KeyError):
+            leven5_2_corrector._hash_map["GATCACGGTAAGC"]  # 3 errors should fail
+        with pytest.raises(KeyError):
+            leven5_2_corrector._hash_map["GATCACGGAAAG"]  # 3 errors should fail
+        with pytest.raises(KeyError):
+            leven5_2_corrector._hash_map["GATCCGGATTGC"]  # 3 errors should fail
+        with pytest.raises(KeyError):
+            leven5_2_corrector._hash_map["AAAAAAAAAAAA"]  # not in set should fail

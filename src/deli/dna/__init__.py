@@ -1,4 +1,4 @@
-"""observed_seq alignment functions"""
+"""observed_barcode alignment functions"""
 
 from .align import (
     Aligner,

@@ -22,7 +22,7 @@
             "error_correction": "hamming_dist_1"
 
         },
-        "pre-umi": {
+        "preumi": {
             "tag": "AATGCCAGTACG"
         },
         "umi": {

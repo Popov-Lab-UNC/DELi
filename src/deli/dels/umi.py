@@ -1,8 +1,7 @@
 """class/functions for UMI barcode sections"""
 
-from typing_extensions import Self
-
 from Levenshtein import distance
+from typing_extensions import Self
 
 
 class Umi:

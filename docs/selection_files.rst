@@ -3,9 +3,10 @@
 ===============
 Selection Files
 ===============
-DEL selections are experiments, and like all experiments, they have all kinds of metadata and conditions that are associated with them.
-Some of this information is useful for DELi to know when processing the selection data. To help streamline this DELi has a "selection file
-format" that allows you to easily enter information about your DEL selection. It is based on YAML and looks like this:
+DEL selections are experiments, and like all experiments, they have all kinds of metadata and conditions that are
+associated with them.Some of this information is useful for DELi to know when processing the selection data.
+To help streamline this DELi has a "selection file format" that allows you to easily enter information about your
+DEL selection. It is based on YAML and looks like this:
 
 .. code-block:: yaml
 
@@ -31,13 +32,14 @@ Below is a description of the fields in this file:
 - **additional_info**: Any additional information about the selection that you want to include.
   This could include notes about the selection process, any issues that were encountered, or any other relevant details worth logging.
 
-After this metadata/experiment information, you then list the libraries that were used in the selection. DELi will use the library
-information to help process the selection data, both in a the analysis module and the decoding module.
+After this metadata/experiment information, you then list the libraries that were used in the selection.
+DELi will use the library information to help process the selection data, both in a the analysis module
+and the decoding module.
 
 .. note::
     You can use the full path to the :ref:`library JSON files <defining_libraries>`, or just the name of the library if it is in
     the :ref:`DELi Data Directory <deli-data-dir-ref>`.
 
-These selection files can also serve as a good way to track your experiments. While the list keys above are the only required ones,
-(except for ``additional_info``, which is optional), you can add any other keys you want to track to the file.
-DELi will ignore any keys that it does not recognize, so you can add as many as you want.
+These selection files can also serve as a good way to track your experiments. While the list keys above are the
+only required ones, (except for ``additional_info``, which is optional), you can add any other keys you want
+to track to the file. DELi will ignore any keys that it does not recognize, so you can add as many as you want.

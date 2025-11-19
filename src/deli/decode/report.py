@@ -15,35 +15,26 @@ from .decoder import DecodeStatistics
 def _generate_calling_pie_chart(
     decode_stats: DecodeStatistics,
 ):
-    """Generate the main calling results pie chart html"""
+    """Generate the main calling results pie chart HTML"""
     _all_colors = [
         "orange",
         "yellow",
         "firebrick",
-        "pink",
-        "orchid",
         "crimson",
-        "lightpink",
         "royalblue",
     ]
     _all_labels = [
         "Read to Small",
         "Read to Large",
         "Failed Library Call",
-        "Library Call Malformed",
-        "Failed Barcode Alignment",
         "Failed Building Block Call",
-        "UMI Match to Small",
         "Decoded",
     ]
     _all_values: list[int] = [
         decode_stats.num_failed_too_short,
         decode_stats.num_failed_too_long,
         decode_stats.num_failed_library_call,
-        decode_stats.num_failed_library_match_too_short,
-        decode_stats.num_failed_building_block_call,
-        decode_stats.num_failed_alignment,
-        decode_stats.num_failed_umi_match_too_short,
+        decode_stats.num_failed_building_block_call + decode_stats.num_failed_alignment,
         decode_stats.num_seqs_decoded,
     ]
 
@@ -87,7 +78,7 @@ def _generate_calling_pie_chart(
 
 
 def _generate_seq_length_hist(decode_stats: DecodeStatistics):
-    """Generate the html for the seq length histogram"""
+    """Generate the HTML for the seq length histogram"""
     x_vals = list(
         range(min(decode_stats.seq_lengths.keys()), max(decode_stats.seq_lengths.keys()) + 1)
     )
@@ -182,7 +173,7 @@ def build_decoding_report(
     out_path: str | os.PathLike,
 ):
     """
-    Generates a deli decoding html report from report stats
+    Generates a deli decoding HTML report from report stats
 
     The name of the report will be "{selection_id}_decode_report.html"
 

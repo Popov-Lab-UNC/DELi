@@ -50,9 +50,7 @@ def _parse_library_json(data: dict, load_dna: bool) -> dict[str, Any]:
     for i, bb_data in enumerate(data["bb_sets"]):
         cycle = bb_data.get("cycle", None)
         if cycle is None:
-            raise LibraryBuildError(
-                f"build block sets require a cycle number;set at index {i} lacks a cycle"
-            )
+            raise LibraryBuildError(f"build block sets require a cycle number;set at index {i} lacks a cycle")
         bb_set_name = bb_data.get("bb_set_name", None)
         file_path = bb_data.get("bb_set_path", None)
         if file_path is None and bb_set_name is None:
@@ -68,16 +66,13 @@ def _parse_library_json(data: dict, load_dna: bool) -> dict[str, Any]:
 
         if bb_set_name in RESERVED_CONFIG_KEYS:
             raise LibraryBuildError(
-                f"building block set name '{bb_set_name}' is a reserved keyword; "
-                f"please choose a different name"
+                f"building block set name '{bb_set_name}' is a reserved keyword; please choose a different name"
             )
 
         _observed_sets.append(
             (
                 cycle,
-                BuildingBlockSet.load(file_path)
-                if not load_dna
-                else TaggedBuildingBlockSet.load(file_path),
+                BuildingBlockSet.load(file_path) if not load_dna else TaggedBuildingBlockSet.load(file_path),
             )
         )
 
@@ -200,13 +195,21 @@ class Library(DeliDataLoadable):
         ### VALIDATION ###
 
         if len(self.bb_sets) < 2:
-            raise LibraryBuildError(
-                f"Library requires at least 2 cycle (bb_sets); found {len(self.bb_sets)}"
-            )
+            raise LibraryBuildError(f"Library requires at least 2 cycle (bb_sets); found {len(self.bb_sets)}")
 
     def __repr__(self):
         """Represent the library as its name"""
         return f"{self.__class__}({self.library_id})"
+
+    def __hash__(self):
+        """Hash the library by its id"""
+        return hash(self.library_id)
+
+    def __eq__(self, other):
+        """Check equality of libraries by their id"""
+        if isinstance(other, Library):
+            return True
+        return False
 
     @classmethod
     @accept_deli_data_name("libraries", "json")
@@ -235,9 +238,7 @@ class Library(DeliDataLoadable):
         Library
         """
         library_id = Path(path).stem.replace(" ", "_")
-        _cls = cls(
-            library_id=library_id, **_parse_library_json(json.load(open(path)), load_dna=False)
-        )
+        _cls = cls(library_id=library_id, **_parse_library_json(json.load(open(path)), load_dna=False))
         _cls.loaded_from = path
         return _cls
 
@@ -258,9 +259,7 @@ class Library(DeliDataLoadable):
         if self._enumerator is None:
             raise RuntimeError(f"library {self.library_id} does not have an enumerator")
         if not self._can_enumerate:
-            raise RuntimeError(
-                f"library {self.library_id} cannot enumerate; missing building block SMILES"
-            )
+            raise RuntimeError(f"library {self.library_id} cannot enumerate; missing building block SMILES")
         return self._enumerator
 
     def iter_bb_sets(self) -> Iterator[BuildingBlockSet]:
@@ -359,9 +358,7 @@ class Library(DeliDataLoadable):
         """
         _enumerator = self.enumerator  # check it exists
 
-        for building_blocks, enumerated_mol in _enumerator.enumerate(
-            dropped_failed, fail_on_error, use_tqdm
-        ):
+        for building_blocks, enumerated_mol in _enumerator.enumerate(dropped_failed, fail_on_error, use_tqdm):
             if enumerated_mol is not None:
                 enumerated_smile = to_smi(enumerated_mol)
                 yield EnumeratedDELCompound(
@@ -493,9 +490,7 @@ class Library(DeliDataLoadable):
         output_file.write(separator.join(_header) + "\n")
 
         # enumerate and write each compound to the file
-        for compound in self.enumerate(
-            dropped_failed=dropped_failed, fail_on_error=fail_on_error, use_tqdm=use_tqdm
-        ):
+        for compound in self.enumerate(dropped_failed=dropped_failed, fail_on_error=fail_on_error, use_tqdm=use_tqdm):
             # get the row
             row: list[str] = [
                 compound.compound_id,
@@ -584,18 +579,16 @@ class DELibrary(Library):
         ### VALIDATION ###
         if self.num_cycles != barcode_schema.get_num_building_block_sections():
             raise LibraryBuildError(
-                f"Number of library cycles does not match barcode schema cycles; "
+                f"Number of library cycles does not match observed_barcode schema cycles; "
                 f"got {self.num_cycles} and {barcode_schema.get_num_building_block_sections()}"
             )
 
         if isinstance(self.dna_barcode_on, str):
             if self.dna_barcode_on not in [bb_set.bb_set_id for bb_set in self.bb_sets]:
                 if scaffold is not None and self.dna_barcode_on != "scaffold":
-                    raise LibraryBuildError(
-                        f"cannot find cycle {self.dna_barcode_on} to put DNA barcode on"
-                    )
+                    raise LibraryBuildError(f"cannot find cycle {self.dna_barcode_on} to put DNA barcode on")
                 if scaffold is None and self.dna_barcode_on == "scaffold":
-                    raise LibraryBuildError("no scaffold to attach DNA barcode to")
+                    raise LibraryBuildError("no scaffold to attach DNA observed_barcode to")
 
     @classmethod
     @accept_deli_data_name("libraries", "json")
@@ -625,9 +618,7 @@ class DELibrary(Library):
         DELibrary
         """
         library_id = Path(path).stem.replace(" ", "_")
-        _cls = cls(
-            library_id=library_id, **_parse_library_json(json.load(open(path)), load_dna=True)
-        )
+        _cls = cls(library_id=library_id, **_parse_library_json(json.load(open(path)), load_dna=True))
         _cls.loaded_from = path
         return _cls
 
@@ -641,9 +632,7 @@ class DELibrary(Library):
         ------
         tuple[BuildingBlockBarcodeSection, BuildingBlockSet]
         """
-        for bb_section, bb_set in zip(
-            self.barcode_schema.building_block_sections, self.bb_sets, strict=False
-        ):
+        for bb_section, bb_set in zip(self.barcode_schema.building_block_sections, self.bb_sets, strict=False):
             yield bb_section, bb_set
 
 
@@ -674,9 +663,7 @@ class LibraryCollection(Generic[LibType]):
         for _library in self.libraries:
             # check id uniqueness
             if _library.library_id in _ids:
-                raise LibraryBuildError(
-                    f"multiple libraries share identical `library_id` '{_library.library_id}'"
-                )
+                raise LibraryBuildError(f"multiple libraries share identical `library_id` '{_library.library_id}'")
             else:
                 _ids.append(_library.library_id)
 
@@ -709,9 +696,7 @@ class LibraryCollection(Generic[LibType]):
         try:
             return self._library_map[library_id]
         except KeyError as e:
-            raise KeyError(
-                KeyError(f"cannot find library with id '{library_id}' in collection")
-            ) from e
+            raise KeyError(KeyError(f"cannot find library with id '{library_id}' in collection")) from e
 
     def all_libs_can_enumerate(self) -> bool:
         """

@@ -1,4 +1,4 @@
-"""DNA observed_seq alignment"""
+"""DNA sequence alignment"""
 
 import abc
 from typing import no_type_check
@@ -18,9 +18,9 @@ class Alignment:
         Parameters
         ----------
         seq1: str
-            the top observed_seq in the alignment (index 0)
+            the top sequence in the alignment (index 0)
         seq2: str
-            the bottom observed_seq in the alignment (index 1)
+            the bottom sequence in the alignment (index 1)
         alignment: list[tuple[int, int]]
             the alignment as a list of tuples, each containing the index of from
             the two aligned sequences that match as that step.
@@ -35,9 +35,7 @@ class Alignment:
         self.seq2: str = seq2
         self.alignment: list[tuple[int, int]] = alignment
 
-        self._alignment_lookup_seq1, self._alignment_lookup_seq2 = _get_alignment_lookups(
-            self.alignment
-        )
+        self._alignment_lookup_seq1, self._alignment_lookup_seq2 = _get_alignment_lookups(self.alignment)
 
     def print_alignment(self) -> str:
         """
@@ -135,9 +133,9 @@ class SemiGlobalAlignment(Alignment):
         Parameters
         ----------
         seq1: str
-            the top observed_seq in the alignment (index 0)
+            the top sequence in the alignment (index 0)
         seq2: str
-            the bottom observed_seq in the alignment (index 1)
+            the bottom sequence in the alignment (index 1)
         alignment: list[tuple[int, int]]
             the alignment as a list of tuples, each containing the index of from
             the two aligned sequences that match as that step.
@@ -172,9 +170,9 @@ class HybridSemiGlobalAlignment(SemiGlobalAlignment):
         Parameters
         ----------
         seq1: str
-            the top observed_seq in the alignment (index 0)
+            the top sequence in the alignment (index 0)
         seq2: str
-            the bottom observed_seq in the alignment (index 1)
+            the bottom sequence in the alignment (index 1)
         alignment: list[tuple[int, int]]
             the alignment as a list of tuples, each containing the index of from
             the two aligned sequences that match as that step.
@@ -216,9 +214,9 @@ class Aligner(abc.ABC):
         Parameters
         ----------
         seq1: str
-            the top observed_seq in the alignment (index 0)
+            the top sequence in the alignment (index 0)
         seq2: str
-            the bottom observed_seq in the alignment (index 1)
+            the bottom sequence in the alignment (index 1)
         """
         raise NotImplementedError
 
@@ -241,9 +239,9 @@ class SemiGlobalAligner(Aligner):
         Parameters
         ----------
         seq1: str
-            observed_seq to be aligned
+            sequence to be aligned
         seq2: str
-            observed_seq to align to
+            sequence to align to
 
         Returns
         -------
@@ -290,11 +288,11 @@ class HybridSemiGlobalAligner(Aligner):
         table directions.
 
         To avoid the aligner decided that a full gap between the two sequences
-        is optimal, only the first observed_seq has not penalties for gaps.
-        The second observed_seq will have all gaps penalized.
+        is optimal, only the first sequence has not penalties for gaps.
+        The second sequence will have all gaps penalized.
 
         This makes the Hyprid approach far better at aligning a small
-        region to a much larger observed_seq. For example, for trying to find
+        region to a much larger sequence. For example, for trying to find
         the adapter in region in a larger read (whicih is why cutadpat uses it)
 
         For the above reason, this should really only be used when demultiplexing
@@ -304,9 +302,9 @@ class HybridSemiGlobalAligner(Aligner):
         Parameters
         ----------
         seq1: str
-            observed_seq to be aligned
+            sequence to be aligned
         seq2: str
-            observed_seq to align to
+            sequence to align to
 
         Returns
         -------
@@ -323,15 +321,13 @@ class HybridSemiGlobalAligner(Aligner):
 
 @no_type_check
 # @njit()
-def _hybrid_semi_global_align(
-    ref_seq: str, adapt_seq: str
-) -> tuple[list[tuple[int, int]], int, int]:
+def _hybrid_semi_global_align(ref_seq: str, adapt_seq: str) -> tuple[list[tuple[int, int]], int, int]:
     """
     Numba accelerated hybrid semi-global alignment implementation
 
     This is heavily drawn from cutadapt.
     It is not a full semi-global alignment,
-    it will only ignore penalties for gaps in the top observed_seq.
+    it will only ignore penalties for gaps in the top sequence.
     This is because if it ignored both, the algorithm
     would always prefer a complete misalignment:
     -----GCGC
@@ -339,7 +335,7 @@ def _hybrid_semi_global_align(
 
     This approach is better for alignments required for
     demultiplexing, as it prioritizes better matches
-    earlier on in the observed_seq to the adapter tag
+    earlier on in the sequence to the adapter tag
 
     Note: this should not be called directly
     """
@@ -383,7 +379,7 @@ def _hybrid_semi_global_align(
                 )
 
             edit_table[i, j], direction_table[i, j], score_table[i, j] = min(
-                zip(choice, ((-1, -1), (-1, 0), (0, -1)), scores)
+                zip(choice, ((-1, -1), (-1, 0), (0, -1)), scores, strict=False)
             )
 
     alignment = []
@@ -454,7 +450,7 @@ def _semi_global_align(seq1: str, seq2: str) -> tuple[list[tuple[int, int]], int
                 table[i - 1, j] - 1,
                 table[i, j - 1] - 1,
             )
-            table[i, j], direction_table[i, j] = max(zip(choice, ((-1, -1), (-1, 0), (0, -1))))
+            table[i, j], direction_table[i, j] = max(zip(choice, ((-1, -1), (-1, 0), (0, -1)), strict=False))
 
     alignment: list[tuple[int, int]] = []
     element: tuple[int, int]
@@ -513,7 +509,7 @@ def _get_alignment_lookups(
     """
     Generate a mapping between the index of seq1 to seq2 index and vice versa
 
-    in the case of gaps, will use the most recent real index of the other observed_seq
+    in the case of gaps, will use the most recent real index of the other sequence
 
     For example, the alignment:
     AG-CCA--

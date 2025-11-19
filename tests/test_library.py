@@ -19,9 +19,7 @@ def test_load_library():
     assert del_library.library_size == 884736
     assert not del_library.can_enumerate()
     assert len(del_library.bb_sets) == 3
-    assert {"DEL004_BBA", "DEL004_BBB", "DEL004_BBC"} == set(
-        [bb.bb_set_id for bb in del_library.bb_sets]
-    )
+    assert {"DEL004_BBA", "DEL004_BBB", "DEL004_BBC"} == set([bb.bb_set_id for bb in del_library.bb_sets])
     assert del_library.library_tag == "CCTTGGCACCCGAGAATTCCAGCCAGACCAG"
     assert del_library.barcode_schema is not None
 
@@ -30,7 +28,7 @@ def test_load_library():
 def test_load_invalid_library():
     """Test loading a DELibrary"""
     with pytest.raises(
-        LibraryBuildError, match="Number of library cycles does not match barcode schema cycles"
+        LibraryBuildError, match="Number of library cycles does not match observed_barcode schema cycles"
     ):
         DELibrary.load("DEL004_invalid")
 
@@ -65,10 +63,10 @@ def test_bb_set_iter(del_library1: DELibrary):
 
 @pytest.mark.unit
 def test_get_section_length(del_library1: DELibrary):
-    """Test for getting barcode section lengths"""
+    """Test for getting observed_barcode section lengths"""
     assert del_library1.barcode_schema.get_section_length("umi") == 11
     assert del_library1.barcode_schema.get_section_length("library") == 31
-    assert del_library1.barcode_schema.get_section_length("pre-umi") == 12
+    assert del_library1.barcode_schema.get_section_length("preumi") == 12
 
     with pytest.raises(KeyError):
         del_library1.barcode_schema.get_section_length("FAKE_SECTION")
@@ -81,8 +79,7 @@ def test_iter_bb_barcode_sections_and_sets(del_library1: DELibrary):
     assert len(bb_sets) == 3
     assert all(
         [
-            isinstance(bb_set, BuildingBlockSet)
-            and isinstance(section, BuildingBlockBarcodeSection)
+            isinstance(bb_set, BuildingBlockSet) and isinstance(section, BuildingBlockBarcodeSection)
             for (section, bb_set) in bb_sets
         ]
     )

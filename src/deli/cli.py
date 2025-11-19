@@ -221,7 +221,7 @@ def click_set_deli_data_dir(path, update_config):
     "--ignore-decode-seqs",
     "-i",
     is_flag=True,
-    help="Ignore the fastq observed_seq files in the decode file",
+    help="Ignore the fastq files in the decode file",
 )
 @click.option(
     "--prefix", "-p", type=click.STRING, required=False, default="", help="Prefix for output files"
