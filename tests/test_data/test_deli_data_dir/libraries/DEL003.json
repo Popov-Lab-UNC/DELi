@@ -16,7 +16,7 @@
             "tag": "NNNNNNNN",
             "overhang": "TT"
         },
-        "pre-umi": {
+        "preumi": {
             "tag": "ACGGTCATGC"
         },
         "umi": {

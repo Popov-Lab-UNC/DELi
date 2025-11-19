@@ -50,12 +50,12 @@ class DecodingSettings(dict):
 
     Parameters
     ----------
-    demultiplexer_mode: Literal["cutadapt", "regex", "full"], default = "regex"
+    demultiplexer_algorithm: Literal["cutadapt", "regex", "full"], default = "regex"
         The demultiplexing algorithm to use.
         - "cutadapt": use a cutadapt to locate sections
         - "regex": use a regular expression based demultiplexer
         - "full": use a full alignment based demultiplexer
-    demultiplexer_sections: Literal["library", "single", "flanking"], default = "flanking"
+    demultiplexer_mode: Literal["library", "single", "flanking"], default = "flanking"
         The demultiplexing section strategy to use.
         - "library": demultiplex by matching just the library tag
         - "single": demultiplex by matching a single static barcode section
@@ -106,8 +106,8 @@ class DecodingSettings(dict):
 
     def __init__(
         self,
-        demultiplexer_mode: Literal["cutadapt", "regex", "full"] = "regex",
-        demultiplexer_sections: Literal["library", "single", "flanking"] = "flanking",
+        demultiplexer_algorithm: Literal["cutadapt", "regex", "full"] = "regex",
+        demultiplexer_mode: Literal["library", "single", "flanking"] = "single",
         realign: bool = False,
         library_error_tolerance: int = 1,
         library_error_correction_mode_str: str = "levenshtein_dist:2,asymmetrical",
@@ -119,8 +119,8 @@ class DecodingSettings(dict):
         default_error_correction_mode_str: str = "levenshtein_dist:1,asymmetrical",
     ):
         super().__init__(
+            demultiplexer_algorithm=demultiplexer_algorithm,
             demultiplexer_mode=demultiplexer_mode,
-            demultiplexer_sections=demultiplexer_sections,
             realign=realign,
             library_error_tolerance=library_error_tolerance,
             library_error_correction_mode_str=library_error_correction_mode_str,
@@ -141,7 +141,7 @@ class DecodingSettings(dict):
         path : str
             path to save settings to
         """
-        yaml.dump(self.__dict__, open(path, "w"))
+        yaml.dump(dict(self), open(path, "w"))
 
     @classmethod
     def from_file(cls, path: str) -> "DecodingSettings":
@@ -458,8 +458,8 @@ class DecodingRunner:
         # parse the demultiplexer settings
         demultiplexer: LibraryDemultiplexer
 
-        demultiplex_algorithm = self.decode_settings["demultiplexer_mode"]
-        demultiplex_sections = self.decode_settings["demultiplexer_sections"]
+        demultiplex_algorithm = self.decode_settings["demultiplexer_algorithm"]
+        demultiplex_mode = self.decode_settings["demultiplexer_mode"]
 
         if demultiplex_algorithm == "full":
             demultiplexer = FullSeqAlignmentLibraryDemultiplexer(
@@ -467,7 +467,7 @@ class DecodingRunner:
                 revcomp=self.decode_settings["revcomp"],
             )
         elif demultiplex_algorithm == "cutadapt":
-            if demultiplex_sections == "library":
+            if demultiplex_mode == "library":
                 demultiplexer = LibraryTagCutadaptLibraryDemultiplexer(
                     libraries=self.selection.library_collection,
                     min_overlap=self.decode_settings["min_library_overlap"],
@@ -475,7 +475,7 @@ class DecodingRunner:
                     revcomp=self.decode_settings["revcomp"],
                     realign=self.decode_settings["realign"],
                 )
-            elif demultiplex_sections == "single":
+            elif demultiplex_mode == "single":
                 demultiplexer = SinglePrimerCutadaptLibraryDemultiplexer(
                     libraries=self.selection.library_collection,
                     min_overlap=self.decode_settings["min_library_overlap"],
@@ -484,7 +484,7 @@ class DecodingRunner:
                     error_correction_mode_str=self.decode_settings["default_error_correction_mode_str"],
                     realign=self.decode_settings["realign"],
                 )
-            elif demultiplex_sections == "flanking":
+            elif demultiplex_mode == "flanking":
                 demultiplexer = FlankingPrimersCutadaptLibraryDemultiplexer(
                     libraries=self.selection.library_collection,
                     min_overlap=self.decode_settings["min_library_overlap"],
@@ -495,17 +495,17 @@ class DecodingRunner:
                 )
             else:
                 raise DecodingRunParsingError(
-                    f"demultiplexer_sections '{demultiplex_sections}' not recognized for approach 'cutadapt'"
+                    f"demultiplexer_sections '{demultiplex_mode}' not recognized for approach 'cutadapt'"
                 )
         elif demultiplex_algorithm == "regex":
-            if demultiplex_sections == "library":
+            if demultiplex_mode == "library":
                 demultiplexer = LibraryTagRegexLibraryDemultiplexer(
                     libraries=self.selection.library_collection,
                     error_tolerance=self.decode_settings["library_error_tolerance"],
                     revcomp=self.decode_settings["revcomp"],
                     realign=self.decode_settings["realign"],
                 )
-            elif demultiplex_sections == "single":
+            elif demultiplex_mode == "single":
                 demultiplexer = SinglePrimerRegexLibraryDemultiplexer(
                     libraries=self.selection.library_collection,
                     error_tolerance=self.decode_settings["library_error_tolerance"],
@@ -513,7 +513,7 @@ class DecodingRunner:
                     error_correction_mode_str=self.decode_settings["default_error_correction_mode_str"],
                     realign=self.decode_settings["realign"],
                 )
-            elif demultiplex_sections == "flanking":
+            elif demultiplex_mode == "flanking":
                 demultiplexer = FlankingPrimersRegexLibraryDemultiplexer(
                     libraries=self.selection.library_collection,
                     error_tolerance=self.decode_settings["library_error_tolerance"],
@@ -523,7 +523,7 @@ class DecodingRunner:
                 )
             else:
                 raise DecodingRunParsingError(
-                    f"demultiplexer_sections '{demultiplex_sections}' not recognized for approach 'regex'"
+                    f"demultiplexer_sections '{demultiplex_mode}' not recognized for approach 'regex'"
                 )
         else:
             raise DecodingRunParsingError(f"demultiplexer_mode '{demultiplex_algorithm}' not recognized")

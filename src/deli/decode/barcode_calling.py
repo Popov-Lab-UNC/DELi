@@ -640,6 +640,9 @@ def get_barcode_caller(tag_map: dict[str, T], error_correction_mode_str: str) ->
         # if only one item, no need for error correction
         return SingleItemBarcodeCaller(list(tag_map.values())[0])
 
+    if error_correction_mode_str == "disable":
+        return GenericBarcodeCaller(tag_map=tag_map)
+
     try:
         _correction_type, _correction_info = error_correction_mode_str.split(":")
     except ValueError as e:

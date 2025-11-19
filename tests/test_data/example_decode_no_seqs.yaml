@@ -9,10 +9,10 @@ libraries:
     - "DEL005"
 
 decode_settings:
-    library_error_tolerance: 1
+    library_error_tolerance: 2
     min_library_overlap: 8
     revcomp: YES
+    demultiplexer_mode: "single"
     demultiplexer_algorithm: "regex"
-    demultiplexer_sections: "flanking"
-    realign: YES
-    wiggle: NO
+    realign: NO
+    wiggle: YES

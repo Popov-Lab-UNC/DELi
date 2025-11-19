@@ -9,14 +9,16 @@ sequence_files:
   - "./test_data/example.fastq"
 
 libraries:
-    - "DEL004_error_correct"
+    - "DEL004"
     - "DEL005"
 
 decode_settings:
-    library_error_tolerance: 1
+    library_error_tolerance: 2
     min_library_overlap: 8
     revcomp: YES
+    demultiplexer_mode: "single"
     demultiplexer_algorithm: "regex"
-    demultiplexer_sections: "flanking"
-    realign: YES
-    wiggle: NO
+    realign: NO
+    wiggle: YES
+    library_error_correction_mode_str: "disable"
+    default_error_correction_mode_str: "disable"

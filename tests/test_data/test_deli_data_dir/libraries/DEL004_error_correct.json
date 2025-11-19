@@ -19,7 +19,7 @@
             "overhang": "TT",
             "error_correction": "hamming_dist:1"
         },
-        "pre-umi": {
+        "preumi": {
             "tag": "AATGCCAGTACG"
         },
         "umi": {

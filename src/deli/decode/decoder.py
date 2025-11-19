@@ -53,7 +53,6 @@ class DecodeStatistics:
         the number of decoded failed because a building block was not called
     num_failed_ambiguous_building_block_call: int
         the number of decoded failed because a building block call was ambiguous
-
     num_failed_umi: int
         the number of decoded failed because UMI calling failed
     """
@@ -471,7 +470,7 @@ class LibraryDecoder:
 
         self.bb_callers: dict[BarcodeSection, BarcodeCaller] = {}
         for bb_sec, bb_set in self.library.iter_bb_barcode_sections_and_sets():
-            error_correction_mode_str = getattr(bb_set, "error_correction_mode_str", default_error_correction_mode_str)
+            error_correction_mode_str = getattr(bb_sec, "error_correction_mode", default_error_correction_mode_str)
             self.bb_callers[bb_sec] = get_barcode_caller(
                 tag_map={tag: bb for bb in bb_set.building_blocks for tag in bb.tags},
                 error_correction_mode_str=error_correction_mode_str,

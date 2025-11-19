@@ -1,25 +1,34 @@
+======================
+Barcode  Calling
+======================
+DELi uses hashmaps (python dictionaries) to map DNA barcode sequences to their corresponding objects.
+There are generics in DELi, so it can map tags to any type of object, but in practice we only care
+about DELs and building blocks.
+
+There are several ways to build these hashmaps. The simplest is to just map the exact sequence
+to the object. This works well when there are no errors in the reads. However, in practice there are often errors
+in the reads, especially in the building block region of the barcode. To mitigate this, DELi supports
+several error correction methods that can be used when building the hashmaps for building block calling.
+
 .. _error-correction-docs:
 
-================
 Error Correction
 ================
-
-DELi supports several methods of error correction to improve the accuracy of decoding DNA reads.
-Error correction is particularly common in thee building block region of the DEL DNA barcode.
-Here, there are in a sequence of unknown nucleotides, which are used to represent the building blocks of the DEL,
-and a set of possible sequences that are "valid", often only a small fraction of the possible sequences given the
-number of base pairs. If the sequencing was perfect, the reads would match 100% of the time,
-but in practice, there are often errors in the reads, which can lead to failure to determine which of building blocks
-the read corresponds to. To mitigate this, many DELs are designed such that it is possible to reliably correct small
-errors in these region to increase the accuracy of the decoding process.
+Error correction works by building a "spell checker"
+(see Peter Norvig's `article on spell checking <http://norvig.com/spell-correct.html>`_).
+This when decoding is first initiated, a one time preprocessing step is done to build a mapping of
+all possible erroneous sequences to their corresponding object of origin.
+There are many ways to determine what erroneous sequences are possible from a valid sequence,
+and how to handle things like ambiguous matches
+(where more than one valid sequence is equally close to the erroneous sequence).
+DELi implements several type of methods outlined below.
 
 Types of Error Correction
 -------------------------
-
 Ideally, the users know how this was done for the library. For example, if all DNA tags of a given building block set
 have a hamming distance of 3 from all others (called a hamming-3 set) then we can nearly guarantee that any invalid read with
-a hamming distance of 1 from a valid read is most likely the result of an error during sequencing/PCR, thus should be corrected
-to the original sequence.
+a hamming distance of 1 from a valid read is most likely the result of an error during sequencing/PCR, thus should be
+corrected to the original sequence.
 
 This is just one example of possible error correction methods. DELi implements/supports several methods outlined below.
 
@@ -119,6 +128,8 @@ your Hamming code (see :ref:`custom hamming docs <deli-custom-hamming-docs>`).
     your tags were created at random, not with a hamming code. Also it is limited to a single SNP error correction,
     which is not always sufficient for DELs with longer building block regions.
 
+.. _error-correction-methods-config:
+
 Specifying Error Correction Methods
 -----------------------------------
 When you :ref:`define a DELs barcode schema <barcode-sec-ref>`, you can specify the error correction method to use for
@@ -150,6 +161,10 @@ you would set the value to ``levenshtein_dist:1``.
 
 ``hamming_code``
 ^^^^^^^^^^^^^^^^
+.. note::
+    This mode has been deprecated and will be removed in a future release. It is recommended to use the
+    :ref:`hamming distance hashmap error correction <hamming-dist-err-correction-format>` instead.
+
 hamming_code takes a single argument, the name of the hamming code to use. This much match a name of a hamming code
 listed in your :ref:`deli config <deli-config-hamming-section>`.
 

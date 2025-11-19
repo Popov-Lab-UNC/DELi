@@ -9,21 +9,15 @@ from deli.decode.barcode_calling import HashMapCollisionError
 from deli.decode.runner import DecodingRunner, DecodingRunnerResults, DecodingRunParsingError
 
 
-DECODE_FILE = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "test_data", "example_decode.yaml")
-)
+DECODE_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), "test_data", "example_decode.yaml"))
 DECODE_FILE_ERR_CORRECT = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "test_data", "example_decode_error_correction.yaml")
 )
 DECODE_FILE_ERR_DISABLE = os.path.abspath(
-    os.path.join(
-        os.path.dirname(__file__), "test_data", "example_decode_error_correction_disable.yaml"
-    )
+    os.path.join(os.path.dirname(__file__), "test_data", "example_decode_error_correction_disable.yaml")
 )
 DECODE_FILE_ERR_CORRECT_ASYM = os.path.abspath(
-    os.path.join(
-        os.path.dirname(__file__), "test_data", "example_decode_error_correction_asym.yaml"
-    )
+    os.path.join(os.path.dirname(__file__), "test_data", "example_decode_error_correction_asym.yaml")
 )
 NO_SEQ_DECODE_FILE = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "test_data", "example_decode_no_seqs.yaml")
@@ -41,22 +35,16 @@ def test_loading_decode_runner(tmpdir):
     assert isinstance(runner, DecodingRunner)
     assert os.path.exists(tmpdir.join("deli.log"))
 
-    runner = DecodingRunner.from_file(
-        DECODE_FILE, [FASTQ_FILE], ignore_decode_seqs=True, disable_logging=True
-    )
+    runner = DecodingRunner.from_file(DECODE_FILE, [FASTQ_FILE], ignore_decode_seqs=True, disable_logging=True)
     assert isinstance(runner, DecodingRunner)
 
-    runner = DecodingRunner.from_file(
-        NO_SEQ_DECODE_FILE, [FASTQ_FILE], ignore_decode_seqs=False, disable_logging=True
-    )
+    runner = DecodingRunner.from_file(NO_SEQ_DECODE_FILE, [FASTQ_FILE], ignore_decode_seqs=False, disable_logging=True)
     assert isinstance(runner, DecodingRunner)
 
     with pytest.raises(DecodingRunParsingError, match="`fastq_files` cannot be provided when"):
         DecodingRunner.from_file(DECODE_FILE, [FASTQ_FILE])
 
-    with pytest.raises(
-        DecodingRunParsingError, match="``ignore_decode_seqs`` is True, but no `fastq_files`"
-    ):
+    with pytest.raises(DecodingRunParsingError, match="``ignore_decode_seqs`` is True, but no `fastq_files`"):
         DecodingRunner.from_file(DECODE_FILE, ignore_decode_seqs=True)
 
     with pytest.raises(DecodingRunParsingError, match="found neither"):
@@ -95,6 +83,7 @@ def runner() -> DecodingRunner:
 def test_decoding_runner_to_file(runner, tmpdir):
     """Test saving a DecodingRunner to a file"""
     runner.to_file(tmpdir.join("decode_test.yaml"))
+    runner.to_file(os.path.join("C:\\Users\\James\\Downloads", "decode_test.yaml"))
     runner_2 = DecodingRunner.from_file(tmpdir.join("decode_test.yaml"))
 
     assert isinstance(runner_2, DecodingRunner)

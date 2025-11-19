@@ -4,69 +4,77 @@
 DELi Command Line Interface
 ===========================
 
-While you can use DELi as a normal package in python, DELi provides a
-handful of command line tools to make common tasks more straight forward to run.
+While you can use DELi as a normal package in Python, DELi provides a
+handful of command-line tools to make common tasks more straightforward to run.
 
-Config commands
+Config Commands
 ---------------
-``deli config`` provides a set of commands for managing the DELi config file
+``deli config`` provides a set of commands for managing the DELi config file.
 
 ``deli config init``:
 ^^^^^^^^^^^^^^^^^^^^^
-Create a default DELi configuration file
+Create a default DELi configuration file.
 
-PATH is the path to the deli config directory to initialize. If not
-provided, defaults to ~/.deli
+PATH is the path to the DELi config directory to initialize. If not
+provided, it defaults to ~/.deli.
+
 .. code-block:: text
+
     Usage: deli config init [OPTIONS] [PATH]
 
     Options:
-    -o, --overwrite  Overwrite any existing config directory
-    --help           Show this message and exit.
+      -o, --overwrite  Overwrite any existing config directory.
+      --help           Show this message and exit.
 
 DELi Data Directory Commands
 ----------------------------
-``deli data`` provides a set of commands for managing the DELi Data Directory
+``deli data`` provides a set of commands for managing the DELi Data Directory.
 
 ``deli data init``
 ^^^^^^^^^^^^^^^^^^
-Initialize the configuration directory
+Initialize the configuration directory.
 
-PATH is the path to the deli data directory to initialize.
+PATH is the path to the DELi data directory to initialize.
 
-NOTE: fix-missing will not overwrite existing sub-directories, while
-overwrite will. 'overwrite' will also add any missing sub-directories, but
-also replace existing ones.
+NOTE: The 'fix-missing' option will not overwrite existing sub-directories, while
+'overwrite' will. The 'overwrite' option will also add any missing sub-directories
+and replace existing ones.
+
 .. code-block:: text
+
     Usage: deli data init [OPTIONS] [PATH]
 
     Options:
-    -f, --fix-missing  Fix a deli data directory missing sub-directories
-    -o, --overwrite    Overwrite any existing data directories
-    --help             Show this message and exit.
+      -f, --fix-missing  Fix a DELi data directory missing sub-directories.
+      -o, --overwrite    Overwrite any existing data directories.
+      --help             Show this message and exit.
 
 ``deli data set``
 ^^^^^^^^^^^^^^^^^
-Set the DELi data directory to use for decoding
+Set the DELi data directory to use for decoding.
 
-PATH is the path to the deli data directory to set.
+PATH is the path to the DELi data directory to set.
 
-NOTE: if not using --update-config, you will need to set the DELI_DATA_DIR
+NOTE: If not using --update-config, you will need to set the DELI_DATA_DIR
 environment variable manually; the command required will be printed after
 running.
+
 .. code-block:: text
+
     Usage: deli data set [OPTIONS] PATH
 
     Options:
-    -u, --update-config  Update the DELi config to use this data directory as default
-    --help               Show this message and exit.
+      -u, --update-config  Update the DELi config to use this data directory as default
+      --help               Show this message and exit.
 
 ``deli data which``
 ^^^^^^^^^^^^^^^^^^^
 Print the current DELi data directory.
 If the DELi data directory is not set, will print a message and exit with a
 non-zero status code.
+
 .. code-block:: text
+
     Usage: deli data which [OPTIONS]
 
     Options:
@@ -77,7 +85,9 @@ Decoding
 --------
 ``deli decode`` is used to take a decoding experiment and fastq file from a DEL
 selection and run decoding.
+
 .. code-block:: text
+
     Usage: deli decode [OPTIONS] DECODE_FILE [FASTQ_FILES]...
 
       Run decoding on a given fastq file of DEL sequences
@@ -107,7 +117,9 @@ Enumeration
 -----------
 ``deli enumerate`` is used to enumerate a DEL library to generate all possible compounds
 and write them to a file.
+
 .. code-block:: text
+
     Usage: deli enumerate [OPTIONS] LIBRARY_FILE
 
       Enumerates compounds from a given library

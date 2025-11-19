@@ -157,7 +157,7 @@ class BuildingBlockBarcodeSection(VariableBarcodeSection):
         section_name: str,
         section_tag: str,
         section_overhang: Optional[str] = None,
-        error_correction_mode: Optional[str] = None,
+        error_correction_mode: str = "disable",
     ):
         """
         Initialize BuildingBlockBarcodeSection
@@ -175,9 +175,9 @@ class BuildingBlockBarcodeSection(VariableBarcodeSection):
         section_overhang: Optional[str], default=None
             DNA of overhang directly after section tag
             leave as `None` if no overhang
-        error_correction_mode: Optional[str], default=None
+        error_correction_mode: str, default="disable"
             the error correction mode for the building block tags in this section
-            See Error Correction docs for more information
+            the default is no error correction
         """
         super().__init__(section_name, section_tag, section_overhang)
         self.cycle_number = cycle_number
@@ -447,7 +447,7 @@ class BarcodeSchema:
                         section_name=section_name,
                         section_tag=section_info["tag"],
                         section_overhang=section_info.get("overhang", None),
-                        error_correction_mode=section_info.get("error_correction", None),
+                        error_correction_mode=section_info.get("error_correction", "disable"),
                     )
                 )
             elif re.match(r"^umi$", section_name):
