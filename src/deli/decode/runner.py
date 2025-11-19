@@ -476,7 +476,7 @@ class DecodingRunner:
                     min_overlap=self.decode_settings["min_library_overlap"],
                     error_tolerance=self.decode_settings["library_error_tolerance"],
                     revcomp=self.decode_settings["revcomp"],
-                    error_correction_mode_str=self.decode_settings["error_correction_mode_str"],
+                    error_correction_mode_str=self.decode_settings["default_error_correction_mode_str"],
                     realign=self.decode_settings["realign"],
                 )
             elif demultiplex_sections == "flanking":
@@ -485,7 +485,7 @@ class DecodingRunner:
                     min_overlap=self.decode_settings["min_library_overlap"],
                     error_tolerance=self.decode_settings["library_error_tolerance"],
                     revcomp=self.decode_settings["revcomp"],
-                    error_correction_mode_str=self.decode_settings["error_correction_mode_str"],
+                    error_correction_mode_str=self.decode_settings["default_error_correction_mode_str"],
                     realign=self.decode_settings["realign"],
                 )
             else:
@@ -505,7 +505,7 @@ class DecodingRunner:
                     libraries=self.selection.library_collection,
                     error_tolerance=self.decode_settings["library_error_tolerance"],
                     revcomp=self.decode_settings["revcomp"],
-                    error_correction_mode_str=self.decode_settings["error_correction_mode_str"],
+                    error_correction_mode_str=self.decode_settings["default_error_correction_mode_str"],
                     realign=self.decode_settings["realign"],
                 )
             elif demultiplex_sections == "flanking":
@@ -513,7 +513,7 @@ class DecodingRunner:
                     libraries=self.selection.library_collection,
                     error_tolerance=self.decode_settings["library_error_tolerance"],
                     revcomp=self.decode_settings["revcomp"],
-                    error_correction_mode_str=self.decode_settings["error_correction_mode_str"],
+                    error_correction_mode_str=self.decode_settings["default_error_correction_mode_str"],
                     realign=self.decode_settings["realign"],
                 )
             else:
@@ -530,7 +530,7 @@ class DecodingRunner:
             wiggle=self.decode_settings["wiggle"],
             max_read_length=self.decode_settings["max_read_length"],
             min_read_length=self.decode_settings["min_read_length"],
-            default_error_correction_mode_str=self.decode_settings["error_correction_mode_str"],
+            default_error_correction_mode_str=self.decode_settings["default_error_correction_mode_str"],
         )
 
         _has_umi = all([lib.barcode_schema.has_umi() for lib in self.selection.library_collection.libraries])
