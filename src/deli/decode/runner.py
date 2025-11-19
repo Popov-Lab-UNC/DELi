@@ -17,7 +17,16 @@ from deli.enumeration.enumerator import EnumerationRunError
 
 from .decoder import DecodedDELCompound, DecodeStatistics, DELCollectionDecoder
 from .degen import DELCollectionCounter, DELCollectionIdCounter, DELCollectionIdUmiCounter
-from .library_demultiplex import LibraryDemultiplexer, FlankingPrimersCutadaptLibraryDemultiplexer, FlankingPrimersRegexLibraryDemultiplexer, SinglePrimerCutadaptLibraryDemultiplexer, SinglePrimerRegexLibraryDemultiplexer, LibraryTagCutadaptLibraryDemultiplexer, LibraryTagRegexLibraryDemultiplexer, FullSeqAlignmentLibraryDemultiplexer
+from .library_demultiplex import (
+    FlankingPrimersCutadaptLibraryDemultiplexer,
+    FlankingPrimersRegexLibraryDemultiplexer,
+    FullSeqAlignmentLibraryDemultiplexer,
+    LibraryDemultiplexer,
+    LibraryTagCutadaptLibraryDemultiplexer,
+    LibraryTagRegexLibraryDemultiplexer,
+    SinglePrimerCutadaptLibraryDemultiplexer,
+    SinglePrimerRegexLibraryDemultiplexer,
+)
 from .report import build_decoding_report
 
 
@@ -31,9 +40,65 @@ class DecodingSettings(dict):
     """
     Define parameters for decoding experiments
 
+    More details about the exact effect of these settings can
+    be found in the "Decoding" docs
+
+    Notes
+    -----
     Only parameters relating to the algorithm should be here
     Setting relating to IO should be handled outside this context
-    (like in the click command)
+
+    Parameters
+    ----------
+    demultiplexer_algorithm: Literal["cutadapt", "regex", "full"], default = "regex"
+        The demultiplexing algorithm to use.
+        - "cutadapt": use a cutadapt to locate sections
+        - "regex": use a regular expression based demultiplexer
+        - "full": use a full alignment based demultiplexer
+    demultiplexer_sections: Literal["library", "single", "flanking"], default = "flanking"
+        The demultiplexing section strategy to use.
+        - "library": demultiplex by matching just the library tag
+        - "single": demultiplex by matching a single static barcode section
+        - "flanking": demultiplex by matching barcode sections that flank the library tag
+        (flanking means one before and one after the tag)
+    realign: bool, default = False
+        if true, will perform a local realignment of the read to the
+        libraries barcode schema *after* demultiplexing determine the library.
+        This could help recover reads that have complex alignments due multiple indels
+    library_error_tolerance: int, default = 1
+        The number of errors you are willing to tolerate in any given barcode
+        section during library demultiplexing. Will apply to each section
+        independently. For example, a flanking demultiplexer will allow for
+        1 error in *each* of the flanking sections.
+    min_library_overlap: int , default = 8
+        if using a cutadapt style demultiplexer, this is the minimum number of bases
+        that must align to the expected barcode section for a match to be called.
+        See the cutadapt documentation for more details on this parameter.
+    wiggle: bool, default = False
+        if true, will extend aligned sections by 1 bp on each side
+        and then and scan all possible chunks of the expected barcode length,
+        1 smaller and 1 larger than expected length (in that order). If not
+        using a local realignment post demultiplexing this can help recover
+        reads lost to indels in the barcode region.
+    revcomp: bool, default = False
+        If true, search the reverse compliment as well.
+        In most cases it is faster to use an external tools
+        to align and reverse compliment reads before decoding
+    max_read_length: int or None, default = None
+        maximum length of a read to be considered for decoding
+        if above the max, decoding will fail
+        if `None` will default to 5x the min_read_length
+    min_read_length: int or None, default = None
+        minimum length of a read to be considered for decoding
+        if below the min, decoding will fail
+        if `None` will default to smallest min match length of
+        any library in the collection considered for decoding
+        with 10bp of buffer
+    default_error_correction_mode_str: str, default = "levenshtein_dist:1,asymmetrical"
+        The default error correction mode string to use for decoding.
+        If a barcode section lacks a specified error correction mode,
+        this mode will be used.
+        See the documentation for more details on the format of this string.
     """
 
     def __init__(
@@ -49,66 +114,6 @@ class DecodingSettings(dict):
         min_read_length: Optional[int] = None,
         default_error_correction_mode_str: str = "levenshtein_dist:1,asymmetrical",
     ):
-        """
-        Initialize the decoder settings
-
-        Notes
-        -----
-        More details about the exact effect of these settings can
-        be found in the "Decoding" docs
-
-        Parameters
-        ----------
-        demultiplexer_algorithm: Literal["cutadapt", "regex", "full"], default = "regex"
-            The demultiplexing algorithm to use.
-            - "cutadapt": use a cutadapt to locate sections
-            - "regex": use a regular expression based demultiplexer
-            - "full": use a full alignment based demultiplexer
-        demultiplexer_sections: Literal["library", "single", "flanking"], default = "flanking"
-            The demultiplexing section strategy to use.
-            - "library": demultiplex by matching just the library tag
-            - "single": demultiplex by matching a single static barcode section
-            - "flanking": demultiplex by matching barcode sections that flank the library tag
-            (flanking means one before and one after the tag)
-        realign: bool, default = False
-            if true, will perform a local realignment of the read to the
-            libraries barcode schema *after* demultiplexing determine the library.
-            This could help recover reads that have complex alignments due multiple indels
-        library_error_tolerance: int, default = 1
-            The number of errors you are willing to tolerate in any given barcode
-            section during library demultiplexing. Will apply to each section
-            independently. For example, a flanking demultiplexer will allow for
-            1 error in *each* of the flanking sections.
-        min_library_overlap: int , default = 8
-            if using a cutadapt style demultiplexer, this is the minimum number of bases
-            that must align to the expected barcode section for a match to be called.
-            See the cutadapt documentation for more details on this parameter.
-        wiggle: bool, default = False
-            if true, will extend aligned sections by 1 bp on each side
-            and then and scan all possible chunks of the expected barcode length,
-            1 smaller and 1 larger than expected length (in that order). If not
-            using a local realignment post demultiplexing this can help recover
-            reads lost to indels in the barcode region.
-        revcomp: bool, default = False
-            If true, search the reverse compliment as well.
-            In most cases it is faster to use an external tools
-            to align and reverse compliment reads before decoding
-        max_read_length: int or None, default = None
-            maximum length of a read to be considered for decoding
-            if above the max, decoding will fail
-            if `None` will default to 5x the min_read_length
-        min_read_length: int or None, default = None
-            minimum length of a read to be considered for decoding
-            if below the min, decoding will fail
-            if `None` will default to smallest min match length of
-            any library in the collection considered for decoding
-            with 10bp of buffer
-        default_error_correction_mode_str: str, default = "levenshtein_dist:1,asymmetrical"
-            The default error correction mode string to use for decoding.
-            If a barcode section lacks a specified error correction mode,
-            this mode will be used.
-            See the documentation for more details on the format of this string.
-        """
         super().__init__(
             demultiplexer_algorithm=demultiplexer_algorithm,
             demultiplexer_sections=demultiplexer_sections,
@@ -170,7 +175,18 @@ class DecodingSettings(dict):
 
 
 class DecodingRunnerResults:
-    """Hold the results of a decoding run"""
+    """
+    Holds the results of a decoding run
+
+    Parameters
+    ----------
+    selection: Selection
+        the selection that was decoded
+    decode_statistics: DecodeStatistics | None, default = None
+        the decode statistics for the run
+    degen: DELCollectionCounter | None, default = None
+        the degeneration counter for the run
+    """
 
     def __init__(
         self,
@@ -178,18 +194,6 @@ class DecodingRunnerResults:
         decode_statistics: DecodeStatistics | None = None,
         degen: DELCollectionCounter | None = None,
     ):
-        """
-        Initialize the decoding runner results
-
-        Parameters
-        ----------
-        selection: Selection
-            the selection that was decoded
-        decode_statistics: DecodeStatistics | None, default = None
-            the decode statistics for the run
-        degen: DELCollectionCounter | None, default = None
-            the degeneration counter for the run
-        """
         self.selection = selection
         self.decode_statistics = decode_statistics
         self.degen = degen
@@ -206,9 +210,7 @@ class DecodingRunnerResults:
         if self.decode_statistics is not None:
             if os.path.dirname(out_path) != "":
                 os.makedirs(os.path.dirname(out_path), exist_ok=True)
-            build_decoding_report(
-                selection=self.selection, stats=self.decode_statistics, out_path=out_path
-            )
+            build_decoding_report(selection=self.selection, stats=self.decode_statistics, out_path=out_path)
         else:
             raise RuntimeError("Cannot write decode report, no decode statistics found")
 
@@ -318,9 +320,7 @@ class DecodingRunnerResults:
         if enumerate_smiles:
             if not self.selection.library_collection.all_libs_can_enumerate():
                 _libraries_missing_enumerators = [
-                    lib.library_id
-                    for lib in self.selection.library_collection.libraries
-                    if not lib.can_enumerate()
+                    lib.library_id for lib in self.selection.library_collection.libraries if not lib.can_enumerate()
                 ]
                 warnings.warn(
                     f"Some libraries are missing enumerators: "
@@ -350,9 +350,7 @@ class DecodingRunnerResults:
 
         # get max_cycle_size
         _max_cycle_size = (
-            self.selection.library_collection.max_cycle_size()
-            if (include_bb_id_cols or include_bb_smi_cols)
-            else 0
+            self.selection.library_collection.max_cycle_size() if (include_bb_id_cols or include_bb_smi_cols) else 0
         )
 
         # set header
@@ -394,8 +392,7 @@ class DecodingRunnerResults:
                             except (EnumerationRunError, RuntimeError) as e:
                                 if fail_on_failed_numeration:
                                     raise RuntimeError(
-                                        f"Failed to enumerate SMILES for decoded DEL "
-                                        f"ID {decode_barcode.compound_id}"
+                                        f"Failed to enumerate SMILES for decoded DEL ID {decode_barcode.compound_id}"
                                     ) from e
                                 _smi = "null"
                             _row += f"{delimiter}{_smi}"
@@ -418,6 +415,21 @@ class DecodingRunner:
     The runner will write logs tracking progress
     and other warnings.
     Logger will be named after the runner PID
+
+    Parameters
+    ----------
+    selection: SequencedSelection
+        the selection to decode
+    decode_settings: DecodingSettings | None, default = None
+        the settings to use for decoding
+        if `None`, will use the default settings
+    disable_logging: bool, default = False
+        if true, will turn off logging
+    debug: bool, default = False
+        if true, will enable debug logging
+    run_id: str, default = None
+        a unique id for this run
+        if `None`, will default to the PID and random number
     """
 
     def __init__(
@@ -428,37 +440,15 @@ class DecodingRunner:
         debug: bool = False,
         run_id: str | None = None,
     ):
-        """
-        Initialize the DecodingRunner
-
-        Parameters
-        ----------
-        selection: SequencedSelection
-            the selection to decode
-        decode_settings: DecodingSettings | None, default = None
-            the settings to use for decoding
-            if `None`, will use the default settings
-        disable_logging: bool, default = False
-            if true, will turn off logging
-        debug: bool, default = False
-            if true, will enable debug logging
-        run_id: str, default = None
-            a unique id for this run
-            if `None`, will default to the PID and random number
-        """
         if run_id is None:
             self.run_id = f"DELi-DECODER-{os.getpid()}-" + f"{random.randint(0, 100000):06d}"
         else:
             self.run_id = run_id
 
-        self.logger: logging.Logger = (
-            get_dummy_logger() if disable_logging else get_logger(self.run_id, debug=debug)
-        )
+        self.logger: logging.Logger = get_dummy_logger() if disable_logging else get_logger(self.run_id, debug=debug)
 
         self.selection: SequencedSelection = selection
-        self.decode_settings: DecodingSettings = (
-            decode_settings if decode_settings is not None else DecodingSettings()
-        )
+        self.decode_settings: DecodingSettings = decode_settings if decode_settings is not None else DecodingSettings()
 
         # parse the demultiplexer settings
         demultiplexer: LibraryDemultiplexer
@@ -467,7 +457,7 @@ class DecodingRunner:
         demultiplex_sections = self.decode_settings["demultiplexer_sections"]
 
         if demultiplex_algorithm == "full":
-            demultiplexer =  FullSeqAlignmentLibraryDemultiplexer(
+            demultiplexer = FullSeqAlignmentLibraryDemultiplexer(
                 libraries=self.selection.library_collection,
                 revcomp=self.decode_settings["revcomp"],
             )
@@ -478,7 +468,7 @@ class DecodingRunner:
                     min_overlap=self.decode_settings["min_library_overlap"],
                     error_tolerance=self.decode_settings["library_error_tolerance"],
                     revcomp=self.decode_settings["revcomp"],
-                    realign=self.decode_settings["realign"]
+                    realign=self.decode_settings["realign"],
                 )
             elif demultiplex_sections == "single":
                 demultiplexer = SinglePrimerCutadaptLibraryDemultiplexer(
@@ -486,8 +476,8 @@ class DecodingRunner:
                     min_overlap=self.decode_settings["min_library_overlap"],
                     error_tolerance=self.decode_settings["library_error_tolerance"],
                     revcomp=self.decode_settings["revcomp"],
-                    error_correction_mode_str=self.decode_settings["default_error_correction_mode_str"],
-                    realign=self.decode_settings["realign"]
+                    error_correction_mode_str=self.decode_settings["error_correction_mode_str"],
+                    realign=self.decode_settings["realign"],
                 )
             elif demultiplex_sections == "flanking":
                 demultiplexer = FlankingPrimersCutadaptLibraryDemultiplexer(
@@ -495,37 +485,41 @@ class DecodingRunner:
                     min_overlap=self.decode_settings["min_library_overlap"],
                     error_tolerance=self.decode_settings["library_error_tolerance"],
                     revcomp=self.decode_settings["revcomp"],
-                    error_correction_mode_str=self.decode_settings["default_error_correction_mode_str"],
-                    realign=self.decode_settings["realign"]
+                    error_correction_mode_str=self.decode_settings["error_correction_mode_str"],
+                    realign=self.decode_settings["realign"],
                 )
             else:
-                raise DecodingRunParsingError(f"demultiplexer_sections '{demultiplex_sections}' not recognized for approach 'cutadapt'")
+                raise DecodingRunParsingError(
+                    f"demultiplexer_sections '{demultiplex_sections}' not recognized for approach 'cutadapt'"
+                )
         elif demultiplex_algorithm == "regex":
             if demultiplex_sections == "library":
                 demultiplexer = LibraryTagRegexLibraryDemultiplexer(
                     libraries=self.selection.library_collection,
                     error_tolerance=self.decode_settings["library_error_tolerance"],
                     revcomp=self.decode_settings["revcomp"],
-                    realign=self.decode_settings["realign"]
+                    realign=self.decode_settings["realign"],
                 )
             elif demultiplex_sections == "single":
                 demultiplexer = SinglePrimerRegexLibraryDemultiplexer(
                     libraries=self.selection.library_collection,
                     error_tolerance=self.decode_settings["library_error_tolerance"],
                     revcomp=self.decode_settings["revcomp"],
-                    error_correction_mode_str=self.decode_settings["default_error_correction_mode_str"],
-                    realign=self.decode_settings["realign"]
+                    error_correction_mode_str=self.decode_settings["error_correction_mode_str"],
+                    realign=self.decode_settings["realign"],
                 )
             elif demultiplex_sections == "flanking":
                 demultiplexer = FlankingPrimersRegexLibraryDemultiplexer(
                     libraries=self.selection.library_collection,
                     error_tolerance=self.decode_settings["library_error_tolerance"],
                     revcomp=self.decode_settings["revcomp"],
-                    error_correction_mode_str=self.decode_settings["default_error_correction_mode_str"],
-                    realign=self.decode_settings["realign"]
+                    error_correction_mode_str=self.decode_settings["error_correction_mode_str"],
+                    realign=self.decode_settings["realign"],
                 )
             else:
-                raise DecodingRunParsingError(f"demultiplexer_sections '{demultiplex_sections}' not recognized for approach 'regex'")
+                raise DecodingRunParsingError(
+                    f"demultiplexer_sections '{demultiplex_sections}' not recognized for approach 'regex'"
+                )
         else:
             raise DecodingRunParsingError(f"demultiplexer_algorithm '{demultiplex_algorithm}' not recognized")
 
@@ -536,16 +530,14 @@ class DecodingRunner:
             wiggle=self.decode_settings["wiggle"],
             max_read_length=self.decode_settings["max_read_length"],
             min_read_length=self.decode_settings["min_read_length"],
-            default_error_correction_mode_str=self.decode_settings["default_error_correction_mode_str"]
+            default_error_correction_mode_str=self.decode_settings["error_correction_mode_str"],
         )
 
-        _has_umi = all(
-            [lib.barcode_schema.has_umi() for lib in self.selection.library_collection.libraries]
-        )
+        _has_umi = all([lib.barcode_schema.has_umi() for lib in self.selection.library_collection.libraries])
 
-        if any(
-            [lib.barcode_schema.has_umi() for lib in self.selection.library_collection.libraries]
-        ) and (not _has_umi):
+        if any([lib.barcode_schema.has_umi() for lib in self.selection.library_collection.libraries]) and (
+            not _has_umi
+        ):
             warnings.warn(
                 "DELi does not support UMI degeneration for library collections with "
                 "only some DELs having a UMI region; if this is an issue for your DEL "
@@ -559,9 +551,7 @@ class DecodingRunner:
         else:
             self.degen = DELCollectionIdCounter()
 
-    def run(
-        self, save_failed_to: str | os.PathLike | None = None, use_tqdm: bool = False
-    ) -> DecodingRunnerResults:
+    def run(self, save_failed_to: str | os.PathLike | None = None, use_tqdm: bool = False) -> DecodingRunnerResults:
         """
         Run the decoder
 
@@ -570,7 +560,7 @@ class DecodingRunner:
         save_failed_to: str | PathLike | None, default = None
             if provided, will save failed reads to this directory
             file will be named <selection_id>_decode_failed.tsv
-            will include the read_id, the observed_barcode, the quality chain,
+            will include the read_id, the barcode, the quality chain,
             and reason failed
         use_tqdm: bool, default = False
             turn on a tqdm tracking bar
@@ -585,9 +575,7 @@ class DecodingRunner:
         self.logger.info(f"Running decoding for selection: {self.selection.selection_id}")
 
         # open failed reads file if specified
-        self.logger.info(
-            f"Saving failed reads to {save_failed_to} for selection {self.selection.selection_id}"
-        )
+        self.logger.info(f"Saving failed reads to {save_failed_to} for selection {self.selection.selection_id}")
         _failed_file = (
             os.path.join(save_failed_to, f"{self.selection.selection_id}_decode_failed.tsv")
             if save_failed_to is not None
@@ -597,7 +585,7 @@ class DecodingRunner:
 
         # write header to the failed reads CSV
         if fail_csv_file is not None:
-            fail_csv_file.write("read_id\tobserved_barcode\tquality\tfail_type\tfail_desc\n")
+            fail_csv_file.write("read_id\tbarcode\tquality\tfail_type\tfail_desc\n")
 
         # look through all sequences in the selection
         for i, seq_record in enumerate(
@@ -613,14 +601,10 @@ class DecodingRunner:
             decoded_barcode = self.decoder.decode_read(seq_record)
             # skip failed reads
             if isinstance(decoded_barcode, DecodedDELCompound):
-                self.decoder.decode_statistics.num_seqs_decoded_per_lib[
-                    decoded_barcode.library.library_id
-                ] += 1
+                self.decoder.decode_statistics.num_seqs_decoded_per_lib[decoded_barcode.library.library_id] += 1
                 if self.degen.count_barcode(decoded_barcode):
                     # only up the degen count if not a degenerate read
-                    self.decoder.decode_statistics.num_seqs_degen_per_lib[
-                        decoded_barcode.library.library_id
-                    ] += 1
+                    self.decoder.decode_statistics.num_seqs_degen_per_lib[decoded_barcode.library.library_id] += 1
             elif fail_csv_file is not None:
                 # if we are saving failed reads, save the read
                 fail_csv_file.write(
@@ -632,16 +616,11 @@ class DecodingRunner:
                 )
 
             if ((i + 1) % 10000) == 0:
-                self.logger.debug(
-                    f"Decoded {i + 1} reads for selection {self.selection.selection_id}"
-                )
+                self.logger.debug(f"Decoded {i + 1} reads for selection {self.selection.selection_id}")
 
         if fail_csv_file is not None:
             fail_csv_file.close()
-            self.logger.debug(
-                f"Saved failed reads to {save_failed_to} "
-                f"for selection {self.selection.selection_id}"
-            )
+            self.logger.debug(f"Saved failed reads to {save_failed_to} for selection {self.selection.selection_id}")
 
         self.logger.info(f"Completed decoding for selection: {self.selection.selection_id}")
         return DecodingRunnerResults(
@@ -668,9 +647,7 @@ class DecodingRunner:
             else "NA",
             "data_ran": self.selection.get_run_date_as_str(),
             "sequence_files": self.selection.sequence_files,
-            "libraries": [
-                str(lib.loaded_from) for lib in self.selection.library_collection.libraries
-            ],
+            "libraries": [str(lib.loaded_from) for lib in self.selection.library_collection.libraries],
             "decode_settings": self.decode_settings.__dict__,
         }
         yaml.safe_dump(data, open(out_path, "w"))
@@ -696,7 +673,7 @@ class DecodingRunner:
         runner.
 
         The exception to this is when 'ignore_decode_seqs' is set to `True`.
-        In this case, the observed_barcode files used will always be the one provided
+        In this case, the barcode files used will always be the one provided
         to the function and the decode file sequences will be ignored.
 
         NOTE: it is best practice to add the sequences to the decode file.
@@ -711,9 +688,9 @@ class DecodingRunner:
             path to load experiment from
         fastq_files: list[str], default = None
             list of paths to fastq files to decode
-            if `None`, will use the observed_barcode files from the decode file
+            if `None`, will use the barcode files from the decode file
         ignore_decode_seqs: bool, default = False
-            if true, will ignore the observed_barcode files in the decode file
+            if true, will ignore the barcode files in the decode file
             in this case, the `fastq_files` parameter must be provided
         debug: bool, default = False
             if true, will enable debug logging
@@ -777,9 +754,7 @@ class DecodingRunner:
             raise DecodingRunParsingError(
                 f"{decode_file} decoding run config file does not contain a 'libraries' section"
             ) from e
-        _library_collection = DELibraryCollection(
-            [DELibrary.load(lib_path) for lib_path in _libraries]
-        )
+        _library_collection = DELibraryCollection([DELibrary.load(lib_path) for lib_path in _libraries])
 
         _selection_id = data.get("selection_id", None)
         _target_id = data.get("target_id", None)
@@ -814,9 +789,7 @@ class DecodingRunner:
                 _decode_setting_obj = DecodingSettings(**_decode_settings)
             except TypeError as e:
                 _unknown_arg = e.args[0].split()[-1]
-                raise DecodingRunParsingError(
-                    f"unrecognized decoding settings: {_unknown_arg}"
-                ) from e
+                raise DecodingRunParsingError(f"unrecognized decoding settings: {_unknown_arg}") from e
 
         return cls(
             selection=_selection,

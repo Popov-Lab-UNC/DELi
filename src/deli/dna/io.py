@@ -1,4 +1,4 @@
-"""for reading in observed_barcode files"""
+"""for reading in sequence files"""
 
 import abc
 import os
@@ -24,7 +24,7 @@ class SequenceReader(abc.ABC):
 
 
 class SingleSequenceReader(SequenceReader):
-    """Read observed_barcode data from a file on the fly"""
+    """Read sequence data from a file on the fly"""
 
     def __init__(self, sequence_file: Union[str, Path]):
         """
@@ -33,7 +33,7 @@ class SingleSequenceReader(SequenceReader):
         Parameters
         ----------
         sequence_file: Union[str, Path]
-            path to the observed_barcode file to read
+            path to the sequence file to read
         """
         self.sequence_file = Path(sequence_file)
 
@@ -58,7 +58,7 @@ class SequenceDirectoryReader(SequenceReader):
         Parameters
         ----------
         sequence_dir: Union[str, Path]
-            path to the directory with observed_barcode files to read
+            path to the directory with sequence files to read
         """
         self.sequence_dir = Path(sequence_dir)
 
@@ -94,7 +94,7 @@ class SequenceGlobReader(SequenceReader):
         Parameters
         ----------
         sequence_files: list[str]
-            paths to the observed_barcode files to read
+            paths to the sequence files to read
         """
         self.sequence_files: list[Path] = [Path(sequence_file) for sequence_file in sequence_files]
         self._sequence_readers = [SingleSequenceReader(_file) for _file in self.sequence_files]

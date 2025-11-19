@@ -1,16 +1,15 @@
-"""class/functions for UMI observed_barcode sections"""
-
-from typing_extensions import Self
+"""class/functions for UMI barcode sections"""
 
 from Levenshtein import distance
+from typing_extensions import Self
 
 
 class Umi:
-    """Class for holding info on the UMI observed_barcode section"""
+    """Class for holding info on the UMI barcode section"""
 
     def __init__(self, umi: str):
         """
-        Initialize the UMI observed_barcode section
+        Initialize the UMI barcode section
 
         Parameters
         ----------
@@ -20,18 +19,18 @@ class Umi:
         self.umi = umi
 
     def __eq__(self, other) -> bool:
-        """Check if two UMIs have the same observed_barcode"""
+        """Check if two UMIs have the same barcode"""
         if isinstance(other, Umi):
             return self.umi == other.umi
         return False
 
     def __len__(self) -> int:
-        """Get the length of the UMI observed_barcode"""
+        """Get the length of the UMI barcode"""
         return len(self.umi)
 
     def is_nearby(self, other: Self, cutoff: int = 1) -> bool:
         """
-        If the other UMI observed_barcode is "nearby" based on a distance cutoff
+        If the other UMI barcode is "nearby" based on a distance cutoff
 
         Notes
         -----
@@ -39,7 +38,7 @@ class Umi:
         is equal to or below the cutoff
 
         This is used to cluster UMIs to help minimize possible noise
-        cause by misread in the UMI region of the observed_barcode
+        cause by misread in the UMI region of the barcode
 
         You can calculate the rough odds that two UMIs will have a
         levenshtein distance of X between them with:

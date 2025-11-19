@@ -15,9 +15,7 @@ class BarcodeSchemaError(Exception):
 class BarcodeSection(abc.ABC):
     """base class for all barcode sections"""
 
-    def __init__(
-        self, section_name: str, section_tag: str, section_overhang: Optional[str] = None
-    ):
+    def __init__(self, section_name: str, section_tag: str, section_overhang: Optional[str] = None):
         """
         Initialize BarcodeSection
 
@@ -46,9 +44,7 @@ class BarcodeSection(abc.ABC):
         """Validate the tha barcode section tag(s) are correct"""
         if isinstance(self.section_overhang, str):
             if len(set(self.section_overhang) - {"A", "C", "G", "T"}) != 0:
-                raise BarcodeSchemaError(
-                    f"barcode section {self.section_name} overhang contains invalid nucleotides"
-                )
+                raise BarcodeSchemaError(f"barcode section {self.section_name} overhang contains invalid nucleotides")
 
     def get_dna_sequence(self) -> str:
         """
@@ -76,10 +72,7 @@ class BarcodeSection(abc.ABC):
         bool
             True if both sections have identical tag and overhang, else False
         """
-        return (
-            self.section_tag == other.section_tag
-            and self.section_overhang == other.section_overhang
-        )
+        return self.section_tag == other.section_tag and self.section_overhang == other.section_overhang
 
     def __len__(self) -> int:
         """Gets the full length of the barcode section including the overhang"""
@@ -96,7 +89,6 @@ class BarcodeSection(abc.ABC):
                     if self.section_name == other.section_name:
                         return True
         return False
-
 
     @abc.abstractmethod
     def to_regex_pattern(self, error_tolerance: int = 0) -> str:
@@ -134,8 +126,7 @@ class VariableBarcodeSection(BarcodeSection):
         if "N" in self.section_tag:
             if len(set(self.section_tag)) > 1:
                 raise BarcodeSchemaError(
-                    f"barcode section {self.section_name} contains non-variable "
-                    f"nucleotide: {self.section_tag}"
+                    f"barcode section {self.section_name} contains non-variable nucleotide: {self.section_tag}"
                 )
 
     def to_regex_pattern(self, error_tolerance: int = 0) -> str:
@@ -154,11 +145,7 @@ class VariableBarcodeSection(BarcodeSection):
         -------
         str: A regex match pattern
         """
-        return (
-            f".{{{len(self.section_tag)}}}" + self.section_overhang
-            if self.section_overhang is not None
-            else ""
-        )
+        return f".{{{len(self.section_tag)}}}" + self.section_overhang if self.section_overhang is not None else ""
 
 
 class BuildingBlockBarcodeSection(VariableBarcodeSection):
@@ -212,8 +199,7 @@ class StaticBarcodeSection(BarcodeSection):
         if isinstance(self.section_overhang, str):
             if len(set(self.section_overhang) - {"A", "C", "G", "T"}) != 0:
                 raise BarcodeSchemaError(
-                    f"barcode section {self.section_name} contains invalid "
-                    f"nucleotides: {self.section_tag}"
+                    f"barcode section {self.section_name} contains invalid nucleotides: {self.section_tag}"
                 )
 
     def to_regex_pattern(self, error_tolerance: int = 0) -> str:
@@ -317,9 +303,7 @@ class BarcodeSchema:
         if len(_library_sections) == 0:
             raise BarcodeSchemaError("barcode schemas must contain a library barcode section")
         elif len(_library_sections) > 1:
-            raise BarcodeSchemaError(
-                "barcode schemas must contain only one library barcode section"
-            )
+            raise BarcodeSchemaError("barcode schemas must contain only one library barcode section")
         else:
             self.library_section = _library_sections[0][1]
             self._library_section_idx = _library_sections[0][0]
@@ -333,9 +317,7 @@ class BarcodeSchema:
             if isinstance(section, BuildingBlockBarcodeSection)
         ]
         if len(_building_block_sections) == 0:
-            raise BarcodeSchemaError(
-                "barcode schemas must contain at least one building block barcode section"
-            )
+            raise BarcodeSchemaError("barcode schemas must contain at least one building block barcode section")
         else:
             for i, (_bb_section_idx, bb_section) in enumerate(_building_block_sections):
                 if (i + 1) != bb_section.cycle_number:
@@ -352,14 +334,10 @@ class BarcodeSchema:
         self.umi_section: Optional[UMIBarcodeSection] = None
         self._umi_section_idx: int = -1
         _umi_section = [
-            (i, section)
-            for i, section in enumerate(self.barcode_sections)
-            if isinstance(section, UMIBarcodeSection)
+            (i, section) for i, section in enumerate(self.barcode_sections) if isinstance(section, UMIBarcodeSection)
         ]
         if len(_umi_section) > 1:
-            raise BarcodeSchemaError(
-                "barcode schemas must contain at most one umi barcode section"
-            )
+            raise BarcodeSchemaError("barcode schemas must contain at most one umi barcode section")
         else:
             if _umi_section:
                 self.umi_section = _umi_section[0][1]
@@ -370,9 +348,7 @@ class BarcodeSchema:
         self._static_sections_idxs: list[int] = list()
 
         for i, section in enumerate(self.barcode_sections):
-            if isinstance(section, StaticBarcodeSection) and not isinstance(
-                section, LibraryBarcodeSection
-            ):
+            if isinstance(section, StaticBarcodeSection) and not isinstance(section, LibraryBarcodeSection):
                 self.static_sections.append(section)
                 self._static_sections_idxs.append(i)
 
@@ -388,8 +364,7 @@ class BarcodeSchema:
             elif isinstance(section, BuildingBlockBarcodeSection):
                 if _found_library and _found_bb_section:
                     raise BarcodeSchemaError(
-                        "barcode schemas must not have the library section "
-                        "between the building block sections"
+                        "barcode schemas must not have the library section between the building block sections"
                     )
                 _found_bb_section = True
                 _found_library = False
@@ -412,7 +387,7 @@ class BarcodeSchema:
         if isinstance(other, BarcodeSchema):
             if len(self.barcode_sections) != len(other.barcode_sections):
                 return False
-            for section, other_section in zip(self.barcode_sections, other.barcode_sections):
+            for section, other_section in zip(self.barcode_sections, other.barcode_sections, strict=False):
                 if section != other_section:
                     return False
             return True
@@ -527,7 +502,7 @@ class BarcodeSchema:
         """
         if len(self.barcode_sections) != len(other.barcode_sections):
             return False
-        for section, other_section in zip(self.barcode_sections, other.barcode_sections):
+        for section, other_section in zip(self.barcode_sections, other.barcode_sections, strict=False):
             if section.section_name != other_section.section_name:
                 return False
             if len(section) != len(other_section):
@@ -575,9 +550,7 @@ class BarcodeSchema:
 
         regex_str: str = ""
         for section in self.barcode_sections:
-            regex_str += section.to_regex_pattern(
-                error_tolerance=math.ceil(len(section) * error_tolerance)
-            )
+            regex_str += section.to_regex_pattern(error_tolerance=math.ceil(len(section) * error_tolerance))
         return regex_str
 
     def get_full_barcode(self) -> str:
@@ -614,8 +587,7 @@ class BarcodeSchema:
         curr_pos: int = 0
         for section in self.barcode_sections:
             _section_len = len(section) - (
-                (len(section.section_overhang) if section.section_overhang else 0)
-                * exclude_overhangs
+                (len(section.section_overhang) if section.section_overhang else 0) * exclude_overhangs
             )
             spans[section.section_name] = slice(curr_pos, curr_pos + _section_len)
             curr_pos += len(section)
@@ -641,7 +613,9 @@ class BarcodeSchema:
         _section = self.get_section(section)
 
         len_before = self.get_length_before_section(_section)
-        len_section = len(_section) - ((len(_section.section_overhang) if _section.section_overhang else 0) * exclude_overhangs)
+        len_section = len(_section) - (
+            (len(_section.section_overhang) if _section.section_overhang else 0) * exclude_overhangs
+        )
         return slice(len_before, len_before + len_section)
 
     def get_required_sections(self) -> list[str]:
@@ -689,8 +663,8 @@ class BarcodeSchema:
             required_sections.add(self.umi_section)
 
         if include_sections is not None:
-            for section in include_sections:
-                required_sections.add(self.get_section(section))
+            for section_name in include_sections:
+                required_sections.add(self.get_section(section_name))
 
         min_start: int = len(self)
         max_end: int = 0
@@ -822,9 +796,7 @@ class BarcodeSchema:
         section_idx = self.barcode_sections.index(_section)
         return sum([len(s) for s in self.barcode_sections[section_idx + 1 :]])
 
-    def get_length_between_sections(
-        self, section1: str, section2: str, include_direction: bool = False
-    ) -> int:
+    def get_length_between_sections(self, section1: str, section2: str, include_direction: bool = False) -> int:
         """
         Get the number of base pairs between two barcode sections
 
@@ -904,4 +876,3 @@ class BarcodeSchema:
         int: length of the barcode section
         """
         return len(self.get_section(section_name))
-

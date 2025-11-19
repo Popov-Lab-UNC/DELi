@@ -1,11 +1,15 @@
+"""Classes and functions for barcode calling with/without error correction"""
+
 import abc
 import math
 from collections import defaultdict
-from enum import Enum
-from typing import TypeVar, Generic
+from typing import Generic, TypeVar
+
+from typing_extensions import deprecated
 
 from deli._hamming import BaseQuaternaryHamming
-from deli.configure import get_deli_config, DELiConfigError
+from deli.configure import DELiConfigError, get_deli_config
+
 
 T = TypeVar("T")
 
@@ -15,21 +19,63 @@ class BarcodeCallerError(Exception):
 
     pass
 
+
 class ValidCall(Generic[T]):
+    """
+    Represents a valid call from a BarcodeCaller
+
+    Notes
+    -----
+    Can be parameterized with the type of object being called
+
+    Attributes
+    ----------
+    obj: T
+        the object that was called
+    score: float
+        the score of the call; lower is better
+    """
+
     def __init__(self, obj: T, score: float):
         self.obj = obj
         self.score = score
 
 
+class FailedBarcodeLookup:
+    """Returned when a barcode lookup fails in a BarcodeCaller"""
+
+    def __init__(self, barcode: str):
+        self.barcode = barcode
+
+
+class AmbiguousBarcodeCall(FailedBarcodeLookup):
+    """Returned when a barcode call is ambiguous in a BarcodeCaller"""
+
+    def __init__(self, barcode: str):
+        super().__init__(barcode=barcode)
+
+
 class BarcodeCaller(abc.ABC, Generic[T]):
-    """Base class for all BarcodeCallers"""
+    """
+    Base class for all BarcodeCallers
+
+    Notes
+    -----
+    Can be parameterized with the type of object being called
+
+    Parameters
+    ----------
+    tag_map: dict[str, T]
+        a dictionary mapping each valid tag to its associated object
+    """
+
     def __init__(self, tag_map: dict[str, T]):
         self._tag_map = tag_map
 
     @abc.abstractmethod
-    def decode_barcode(self, observed_barcode: str) -> ValidCall[T] | None:
+    def decode_barcode(self, observed_barcode: str) -> ValidCall[T] | FailedBarcodeLookup:
         """
-        Given an observed observed_seq correct it to the correct to the expected observed_seq
+        Given an observed barcode sequence, decode it to the associated object
 
         Notes
         -----
@@ -39,18 +85,33 @@ class BarcodeCaller(abc.ABC, Generic[T]):
         Parameters
         ----------
         observed_barcode: str
-            the observed DNA observed_seq
+            the observed DNA barcode
 
         Returns
         -------
-        ValidCall | None
-            The called object or None if no valid call could be made
+        ValidCall | FailedBarcodeLookup
+            The called object or FailedBarcodeLookup if no valid call could be made
         """
         raise NotImplementedError()
 
 
 class SingleItemBarcodeCaller(BarcodeCaller[T]):
-    """A BarcodeCaller that always just return the single item it contains"""
+    """
+    A BarcodeCaller that always just return the single item it contains
+
+    Notes
+    -----
+    This is for compatability when there is only one possible item to call
+    but the decoder needs a BarcodeCaller object
+
+    Is parameterized with the type of object being called
+
+    Parameters
+    ----------
+    item: T
+        the single item this BarcodeCaller will always return
+    """
+
     def __init__(self, item: T):
         super().__init__({"X": item})  # empty tag map
 
@@ -75,64 +136,87 @@ class SingleItemBarcodeCaller(BarcodeCaller[T]):
 
 class GenericBarcodeCaller(BarcodeCaller[T]):
     """
-    A BarcodeCaller that do nothing but search the map for an exact match
-    """
-    def __init__(self, tag_map: dict[str, T]):
-        """
-        Initialize a GenericBarcodeCaller
+    A BarcodeCaller that has no error correction
 
-        Parameters
-        ----------
-        tag_map: dict[str, Object]
-            a dictionary mapping each valid tag to its associated object
-        """
+    This simply looks up the observed barcode in the tag map and returns
+    the associated object if it exists
+
+    Parameters
+    ----------
+    tag_map: dict[str, T]
+        a dictionary mapping each valid tag to its associated object
+    """
+
+    def __init__(self, tag_map: dict[str, T]):
         super().__init__(tag_map=tag_map)
 
-    def decode_barcode(self, observed_barcode: str) -> ValidCall[T] | None:
+    def decode_barcode(self, observed_barcode: str) -> ValidCall[T] | FailedBarcodeLookup:
         """
-        Given an observed observed_barcode return the associated object if it exists
+        Given an observed barcode return the associated object if it exists
 
         Parameters
         ----------
         observed_barcode: str
-            the observed DNA observed_barcode
+            the observed DNA barcode
 
         Returns
         -------
-        ValidCall | None
+        ValidCall | FailedBarcodeLookup
             The object associated with the observed barcode;
-            None if no exact match found
+            FailedBarcodeLookup if no exact match found
         """
         obj = self._tag_map.get(observed_barcode, None)
         if obj is not None:
             return ValidCall(obj, 0)
         else:
-            return None
-
+            return FailedBarcodeLookup(observed_barcode)
 
 
 class HammingDecodeError(BarcodeCallerError):
-    """raised when the hamming decoder fails to decode an observed barcode"""
+    """Raised when the hamming decoder fails to decode an observed barcode"""
 
     pass
 
 
+@deprecated(
+    "QuaternaryHammingBarcodeCaller is deprecated and will be removed in a future release; "
+    "use a HammingDistBarcodeCaller instead"
+)
 class QuaternaryHammingBarcodeCaller(BaseQuaternaryHamming, BarcodeCaller[T]):
-    """Generates and decodes quaternary hamming codes"""
+    """
+    Generates and decodes quaternary hamming codes
+
+    Notes
+    -----
+    It is externally unlikely that this is the class you want to use, it
+    requires that you built your DNA tags using a valid hamming code (not
+    just creating a set of tags with a certain minimum hamming distance).
+
+    Instead, consider using a HammingDistBarcodeCaller or
+    LevenshteinDistBarcodeCaller for more general error correction.
+    While more memory intensive, they perform the same function and are
+    just as fast for decoding.
+
+    Parameters
+    ----------
+    tag_map: dict[str, T]
+        a dictionary mapping each valid tag to its associated object
+    parity_map: list[int]
+        a list defining where the correctly ordered hamming bits are.
+        See the documentation for more details
+    has_extra_parity: bool
+        True if the sequences being decoded has extra parity.
+        See the documentation for more details
+
+    Attributes
+    ----------
+    real_size: int
+        the real size of the hamming code (number of data bits)
+    hamming_size: int
+        the size of the hamming code (number of data + parity bits)
+    """
 
     def __init__(self, tag_map: dict[str, T], parity_map: list[int], has_extra_parity: bool):
-        """
-        Initialize a QuaternaryHammingBarcodeCaller
-
-        Parameters
-        ----------
-        tag_map: dict[str, Object]
-            a dictionary mapping each valid tag to its associated object
-        parity_map: list[int]
-            a list defining where the correctly ordered hamming bits are
-        has_extra_parity: bool
-            True if the sequences being decoded has extra parity
-        """
         super().__init__()
 
         self._tag_map = tag_map  # since MRO would call BarcodeCaller init
@@ -184,27 +268,27 @@ class QuaternaryHammingBarcodeCaller(BaseQuaternaryHamming, BarcodeCaller[T]):
 
         return cls(tag_map=tag_map, parity_map=_custom_order, has_extra_parity=_has_extra_parity)
 
-    def decode_barcode(self, observed_seq: str) -> ValidCall[T] | None:
+    def decode_barcode(self, observed_seq: str) -> ValidCall[T] | FailedBarcodeLookup:
         """
-        Given an observed observed_barcode correct it to the correct to the expected observed_barcode
+        Given an observed barcode correct it to the correct to the expected barcode
 
         Parameters
         ----------
         observed_seq: str
-            the observed DNA observed_barcode
+            the observed DNA barcode
 
         Returns
         -------
-        ValidCall | None
+        ValidCall | FailedBarcodeLookup
             The object associated with the corrected seq;
-            None if fails to correct
+            FailedBarcodeLookup if fails to correct
         """
         _tag = [self.nuc_2_int_mapping[char] for char in observed_seq]
         try:
             _decoded_tag = self._hamming_decode(_tag)
             return ValidCall(self._tag_map["".join([self.int_2_nuc_mapping[_] for _ in _decoded_tag])], 0)
         except HammingDecodeError:
-            return None
+            return FailedBarcodeLookup(observed_seq)
 
     def _hamming_decode(self, bases: list[int]) -> list[int]:
         """
@@ -218,7 +302,7 @@ class QuaternaryHammingBarcodeCaller(BaseQuaternaryHamming, BarcodeCaller[T]):
         Raises
         ------
         HammingDecodeError
-            when more than 2 errors are detected in the observed_barcode
+            when more than 2 errors are detected in the barcode
             and it is not correctable
 
         Returns
@@ -236,9 +320,7 @@ class QuaternaryHammingBarcodeCaller(BaseQuaternaryHamming, BarcodeCaller[T]):
         if not self.has_extra_parity:
             _padded_bases = [0] + _padded_bases
 
-        sub_parity = [
-            self._get_sub_parity(_padded_bases, order=p) for p in range(self._parity, 0, -1)
-        ][::-1]
+        sub_parity = [self._get_sub_parity(_padded_bases, order=p) for p in range(self._parity, 0, -1)][::-1]
 
         if self.has_extra_parity:
             _parity_set_length = len(set(sub_parity))
@@ -272,52 +354,54 @@ class QuaternaryHammingBarcodeCaller(BaseQuaternaryHamming, BarcodeCaller[T]):
 
 
 class HashMapCollisionError(BarcodeCallerError):
-    """raised when a hash map error corrector fails to build due to collisions"""
+    """Raised when a hash map error corrector fails to build due to collisions"""
 
     pass
 
 
 class HashMapBarcodeCaller(BarcodeCaller[T], abc.ABC):
-    """Base class for all hash map based error correctors"""
+    """
+    Base class for all hash map based error correctors
 
-    def __init__(
-        self, tag_map: dict[str, T], distance_cutoff: int = 1, asymmetrical: bool = False
-    ):
-        """
-        Initialize a HashMapBarcodeCaller
+    Hash map decoders work by taking each DNA barcode for each object,
+    creating all its neighbors within a given distance function
+    and mapping them to the building block itself.
+    This way, a query can be looked up and "corrected"
+    to its original building block tag in constant time at
+    the cost of a some memory and longer initialization time.
 
-        This works by taking each building block tag, creating all its neighbors within a given
-        distance,
-        and mapping them to the building block itself. This way, a query can be looked up and
-        "corrected"
-        to its original building block tag in constant time.
+    The distance of the match is also returned as the score of the call.
 
-        There are some assumptions made here though. First, it assumes that there are no
-        collisions. That
-        is, no two building blocks have the same tag or the same neighbors within the given
-        distance.
-        If this is the case, we cannot determine with 100% certainty which building block is
-        the correct
-        original tag. Building the hash map will fail if a collision is detected by default.
+    By default, collisions are not allowed when building the hash map.
+    So if more than one object has the same "neighboring" tag within the
+    given distance cutoff, the hash map will fail to build.
+    If necessary (and often it is) an asymmetrical mode where collisions
+    are ignored is supported. This results in the colliding tag being mapped
+    to object with the shortest distance, *or* if both are the same distance
+    it will map to a None
 
-        However, you can set `asymmetrical=True` to allow the hash map to return the best,
-        non-ambiguous match instead, thus when building collisions are ignored in favor of
-         saving
-        the closest tag. Ties are ambiguous, so the hash map will return None.
+    Will also keep track of the distance of the query to the object, asigning
+    that as the call score
 
-        Hamming3 or Levenshtein3 distance schemes guarantee all tags
-        have a min distance between them (in this case 3), thus the distance cutoff is
-        also known:
-        (min_distance - 1) / 2. In this case it is easier to construct the hash map by
-        using this info.
-        Only use asymmetrical when you are sure that the tags follow a known distance
-        encoding scheme.
+    Notes
+    -----
+    Distance cutoff is the distance from the origin. If you had a Hamming3
+    set (meaning every element has a hamming distance of 3 or greater from
+    all other members), then the distance cutoff should be 1, since this
+    code can correct up to 1 error. For a Hamming5 set it would be 2, 7
+    would be 3 and so on.
 
-        Parameters
-        ----------
-        tag_map: dict[str, Object]
-            a dictionary mapping each valid tag to its associated object
-        """
+    Parameters
+    ----------
+    tag_map: dict[str, T]
+        a dictionary mapping each valid tag to its associated object
+    distance_cutoff: int, default=1
+        the maximum distance for neighbors to be included in the hash map
+    asymmetrical: bool, default=False
+        whether to allow asymmetrical collisions when building the hash map
+    """
+
+    def __init__(self, tag_map: dict[str, T], distance_cutoff: int = 1, asymmetrical: bool = False):
         super().__init__(tag_map=tag_map)
         self.distance_cutoff = distance_cutoff
         self.asymmetrical = asymmetrical
@@ -342,9 +426,7 @@ class HashMapBarcodeCaller(BarcodeCaller[T], abc.ABC):
                                 )
                         else:
                             # this is for type hinting and mypy
-                            raise RuntimeError(
-                                "this should never happen, please report to the developers"
-                            )
+                            raise RuntimeError("this should never happen, please report to the developers")
                     else:
                         if self._hash_map[tag][1] == dist:
                             if self._hash_map[tag][0] == obj:
@@ -373,45 +455,43 @@ class HashMapBarcodeCaller(BarcodeCaller[T], abc.ABC):
             includes the given sequence with distance 0
         """
 
-    def decode_barcode(self, observed_barcode: str) -> ValidCall[T] | None:
+    def decode_barcode(self, observed_barcode: str) -> ValidCall[T] | FailedBarcodeLookup:
         """
-        Given an observed observed_barcode correct it to the correct to the expected observed_barcode
+        Given an observed barcode correct it to the correct to the expected barcode
 
         Parameters
         ----------
         observed_barcode: str
-            the observed DNA observed_barcode
+            the observed DNA barcode
 
         Returns
         -------
-        ValidCall | None
+        ValidCall | FailedBarcodeLookup
             The object associated with observed barcode;
-            None if fails to correct
+            FailedDecodeAttempt if fails to correct.
+            Will be an AmbiguousBarcodeCall if a collusion is
+            detected and asymmetrical mode is on, otherwise a
+            FailedBarcodeLookup
         """
         obj = self._hash_map.get(observed_barcode, None)
         if obj is not None:
             if obj[0] is None:
-                return None
+                return AmbiguousBarcodeCall(observed_barcode)
             return ValidCall(obj[0], obj[1])
         else:
-            return None
+            return FailedBarcodeLookup(observed_barcode)
 
 
 class LevenshteinDistBarcodeCaller(HashMapBarcodeCaller[T]):
     """
     A HashMapBarcodeCaller that uses Levenshtein distance to build the hash map
 
+    Notes
+    -----
     It is important to note when using this that a distance cutoff of 2 or greater
     can be very expensive in both time and memory. For example, a DNA tag with 11
     bp has 873,900 levenshtein neighbors with a distance of 3 or lower,
     and 8,853 with 2 or lower.
-
-    Also, note that if the DNA tags in your building block set do not have a guaranteed
-    levenshein distance of 2*distance_cutoff + 1 or more, then you can have collisions.
-    In this case the hash map will fail to build, as there is no way to know which
-    Building block should be mapped to that DNA sequence. You can disable this behavior
-    with `asymmetrical=True`. In this case, the hash map with return either the best match
-    or None if there are more than one possible match with the same distance
     """
 
     # TODO could this have some jit with numba?
@@ -475,12 +555,10 @@ class HammingDistBarcodeCaller(HashMapBarcodeCaller[T]):
     """
     A HashMapBarcodeCaller that uses Hamming distance to build the hash map
 
-    Note that if the DNA tags in your building block set do not have a guaranteed
-    levenshein distance of 2*distance_cutoff + 1 or more, then you can have collisions.
-    In this case, the hash map will fail to build, as there is no way to know which
-    Building block should be mapped to that DNA sequence. You can disable this behavior
-    with `asymmetrical=True`. In this case, the hash map with return either the best match
-    or None if there is more than one possible match with the same distance
+    Notes
+    -----
+    The Hamming distance is only defined for sequences of equal length.
+    Thus, only SNPs can be corrected for, not INDELs
     """
 
     # TODO could this have some jit with numba?
@@ -527,31 +605,23 @@ class HammingDistBarcodeCaller(HashMapBarcodeCaller[T]):
 
 def get_barcode_caller(tag_map: dict[str, T], error_correction_mode_str: str) -> BarcodeCaller[T]:
     """
-    Parse the error correction mode string and return the appropriate BarcodeCaller
+    Parse the error correction mode string and return a BarcodeCaller with those settings
 
     Notes
     -----
     There are currently 4 error correction strings that can be parsed:
     - "hamming_dist:<distance>" for Hamming distance based error correction
     - "levenshtein_dist:<distance>" for Levenshtein distance based error correction
-    - "hamming_code:<name>" for a QuaternaryHammingBarcodeCaller that has been loaded
+    - "hamming_code:<name>" for a QuaternaryHammingBarcodeCaller that has been loaded.
+      Note: this is deprecated and will be removed in a future release
     - "disable" to disable error correction
-    from the config file
 
-    "hamming_dist_<distance>" and "levenshtein_dist_<distance>" will create hashmaps
-    for rapid error correction, while "<name>" will load a pre-defined
-     QuaternaryHammingBarcodeCaller.
-
-    Note distance for the hamming_dist and levenshtein_dist modes refers to
-    the maximum distance
-    for neighbors. So a distance of 1 means that the error corrector will
-    look for matches among
-    all hamming/levenshtein neighbors that are 1 away from the given tag.
+    '<distance>' for the hamming_dist and levenshtein_dist modes refers to
+    the maximum distance cutoff for neighbors.
 
     "hamming_dist_<distance>" and "levenshtein_dist_<distance>" also have an
-    asymmetric mode that
-    can be triggered by adding "asymmetric" after the distance separated by a ',':
-    e.g. "hamming_dist:1,asymmetric".
+    asymmetric mode that can be triggered by adding "asymmetric" after the
+    distance separated by a ','. For example "hamming_dist:1,asymmetric".
 
     Parameters
     ----------
@@ -566,7 +636,6 @@ def get_barcode_caller(tag_map: dict[str, T], error_correction_mode_str: str) ->
         the appropriate BarcodeCaller for the given error correction mode string
     """
     # parse out the type and info from the error correction mode
-
     if len(tag_map) == 1:
         # if only one item, no need for error correction
         return SingleItemBarcodeCaller(list(tag_map.values())[0])
@@ -599,9 +668,7 @@ def get_barcode_caller(tag_map: dict[str, T], error_correction_mode_str: str) ->
             _asymmetrical = True
         else:
             raise BarcodeCallerError(
-                f"error correction mode "
-                f"{error_correction_mode_str} "
-                f"has unrecognized information: {_splits[2:]}"
+                f"error correction mode {error_correction_mode_str} has unrecognized information: {_splits[2:]}"
             )
         # check for valid integer
         try:
@@ -635,8 +702,7 @@ def get_barcode_caller(tag_map: dict[str, T], error_correction_mode_str: str) ->
             return QuaternaryHammingBarcodeCaller.load(name=_correction_info, tag_map=tag_map)
         except DELiConfigError as e:
             raise BarcodeCallerError(
-                f"cannot find an QuaternaryHamming error corrector that matched the mode "
-                f"{error_correction_mode_str}"
+                f"cannot find an QuaternaryHamming error corrector that matched the mode {error_correction_mode_str}"
             ) from e
     else:
         raise BarcodeCallerError(

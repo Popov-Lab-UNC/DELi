@@ -1,4 +1,4 @@
-"""code for degenerating observed_barcode reads"""
+"""code for degenerating barcode reads"""
 
 import abc
 import gzip
@@ -463,7 +463,7 @@ class DELCollectionCounter(abc.ABC, Generic[DEL_COUNTER_TYPE]):
     @abc.abstractmethod
     def count_barcode(self, barcode: DecodedDELCompound) -> bool:
         """
-        Given a observed_barcode, add it to the current degen count
+        Given a barcode, add it to the current degen count
 
         Will handle separating based on DEL ID and UMI
         correction (if UMI is used)
@@ -471,12 +471,12 @@ class DELCollectionCounter(abc.ABC, Generic[DEL_COUNTER_TYPE]):
         Parameters
         ----------
         barcode: DecodedDELCompound
-            the observed_barcode to add to the counter
+            the barcode to add to the counter
 
         Returns
         -------
         bool
-            `True` is added observed_barcode is new (not degenerate), else `False`
+            `True` is added barcode is new (not degenerate), else `False`
         """
         raise NotImplementedError()
 
@@ -508,14 +508,8 @@ class DELCollectionIdUmiCounter(DELCollectionCounter):
         Initialize DELIdUmiCounter
         """
         # god forgive me for this one
-        self.del_counter: dict[str, defaultdict[DecodedDELCompound, DELIdUmiCounter]] = (
-            defaultdict(
-                lambda: defaultdict(
-                    partial(
-                        DELIdUmiCounter
-                    )
-                )
-            )
+        self.del_counter: dict[str, defaultdict[DecodedDELCompound, DELIdUmiCounter]] = defaultdict(
+            lambda: defaultdict(partial(DELIdUmiCounter))
         )
 
     def __getstate__(self):
@@ -532,11 +526,7 @@ class DELCollectionIdUmiCounter(DELCollectionCounter):
         """
         self.__dict__.update(state)
         self.del_counter = defaultdict(
-            lambda: defaultdict(
-                partial(
-                    DELIdUmiCounter
-                )
-            ),
+            lambda: defaultdict(partial(DELIdUmiCounter)),
             {k: defaultdict(DELIdUmiCounter, v) for k, v in state["del_counter"].items()},
         )
 
@@ -564,9 +554,7 @@ class DELCollectionIdUmiCounter(DELCollectionCounter):
             for library_id in other.del_counter.keys():
                 for compound in other.del_counter[library_id].keys():
                     if compound in new_counter.del_counter[library_id]:
-                        new_counter.del_counter[library_id][compound] += other.del_counter[
-                            library_id
-                        ][compound]
+                        new_counter.del_counter[library_id][compound] += other.del_counter[library_id][compound]
                     else:
                         new_counter.del_counter[library_id][compound] = deepcopy(
                             other.del_counter[library_id][compound]
@@ -576,7 +564,7 @@ class DELCollectionIdUmiCounter(DELCollectionCounter):
 
     def count_barcode(self, barcode: DecodedDELCompound) -> bool:
         """
-        Given a observed_barcode, add it to the current degen count
+        Given a barcode, add it to the current degen count
 
         Will handle separating based on DEL ID and UMI
         correction
@@ -584,17 +572,17 @@ class DELCollectionIdUmiCounter(DELCollectionCounter):
         Parameters
         ----------
         barcode: DecodedDELCompound
-            the observed_barcode to add to the counter
+            the barcode to add to the counter
 
         Returns
         -------
         bool
-            `True` is added observed_barcode is new (not degenerate), else `False`
+            `True` is added barcode is new (not degenerate), else `False`
 
         Raises
         ------
         RuntimeError
-            if the decoded observed_barcode is missing a UMI
+            if the decoded barcode is missing a UMI
         """
         if barcode.umi is None:
             raise RuntimeError("cannot UMI degen on read missing UMI")
@@ -652,8 +640,8 @@ class DELCollectionIdCounter(DELCollectionCounter):
     """
 
     def __init__(self):
-        self.del_counter: defaultdict[str, defaultdict[DecodedDELCompound, DELIdCounter]] = (
-            defaultdict(lambda: defaultdict(DELIdCounter))
+        self.del_counter: defaultdict[str, defaultdict[DecodedDELCompound, DELIdCounter]] = defaultdict(
+            lambda: defaultdict(DELIdCounter)
         )
 
     def __getstate__(self):
@@ -699,19 +687,19 @@ class DELCollectionIdCounter(DELCollectionCounter):
 
     def count_barcode(self, barcode: DecodedDELCompound) -> bool:
         """
-        Given a observed_barcode, add it to the current degen count
+        Given a barcode, add it to the current degen count
 
         Will handle separating based on DEL ID
 
         Parameters
         ----------
         barcode: DecodedDELCompound
-            the observed_barcode to add to the counter
+            the barcode to add to the counter
 
         Returns
         -------
         bool
-            `True` is added observed_barcode is new (not degenerate), else `False`
+            `True` is added barcode is new (not degenerate), else `False`
         """
         self.del_counter[barcode.library.library_id][barcode].add_id()
         return True  # always not degenerate with this counter
