@@ -50,7 +50,7 @@ class DecodingSettings(dict):
 
     Parameters
     ----------
-    demultiplexer_algorithm: Literal["cutadapt", "regex", "full"], default = "regex"
+    demultiplexer_mode: Literal["cutadapt", "regex", "full"], default = "regex"
         The demultiplexing algorithm to use.
         - "cutadapt": use a cutadapt to locate sections
         - "regex": use a regular expression based demultiplexer
@@ -70,6 +70,9 @@ class DecodingSettings(dict):
         section during library demultiplexing. Will apply to each section
         independently. For example, a flanking demultiplexer will allow for
         1 error in *each* of the flanking sections.
+    library_error_correction_mode_str: str, default = "levenshtein_dist:2,asymmetrical"
+        The error correction mode string to use for library barcode
+        calling during demultiplexing.
     min_library_overlap: int , default = 8
         if using a cutadapt style demultiplexer, this is the minimum number of bases
         that must align to the expected barcode section for a match to be called.
@@ -91,7 +94,7 @@ class DecodingSettings(dict):
     min_read_length: int or None, default = None
         minimum length of a read to be considered for decoding
         if below the min, decoding will fail
-        if `None` will default to smallest min match length of
+        if `None` will default to the smallest min match length of
         any library in the collection considered for decoding
         with 10bp of buffer
     default_error_correction_mode_str: str, default = "levenshtein_dist:1,asymmetrical"
@@ -103,10 +106,11 @@ class DecodingSettings(dict):
 
     def __init__(
         self,
-        demultiplexer_algorithm: Literal["cutadapt", "regex", "full"] = "regex",
+        demultiplexer_mode: Literal["cutadapt", "regex", "full"] = "regex",
         demultiplexer_sections: Literal["library", "single", "flanking"] = "flanking",
         realign: bool = False,
         library_error_tolerance: int = 1,
+        library_error_correction_mode_str: str = "levenshtein_dist:2,asymmetrical",
         min_library_overlap: int = 8,
         revcomp: bool = False,
         wiggle: bool = False,
@@ -115,10 +119,11 @@ class DecodingSettings(dict):
         default_error_correction_mode_str: str = "levenshtein_dist:1,asymmetrical",
     ):
         super().__init__(
-            demultiplexer_algorithm=demultiplexer_algorithm,
+            demultiplexer_mode=demultiplexer_mode,
             demultiplexer_sections=demultiplexer_sections,
             realign=realign,
             library_error_tolerance=library_error_tolerance,
+            library_error_correction_mode_str=library_error_correction_mode_str,
             min_library_overlap=min_library_overlap,
             revcomp=revcomp,
             wiggle=wiggle,
@@ -453,7 +458,7 @@ class DecodingRunner:
         # parse the demultiplexer settings
         demultiplexer: LibraryDemultiplexer
 
-        demultiplex_algorithm = self.decode_settings["demultiplexer_algorithm"]
+        demultiplex_algorithm = self.decode_settings["demultiplexer_mode"]
         demultiplex_sections = self.decode_settings["demultiplexer_sections"]
 
         if demultiplex_algorithm == "full":
@@ -521,7 +526,7 @@ class DecodingRunner:
                     f"demultiplexer_sections '{demultiplex_sections}' not recognized for approach 'regex'"
                 )
         else:
-            raise DecodingRunParsingError(f"demultiplexer_algorithm '{demultiplex_algorithm}' not recognized")
+            raise DecodingRunParsingError(f"demultiplexer_mode '{demultiplex_algorithm}' not recognized")
 
         # initialize all the decoding object required
         self.decoder = DELCollectionDecoder(

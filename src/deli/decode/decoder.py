@@ -14,7 +14,7 @@ from deli.dels.library import DELibrary
 
 from ._base import FailedDecodeAttempt
 from .barcode_calling import AmbiguousBarcodeCall, BarcodeCaller, FailedBarcodeLookup, ValidCall, get_barcode_caller
-from .library_demultiplex import AlignedSeq, LibraryDemultiplexer
+from .library_demultiplex import AlignedSeq, FailedStaticAlignment, LibraryDemultiplexer
 from .umi import UMI
 
 
@@ -45,12 +45,17 @@ class DecodeStatistics:
         the number of decoded failed because barcode read was too short
     num_failed_too_long: int
         the number of decoded failed because barcode read was too long
+    num_failed_alignment: int
+        the number of decoded failed because initial alignment failed
     num_failed_library_call: int
         the number of decoded failed because the library was not called
     num_failed_building_block_call: int
         the number of decoded failed because a building block was not called
-    num_failed_alignment: int
-        the number of decoded failed because alignment failed
+    num_failed_ambiguous_building_block_call: int
+        the number of decoded failed because a building block call was ambiguous
+
+    num_failed_umi: int
+        the number of decoded failed because UMI calling failed
     """
 
     def __init__(self):
@@ -63,9 +68,11 @@ class DecodeStatistics:
         # track the unique failures
         self.num_failed_too_short: int = 0
         self.num_failed_too_long: int = 0
+        self.num_failed_alignment: int = 0
         self.num_failed_library_call: int = 0
         self.num_failed_building_block_call: int = 0
-        self.num_failed_alignment: int = 0
+        self.num_failed_ambiguous_building_block_call: int = 0
+        self.num_failed_umi: int = 0
 
     def __add__(self, other) -> "DecodeStatistics":
         """Add two DecodeStatistics objects together"""
@@ -76,10 +83,14 @@ class DecodeStatistics:
         result.num_failed_too_short = self.num_failed_too_short + other.num_failed_too_short
         result.num_failed_too_long = self.num_failed_too_long + other.num_failed_too_long
         result.num_failed_library_call = self.num_failed_library_call + other.num_failed_library_call
+        result.num_failed_alignment = self.num_failed_alignment + other.num_failed_alignment
         result.num_failed_building_block_call = (
             self.num_failed_building_block_call + other.num_failed_building_block_call
         )
-        result.num_failed_alignment = self.num_failed_alignment + other.num_failed_alignment
+        result.num_failed_ambiguous_building_block_call = (
+            self.num_failed_ambiguous_building_block_call + other.num_failed_ambiguous_building_block_call
+        )
+        result.num_failed_umi = self.num_failed_umi + other.num_failed_umi
 
         # Merge defaultdicts
         result.seq_lengths = defaultdict(
@@ -175,9 +186,11 @@ class DecodeStatistics:
         # collect error info
         result.num_failed_too_short = data.get("num_failed_too_short", 0)
         result.num_failed_too_long = data.get("num_failed_too_long", 0)
+        result.num_failed_alignment = data.get("num_failed_alignment", 0)
         result.num_failed_library_call = data.get("num_failed_library_call", 0)
         result.num_failed_building_block_call = data.get("num_failed_building_block_call", 0)
-        result.num_failed_alignment = data.get("num_failed_alignment", 0)
+        result.num_failed_ambiguous_building_block_call = data.get("num_failed_ambiguous_building_block_call", 0)
+        result.num_failed_umi = data.get("num_failed_umi", 0)
         return result
 
 
@@ -251,7 +264,7 @@ class FailedBuildingBlockCall(FailedDecodeAttempt):
         )
 
 
-class AmbigousBuildingBlockBarcode(FailedDecodeAttempt):
+class AmbiguousBuildingBlockBarcode(FailedDecodeAttempt):
     """returned if building block barcode is ambiguous"""
 
     def __init__(self, sequence, barcode: str, bb_section_name: str):
@@ -367,7 +380,10 @@ class DELCollectionDecoder:
 
         _call = self.library_demultiplexer.demultiplex(sequence)
         if isinstance(_call, FailedDecodeAttempt):
-            self.decode_statistics.num_failed_library_call += 1
+            if isinstance(_call, FailedStaticAlignment):
+                self.decode_statistics.num_failed_alignment += 1
+            else:
+                self.decode_statistics.num_failed_library_call += 1
             return _call
         else:
             library_call, alignment_iter = _call
@@ -376,12 +392,12 @@ class DELCollectionDecoder:
             bb_calls: FailedDecodeAttempt | list[ValidCall[TaggedBuildingBlock]] = FailedBuildingBlockCall(
                 sequence, "Null", "all"
             )  # a generic default, should never be returned
-            umi_call: UMI | None = None
+            umi_call: UMI | None | FailedDecodeAttempt = None
 
             # TODO could speed up by just failing if too many alignments
             for attempt_count, (alignment, _) in enumerate(alignment_iter):
                 if attempt_count > MAX_RETRIES:
-                    return AlignmentFailed(sequence)
+                    break
 
                 # call building blocks
                 bb_calls = library_decoder.call_building_blocks(alignment)
@@ -392,13 +408,20 @@ class DELCollectionDecoder:
                     continue
 
             if not isinstance(bb_calls, FailedDecodeAttempt):
-                return DecodedDELCompound(
-                    library_call=library_call,
-                    building_block_calls=bb_calls,
-                    umi=umi_call,
-                )
+                if isinstance(umi_call, FailedDecodeAttempt):
+                    self.decode_statistics.num_failed_umi += 1
+                    return umi_call
+                else:
+                    return DecodedDELCompound(
+                        library_call=library_call,
+                        building_block_calls=bb_calls,
+                        umi=umi_call,
+                    )
             else:
-                self.decode_statistics.num_failed_building_block_call += 1
+                if isinstance(bb_calls, AmbiguousBuildingBlockBarcode):
+                    self.decode_statistics.num_failed_ambiguous_building_block_call += 1
+                else:
+                    self.decode_statistics.num_failed_building_block_call += 1
                 return bb_calls
 
 
@@ -406,6 +429,13 @@ class BarcodeDecodingError(Exception):
     """raised when there is an error during barcode decoding"""
 
     pass
+
+
+class UMIContainsAmbiguity(FailedDecodeAttempt):
+    """Returned if UMI contains ambiguous bases ('N')"""
+
+    def __init__(self, sequence: SequenceRecord, umi_sequence: str):
+        super().__init__(sequence=sequence, reason=f"UMI contains ambiguous bases: {umi_sequence}")
 
 
 class LibraryDecoder:
@@ -530,14 +560,14 @@ class LibraryDecoder:
 
             if isinstance(bb_call, FailedBarcodeLookup):
                 if isinstance(bb_call, AmbiguousBarcodeCall):
-                    return AmbigousBuildingBlockBarcode(aligned_sequence.sequence, section_codon, bb_sec.section_name)
+                    return AmbiguousBuildingBlockBarcode(aligned_sequence.sequence, section_codon, bb_sec.section_name)
                 return FailedBuildingBlockCall(aligned_sequence.sequence, section_codon, bb_sec.section_name)
             else:
                 bb_calls.append(bb_call)
         self._last_bb_idx = _last_bb_idx
         return bb_calls
 
-    def call_umi(self, aligned_sequence: AlignedSeq) -> UMI | None:
+    def call_umi(self, aligned_sequence: AlignedSeq) -> UMI | None | FailedDecodeAttempt:
         """
         Given a library call, decode the UMI if present
 
@@ -557,6 +587,8 @@ class LibraryDecoder:
             umi_stop = umi_start + self._umi_length
             umi_codon = aligned_sequence.sequence.sequence[umi_start:umi_stop]
             aligned_umi_codon = aligned_sequence.get_section_barcode("umi")
+            if ("N" in umi_codon) or ("N" in aligned_umi_codon):
+                return UMIContainsAmbiguity(aligned_sequence.sequence, umi_codon)
             if umi_codon != aligned_umi_codon:
                 return UMI([umi_codon, aligned_umi_codon])
             else:

@@ -5,7 +5,7 @@ DEL Decoding
 ============
 
 DELi support decoding of raw DEL selection data (DNA sequences, or "reads") into DEL compound enrichment data (what
-scientist use to find "hits"). This what the ``decode`` module in DELi handles.
+scientist and the analysis module use to find "hits"). This what the ``decode`` module in DELi handles.
 
 Run Decoding
 ------------
@@ -23,7 +23,7 @@ module API documentation for more details.
     :maxdepth: 2
 
     algorithm
-    error_correction
+    barcode_calling
     decoding_outcomes
     decoding_output
     decoding_file

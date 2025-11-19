@@ -153,6 +153,7 @@ lint.ignore = [
     "D401",
     "D200"
 ]
+exclude = ["scripts/", "docs/", "tests/data/"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"

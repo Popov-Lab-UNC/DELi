@@ -8,7 +8,7 @@ This is in part because most analysis methods are quick enough that no
 parallelization is needed.
 
 The only place where parallelization could be useful is in enumeration and decoding.
-Yet, the ``mp`` module from python is not very great, and both these
+Yet, the ``mp`` module from python is not great and both these
 processes are `embarrassingly parallel <https://en.wikipedia.org/wiki/Embarrassingly_parallel>`_.
 This means it's better to just run separate jobs on your system than to let python do it for you.
 
