@@ -4,8 +4,8 @@ from dnaio import SequenceRecord
 
 
 class FailedDecodeAttempt:
-    def __init__(self, sequence: SequenceRecord, reason: str):
-        self.sequence = sequence
+    def __init__(self, sequence: SequenceRecord | None | str, reason: str):
+        self.sequence = getattr(sequence, "sequence", sequence)
         self.reason = reason
 
     def __repr__(self):
