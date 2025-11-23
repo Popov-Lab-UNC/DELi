@@ -65,6 +65,22 @@ Below is and example of a library json file
                 "bb_set_name": "DEL006_BBC"
             }
         ],
+        "doped": [
+            {
+                "compound_id": "CONTROL_001",
+                "smiles": "CC(=O)OC1=CC=CC=C1C(=O)O",
+                "bb1": "AGCTAGGTC",
+                "bb2": "TTCGAACTG",
+                "bb3": "GGCATCGTA"
+            },
+            {
+                "compound_id": "CONTROL_002",
+                "smiles": "C1=CC=C(C=C1)C=O",
+                "bb1": "GATATTTCC",
+                "bb2": "AAATTTGGG",
+                "bb3": "CCGATGATG"
+            }
+        ],
         "reactions": {
             "step1": {
                 "step_id": 1,
@@ -102,16 +118,20 @@ Notice that there is no "ID" or "Name" element. That is because DELi assumes/ass
 the base name of the file is the ID of the library. Thus, if this file was named
 ``path\to\file\DEL006.json``, the ID of the library would be ``DEL006``.
 
-These are the named elements supported by the library file:
+These are the named elements required by the library file:
+
 - ``bb_sets``
+
+These are the named elements that are optional but recognized by DELi:
+
 - ``barcode_schema``
+- ``doped``
 - ``reactions``
 - ``dna_barcode_on``
 - ``scaffold``
 
-The only section that is always required is the ``bb_sets`` section.
-Every other section is optional, though its best practice to add it
-if you have the information.
+You can include any other sections you like, but DELi will ignore them.
+Below is a deeper dive into each of these sections.
 
 .. _bb-set-sec:
 
@@ -166,19 +186,48 @@ The DNA info dictionary can have the following elements:
 
 When it comes to barcode sections, some section names are reserved, and possibly required, by DELi.
 These are:
-- library: this section name is for the part of the DNA barcode used to decode the
+
+- ``library``: this section name is for the part of the DNA barcode used to decode the
   library the compound originates from. It is **required** and must be static.
-- bb##: sections that are for building block cycles are BB<cycle number>. The number of building block
+- ``bb##``: sections that are for building block cycles are BB<cycle number>. The number of building block
   sections should match the number of building block sets specified in
   the :ref:`bb_sets section <bb-set-sec>`. They are mapped by the building block cycle number, so
   the building block set for cycle 1 is represented by the barcode section name BB1.
   If there is a mismatch (e.g. a cycle without a tag section, or tag without a BB set)
   DELi will raise an exception. DELi requires these sections to be variable, and there must be
   at least two of them (since there must be at least two building block sets in any library).
-- umi: this section is for the unique molecular identifier (UMI). It must be variable, though it
+- ``umi``: this section is for the unique molecular identifier (UMI). It must be variable, though it
   it is optional. It should only be included if the library was designed to have a UMI in each barcode.
   It this section is include, DELi will automatically collect umi corrected counts, otherwise it will
   only provide raw count during decoding.
+- ``primer``: this section is not required, but any section that starts with "primer" will be loaded
+    as a primer section. Currently DELi does not use primer sections for anything special, but they are
+    recognized for possible future use, and for easier documentation of the barcode design.
+
+.. _doped-compounds-sec::
+
+``doped``
+^^^^^^^^^
+This section is optional and used to define any :ref:`doped compounds <doped-compounds>` into your library.
+If you are not doping any compounds into your library, this section should not be provided.
+This element is a list of dictionaries, with each dictionary defining a single doped compound.
+
+Each dictionary should include the following key-value pairs:
+- ``compound_id``: the unique identifier for the doped compound
+- ``bb1``, ``bb2``, ``bb3``, ... : the building block tags for each cycle that
+  correspond to this doped compound. The number of these elements should match
+  the number of building block sets defined in the ``bb_sets`` section.
+- ``smiles``: *Optional* the SMILES string for the doped compound
+
+DELi will assert that the tags given in bb1, bb2, etc are unique from the building block tags
+used in the building block set for the given cycle. This is to avoid miscalls during decoding.
+It will also assert that the compound_id is unique from other doped compounds.
+
+.. warning::
+    DELi **will not** check that doped compound ids are unique from any given compound
+    id in the library. DEL compound ids are generated on the fly, and running an exhaustive check is
+    a waste of time. Make sure your ids will not conflict. You this is easy to do if you make sure the
+    DEL library id does not show up in the doped compound id.
 
 .. _reaction-sec-ref:
 
