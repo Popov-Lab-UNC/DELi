@@ -1,8 +1,10 @@
 """for classes relating to DEL compounds"""
 
 import abc
+import json
 from typing import TYPE_CHECKING
 
+from ..configure import DeliDataLoadable, accept_deli_data_name
 from ..utils import SmilesMixin
 
 
@@ -144,7 +146,7 @@ class ToolCompound(Compound, SmilesMixin):
         return cls(compound_id=data["compound_id"], smiles=data.get("smiles", None))
 
 
-class TaggedToolCompound(ToolCompound):
+class TaggedToolCompound(ToolCompound, DeliDataLoadable):
     """
     A ToolCompound with an associated tag.
 
@@ -194,6 +196,29 @@ class TaggedToolCompound(ToolCompound):
             The created TaggedToolCompound object.
         """
         return cls(compound_id=data["compound_id"], tag=data["tag"], smiles=data.get("smiles", None))
+
+    @classmethod
+    @accept_deli_data_name("tool_compounds", "json", target_param="name_or_path")
+    def load(cls, name_or_path: str) -> "TaggedToolCompound":
+        """
+        Load TaggedToolCompounds from a source file
+
+        Accepts names from the DELi data directory subfolder "tool_compounds".
+
+        Parameters
+        ----------
+        name_or_path: str
+            The name of the DELi data resource or path to load from.
+
+        Returns
+        -------
+        TaggedToolCompound
+        """
+        data = json.load(open(name_or_path))
+        try:
+            return cls.from_dict(data)
+        except Exception as e:
+            raise DELCompoundException(f"Failed to load TaggedToolCompound from {name_or_path}") from e
 
 
 class DopedToolCompound(ToolCompound):
