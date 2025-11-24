@@ -13,9 +13,10 @@ from deli.enumeration.enumerator import EnumeratedDELCompound, Enumerator
 from deli.enumeration.reaction import ReactionTree
 from deli.utils import to_smi
 
-from .barcode import BarcodeSchema, BuildingBlockBarcodeSection
+from .barcode import BuildingBlockBarcodeSection, DELBarcodeSchema
 from .building_block import BuildingBlock, BuildingBlockSet, TaggedBuildingBlockSet
-from .compound import DELCompound, DopedToolCompound, ToolCompound
+from .compound import DELCompound
+from .tool_compounds import DopedToolCompound, ToolCompound
 
 
 RESERVED_CONFIG_KEYS = [
@@ -152,7 +153,7 @@ def _parse_library_json(data: dict, load_dna: bool) -> dict[str, Any]:
     if load_dna:
         res.update(
             {
-                "barcode_schema": BarcodeSchema.from_dict(data["barcode_schema"]),
+                "barcode_schema": DELBarcodeSchema.from_dict(data["barcode_schema"]),
                 "dna_barcode_on": data.get("dna_barcode_on", None),
             }
         )
@@ -561,7 +562,7 @@ class DELibrary(Library):
     def __init__(
         self,
         library_id: str,
-        barcode_schema: BarcodeSchema,
+        barcode_schema: DELBarcodeSchema,
         bb_sets: Sequence[TaggedBuildingBlockSet],
         tool_compounds: Optional[Sequence[DopedToolCompound]] = None,
         enumerator: Optional[Enumerator] = None,
@@ -577,7 +578,7 @@ class DELibrary(Library):
         ----------
         library_id : str
             name/id of the library
-        barcode_schema : BarcodeSchema
+        barcode_schema : DELBarcodeSchema
             The barcode schema defining how the barcodes are designed
         bb_sets : Sequence[TaggedBuildingBlockSet]
             the sets of building-block used to build this library
