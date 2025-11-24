@@ -164,12 +164,11 @@ DELi to decode; All other functions of DELi can operate with out it.
 See :ref:`lib-vs-del` for more details on this.
 
 This element is a dictionary of dictionaries. Each element of the outer dictionary
-maps a barcode section "name" to a dictionary of the DNA info of that section.
-There are two types of barcode sections: variable and static. Variable sections mean
-we expect each compound in the DEL to vary in sequence for that section. Static
-means all compounds in the DEL will have the same sequence for this section.
-Variable DNA in DELi is represented by the letter 'N' (e.g. NNNNNNNN) and static is the
-four nucleic acids: 'AGTC' (e.g. AGTTCGTA).
+maps a barcode section "name" to a dictionary of the section's info.
+
+.. note::
+    Variable DNA in DELi is represented by the letter 'N'; DELi only accepts 5 type of nucleotides:
+    'A', 'G', 'C', 'T' and 'N'. If any other letters are used in the tag sequences, DELi will raise an exception.
 
 The DNA info dictionary can have the following elements:
 - ``tag``: the DNA sequence of the section. This is a string of nucleic acids (A, T, C, G) or
@@ -177,15 +176,32 @@ The DNA info dictionary can have the following elements:
 - ``overhang``: the overhang sequence of the section. This section is optional, and only
   should be included if the section actually has an overhang. Overhangs are the regions used to promote
   DNA ligation and must be static, even in a variable section. That means it should be a string
-  of nucleic acids (A, T, C, G)
+  of nucleic acids (A, T, C, G). This is most useful in cases where variable sections, like a building block section
+  all share the same overhang sequence. Rather than adding it to each building block tag, you can specify it here
+  and only list the variable DNA in the building block files. This can improve the quality of decoding, since error
+  correction will not be applied to the overhang region (which is wasteful since it is static).
 - ``error_correction``: the error correction mode used for this section. This is an optional region and should only
   be included for a variable section that was built to be error corrected.
   This is often done for the building block sections.
   DELi support several modes of error correction, for details on how to specify them for sections,
   see the :ref:`error correction docs <error-correction-docs>`.
 
-When it comes to barcode sections, some section names are reserved, and possibly required, by DELi.
-These are:
+There are three types of barcode sections: variable, static, and mixed. Variable sections mean
+we expect that part of the barcode to vary *completely* read by read. This means the ``tag``
+element is all 'N' (for an unknown nucleotide). Static sections means all barcodes in the DEL
+will have the same sequence for this section (no unknown nucleotides). Mixed sections are
+a mixture of both, they can have static regions mixed with variable regions. For example,
+a mixed section could have a tag like "AGTNNNCGA", where the first three and last three nucleotides
+are static, but the middle three are variable.
+
+DELi will automatically determine the type of section based on the ``tag`` element.
+Variable only have 'N's, static only have A, T, C, G, and mixed have a combination of both.
+
+Some barcode sections are reserved by DELi. They are used to handle core processes for decoding.
+They also get loaded as unique classes in DELi to further separate them from unreserved sections.
+Unlike unreserved sections, reserved sections must follow specific naming conventions and rules.
+
+There are two required reserved sections in the barcode schema for a DEL:
 
 - ``library``: this section name is for the part of the DNA barcode used to decode the
   library the compound originates from. It is **required** and must be static.
@@ -196,13 +212,22 @@ These are:
   If there is a mismatch (e.g. a cycle without a tag section, or tag without a BB set)
   DELi will raise an exception. DELi requires these sections to be variable, and there must be
   at least two of them (since there must be at least two building block sets in any library).
+
+There are also some optional reserved sections:
+
 - ``umi``: this section is for the unique molecular identifier (UMI). It must be variable, though it
   it is optional. It should only be included if the library was designed to have a UMI in each barcode.
   It this section is include, DELi will automatically collect umi corrected counts, otherwise it will
   only provide raw count during decoding.
-- ``primer``: this section is not required, but any section that starts with "primer" will be loaded
-    as a primer section. Currently DELi does not use primer sections for anything special, but they are
-    recognized for possible future use, and for easier documentation of the barcode design.
+
+.. Note::
+    While the UMI section is optional to DELi, it really isn't optional in DEL selection (if you want
+    your data to mean anything). DELi will warn you by default if your DEL lacks one.
+
+- ``primer_*``: any section that starts with "primer\_" will be loaded
+  as a primer section. Primer sections must be static. If your real primer section has variable
+  or random bases in it, you should name it something else (for example, "random_primer") to avoid DELi
+  trying to load it as a primer section.
 
 .. _doped-compounds-sec::
 
