@@ -94,6 +94,13 @@ class ToolCompound(Compound, SmilesMixin):
     See the decoding docs for more info on how to set up tool compounds
     in a decoding context. They are currently not utilized in the
     analysis module, but may be in the future.
+
+    Parameters
+    ----------
+    compound_id: str
+        The unique ID of the compound.
+    smiles: str | None
+        The SMILES string of the compound, if known.
     """
 
     def __init__(self, compound_id: str, smiles: str | None = None):
@@ -135,6 +142,117 @@ class ToolCompound(Compound, SmilesMixin):
             The created ToolCompound object.
         """
         return cls(compound_id=data["compound_id"], smiles=data.get("smiles", None))
+
+
+class TaggedToolCompound(ToolCompound):
+    """
+    A ToolCompound with an associated tag.
+
+    Tags can be used to group or identify tool compounds
+    for specific purposes, like quality control or reference compounds.
+
+    Parameters
+    ----------
+    compound_id: str
+        The unique ID of the compound.
+    tag: str
+        The tag associated with the tool compound.
+    smiles: str | None
+        The SMILES string of the compound, if known.
+    """
+
+    def __init__(self, compound_id: str, tag: str, smiles: str | None = None):
+        self.tag = tag
+        super().__init__(compound_id=compound_id, smiles=smiles)
+
+    def to_dict(self) -> dict[str, str]:
+        """
+        Convert this TaggedToolCompound to a dict of info required to recreate it.
+
+        Returns
+        -------
+        dict
+            A dictionary representation of the compound.
+        """
+        data = super().to_dict()
+        data["tag"] = self.tag
+        return data
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "TaggedToolCompound":
+        """
+        Create a TaggedToolCompound from a dictionary representation.
+
+        Parameters
+        ----------
+        data: dict
+            A dictionary representation of the compound.
+
+        Returns
+        -------
+        TaggedToolCompound
+            The created TaggedToolCompound object.
+        """
+        return cls(compound_id=data["compound_id"], tag=data["tag"], smiles=data.get("smiles", None))
+
+
+class DopedToolCompound(ToolCompound):
+    """
+    A ToolCompound that is doped into a DEL.
+
+    Doped compounds are tool compounds that are intentionally added
+    to libraries. They require additional information about building
+    block tags inorder to call it from the library.
+
+    See the tool compound docs for more info
+
+    Parameters
+    ----------
+    compound_id: str
+        The unique ID of the compound.
+    bb_tags: tuple[str, ...]
+        the building block tags associated with the doped compound
+    smiles: str | None
+        The SMILES string of the compound, if known.
+    """
+
+    def __init__(self, compound_id: str, bb_tags: tuple[str, ...], smiles: str | None = None):
+        self.bb_tags = bb_tags
+        super().__init__(compound_id=compound_id, smiles=smiles)
+
+    def to_dict(self) -> dict[str, str]:
+        """
+        Convert this DopedToolCompound to a dict of info required to recreate it.
+
+        Returns
+        -------
+        dict
+            A dictionary representation of the compound.
+        """
+        data = super().to_dict()
+        data["bb_tags"] = ",".join(self.bb_tags)
+        return data
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "DopedToolCompound":
+        """
+        Create a DopedToolCompound from a dictionary representation.
+
+        Parameters
+        ----------
+        data: dict
+            A dictionary representation of the compound.
+
+        Returns
+        -------
+        DopedToolCompound
+            The created DopedToolCompound object.
+        """
+        return cls(
+            compound_id=data["compound_id"],
+            bb_tags=tuple(data["bb_tags"].split(",")),
+            smiles=data.get("smiles", None),
+        )
 
 
 class DELCompoundRaw(Compound):
