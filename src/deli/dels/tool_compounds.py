@@ -1,6 +1,5 @@
 """Handle tool compounds for DELi"""
 
-import json
 from typing import Literal, Sequence, overload
 
 from deli.configure import DeliDataLoadable, accept_deli_data_name
@@ -206,11 +205,14 @@ class ToolCompoundLibrary(DeliDataLoadable):
 
     Parameters
     ----------
+    library_id: str
+        The unique ID of the tool compound library.
     tool_compounds: Sequence[ToolCompound]
         The tool compounds in the tool library.
     """
 
-    def __init__(self, tool_compounds: Sequence[ToolCompound]):
+    def __init__(self, library_id: str, tool_compounds: Sequence[ToolCompound]):
+        self.library_id = library_id
         self.compounds = tool_compounds
 
         self._id_to_compound: dict[str, ToolCompound] = {tc.compound_id: tc for tc in tool_compounds}
@@ -235,6 +237,9 @@ class ToolCompoundLibrary(DeliDataLoadable):
         ToolCompoundLibrary
             The loaded ToolCompoundLibrary.
         """
+        import json
+        import os
+
         data = json.load(open(name_or_path, "r"))
 
         tool_compounds: list[ToolCompound] = list()
@@ -244,7 +249,9 @@ class ToolCompoundLibrary(DeliDataLoadable):
             else:
                 tool_compounds.append(ToolCompound.from_dict(tc_data))
 
-        return cls(tool_compounds=tool_compounds)
+        library_id = ".".join(os.path.basename(name_or_path).split(".")[:-1])  # filename without extension
+
+        return cls(library_id=library_id, tool_compounds=tool_compounds)
 
     def get_compound(self, compound_id: str) -> ToolCompound:
         """
@@ -282,13 +289,21 @@ class TaggedToolCompoundLibrary(ToolCompoundLibrary):
     ----------
     tool_compounds: Sequence[TaggedToolCompound]
         The tool compounds in the tool library.
+
+    Attributes
+    ----------
+    library_tag: str
+        The library DNA tag for the tool compound library.
     """
 
-    def __init__(self, tool_compounds: Sequence[TaggedToolCompound], barcode_schema: ToolCompoundBarcodeSchema):
-        super().__init__(tool_compounds)
+    def __init__(
+        self, library_id: str, tool_compounds: Sequence[TaggedToolCompound], barcode_schema: ToolCompoundBarcodeSchema
+    ):
+        super().__init__(library_id, tool_compounds)
         self.barcode_schema = barcode_schema
         self.compounds: Sequence[TaggedToolCompound] = tool_compounds  # type hinting override
 
+        self.library_tag = self.barcode_schema.library_section.section_tag
         self._tag_to_compound: dict[str, TaggedToolCompound] = {tc.tag: tc for tc in tool_compounds}
 
     @classmethod
@@ -311,6 +326,9 @@ class TaggedToolCompoundLibrary(ToolCompoundLibrary):
         ToolCompoundLibrary
             The loaded ToolCompoundLibrary.
         """
+        import json
+        import os
+
         data = json.load(open(name_or_path, "r"))
 
         barcode_schema = ToolCompoundBarcodeSchema.from_dict(data["barcode_schema"])
@@ -324,7 +342,9 @@ class TaggedToolCompoundLibrary(ToolCompoundLibrary):
                 )
             else:
                 tool_compounds.append(TaggedToolCompound.from_dict(tc_data))
-        return cls(tool_compounds=tool_compounds, barcode_schema=barcode_schema)
+        library_id = ".".join(os.path.basename(name_or_path).split(".")[:-1])  # filename without extension
+
+        return cls(library_id=library_id, tool_compounds=tool_compounds, barcode_schema=barcode_schema)
 
     @overload
     def search_tags(self, query: str, fail_on_missing: Literal[False]) -> TaggedToolCompound | None: ...
