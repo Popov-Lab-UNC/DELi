@@ -793,8 +793,8 @@ class LibraryDecoder(abc.ABC, Generic[L]):
                         elif wiggle_call.score < best_score:  # better match found
                             best_score = wiggle_call.score
                             best_call = wiggle_call
-                            best_stop_idx = start - true_section_length + wiggle_start
-                            _closest_sec_stop_idx = stop - true_section_length + wiggle_end
+                            best_start_idx = start - true_section_length + wiggle_start
+                            best_stop_idx = stop - true_section_length + wiggle_end
                         elif wiggle_call.score == best_score:  # ambiguous match check
                             # if the barcodes are different but have the same score, it is ambiguous
                             if (not isinstance(best_call, FailedBarcodeLookup)) and (wiggle_call.obj != best_call.obj):
