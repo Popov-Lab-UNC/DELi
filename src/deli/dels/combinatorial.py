@@ -13,8 +13,8 @@ from deli.enumeration.enumerator import EnumeratedDELCompound, Enumerator
 from deli.enumeration.reaction import ReactionTree
 from deli.utils import to_smi
 
-from ._base import _Library
 from .barcode import BarcodedMixin, BuildingBlockBarcodeSection, DELBarcodeSchema
+from .base import Library
 from .building_block import BuildingBlock, BuildingBlockSet, TaggedBuildingBlockSet
 from .compound import DELCompound
 from .tool_compounds import DopedToolCompound, ToolCompound
@@ -167,7 +167,7 @@ class LibraryBuildError(Exception):
     pass
 
 
-class CombinatorialLibrary(_Library, DeliDataLoadable):
+class CombinatorialLibrary(Library, DeliDataLoadable):
     """
     A Library of compounds built combinatorially from building blocks
 

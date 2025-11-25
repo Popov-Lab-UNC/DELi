@@ -5,8 +5,8 @@ from typing import Literal, Sequence, overload
 from deli.configure import DeliDataLoadable, accept_deli_data_name
 from deli.utils.mol_utils import SmilesMixin
 
-from ._base import _Library
 from .barcode import BarcodedMixin, ToolCompoundBarcodeSchema
+from .base import Library
 from .compound import Compound
 
 
@@ -197,7 +197,7 @@ class ToolCompoundParsingError(Exception):
     pass
 
 
-class ToolCompoundLibrary(_Library, DeliDataLoadable):
+class ToolCompoundLibrary(Library, DeliDataLoadable):
     """
     A collection of ToolCompounds for use in decoding.
 
