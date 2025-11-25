@@ -1,9 +1,17 @@
 """DNA sequence alignment"""
 
 import abc
+import warnings
 from typing import no_type_check
 
 from numba import njit
+
+
+warnings.warn(
+    "the deli.dna.align module is deprecated and will be removed in a future release",
+    DeprecationWarning,
+    stacklevel=1,
+)
 
 
 class Alignment:
