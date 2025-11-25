@@ -5,7 +5,8 @@ from typing import Literal, Sequence, overload
 from deli.configure import DeliDataLoadable, accept_deli_data_name
 from deli.utils.mol_utils import SmilesMixin
 
-from .barcode import ToolCompoundBarcodeSchema
+from ._base import _Library
+from .barcode import BarcodedMixin, ToolCompoundBarcodeSchema
 from .compound import Compound
 
 
@@ -196,7 +197,7 @@ class ToolCompoundParsingError(Exception):
     pass
 
 
-class ToolCompoundLibrary(DeliDataLoadable):
+class ToolCompoundLibrary(_Library, DeliDataLoadable):
     """
     A collection of ToolCompounds for use in decoding.
 
@@ -212,7 +213,7 @@ class ToolCompoundLibrary(DeliDataLoadable):
     """
 
     def __init__(self, library_id: str, tool_compounds: Sequence[ToolCompound]):
-        self.library_id = library_id
+        super().__init__(library_id=library_id)
         self.compounds = tool_compounds
 
         self._id_to_compound: dict[str, ToolCompound] = {tc.compound_id: tc for tc in tool_compounds}
@@ -278,7 +279,7 @@ class ToolCompoundLibrary(DeliDataLoadable):
             raise KeyError(f"ToolCompound with ID {compound_id} not found in tool library") from e
 
 
-class TaggedToolCompoundLibrary(ToolCompoundLibrary):
+class TaggedToolCompoundLibrary(ToolCompoundLibrary, BarcodedMixin[ToolCompoundBarcodeSchema]):
     """
     A collection of ToolCompounds for use in decoding.
 

@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     from deli.enumeration.enumerator import EnumeratedDELCompound
 
     from .building_block import BuildingBlock
-    from .library import Library, LibraryCollection
+    from .combinatorial import CombinatorialLibrary, LibraryCollection
 
 
 def generate_del_compound_id(library_id: str, building_blocks: list[str]) -> str:
@@ -137,7 +137,7 @@ class DELCompoundRaw(Compound):
             when the library or building blocks cannot be found to create the compound.
         """
         try:
-            library: "Library" = collection.get_library(self.library_id)
+            library: "CombinatorialLibrary" = collection.get_library(self.library_id)
         except KeyError as e:
             raise DELCompoundException(f"Library {self.library_id} not found in collection") from e
 
@@ -194,7 +194,7 @@ class DELCompound(DELCompoundRaw):
 
     def __init__(
         self,
-        library: "Library",
+        library: "CombinatorialLibrary",
         building_blocks: list[BuildingBlock],
     ):
         """

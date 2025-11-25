@@ -8,7 +8,7 @@ import yaml
 
 from deli.dna import SequenceGlobReader, SequenceReader
 
-from .library import DELibrary, DELibraryCollection, Library, LibraryCollection
+from .combinatorial import CombinatorialLibrary, DELibrary, DELibraryCollection, LibraryCollection
 
 
 class SectionCondition:
@@ -127,7 +127,7 @@ class Selection:
         Selection
             the Selection object created from the dictionary
         """
-        lib_collection = LibraryCollection([Library.load(lib) for lib in data["libraries"]])
+        lib_collection = LibraryCollection([CombinatorialLibrary.load(lib) for lib in data["libraries"]])
 
         return cls(
             library_collection=lib_collection,

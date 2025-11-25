@@ -13,7 +13,8 @@ from deli.enumeration.enumerator import EnumeratedDELCompound, Enumerator
 from deli.enumeration.reaction import ReactionTree
 from deli.utils import to_smi
 
-from .barcode import BuildingBlockBarcodeSection, DELBarcodeSchema
+from ._base import _Library
+from .barcode import BarcodedMixin, BuildingBlockBarcodeSection, DELBarcodeSchema
 from .building_block import BuildingBlock, BuildingBlockSet, TaggedBuildingBlockSet
 from .compound import DELCompound
 from .tool_compounds import DopedToolCompound, ToolCompound
@@ -166,12 +167,9 @@ class LibraryBuildError(Exception):
     pass
 
 
-BBSetType = TypeVar("BBSetType", bound=BuildingBlockSet)
-
-
-class Library(DeliDataLoadable):
+class CombinatorialLibrary(_Library, DeliDataLoadable):
     """
-    A Library is a DEL that lacks information about the DNA barcodes
+    A Library of compounds built combinatorially from building blocks
 
     This is primarily to provide support for a situation where everything
     about the library is known, but no decoding by DELi is needed
@@ -218,7 +216,7 @@ class Library(DeliDataLoadable):
             the parameters passed to build the library are not compatible with each other
             error message will contain specific details of build issue
         """
-        self.library_id = library_id
+        super().__init__(library_id=library_id)
         self.bb_sets = bb_sets
         self.scaffold = scaffold
         self.tool_compounds: Sequence[ToolCompound] = tool_compounds if tool_compounds else []
@@ -248,13 +246,13 @@ class Library(DeliDataLoadable):
 
     def __eq__(self, other):
         """Check equality of libraries by their id"""
-        if isinstance(other, Library):
+        if isinstance(other, CombinatorialLibrary):
             return True
         return False
 
     @classmethod
     @accept_deli_data_name("libraries", "json")
-    def load(cls, path: str) -> "Library":
+    def load(cls, path: str) -> "CombinatorialLibrary":
         """
         Load a library from the DELi data directory
 
@@ -276,7 +274,7 @@ class Library(DeliDataLoadable):
 
         Returns
         -------
-        Library
+        CombinatorialLibrary
         """
         library_id = Path(path).stem.replace(" ", "_")
         _cls = cls(library_id=library_id, **_parse_library_json(json.load(open(path)), load_dna=False))
@@ -545,7 +543,7 @@ class Library(DeliDataLoadable):
             output_file.write(separator.join(row) + "\n")
 
 
-class DELibrary(Library):
+class DELibrary(CombinatorialLibrary, BarcodedMixin[DELBarcodeSchema]):
     """
     Contains information about a DNA-encoded library
 
@@ -582,9 +580,9 @@ class DELibrary(Library):
             The barcode schema defining how the barcodes are designed
         bb_sets : Sequence[TaggedBuildingBlockSet]
             the sets of building-block used to build this library
-            order in list should be order of synthesis
+            order in list should be the same as order of synthesis
             must have length >= 2
-        tool_compounds : optional, List[ToolCompound]
+        tool_compounds : optional, Sequence[DopedToolCompound] = None
             list of tool compounds (doped compounds) in the library
         enumerator : ReactionTree
             The enumerator used to build this library
@@ -692,7 +690,7 @@ class DELibrary(Library):
         self,
     ) -> Iterator[tuple[BuildingBlockBarcodeSection, TaggedBuildingBlockSet]]:
         """
-        Iterate through building block sets and their respective barcode sections sections
+        Iterate through building block sets and their respective barcode sections
 
         Yields
         ------
@@ -702,7 +700,7 @@ class DELibrary(Library):
             yield bb_section, bb_set
 
 
-LibType = TypeVar("LibType", bound=Library)
+LibType = TypeVar("LibType", bound=CombinatorialLibrary)
 
 
 class LibraryCollection(Generic[LibType]):
@@ -716,7 +714,7 @@ class LibraryCollection(Generic[LibType]):
 
         Parameters
         ----------
-        libraries: List[Library]
+        libraries: List[CombinatorialLibrary]
             libraries to include in the library schema group
         """
         self.libraries: Sequence[LibType] = libraries
@@ -752,7 +750,7 @@ class LibraryCollection(Generic[LibType]):
 
         Returns
         -------
-        Library
+        CombinatorialLibrary
 
         Raises
         ------

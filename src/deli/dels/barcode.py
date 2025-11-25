@@ -2,7 +2,7 @@
 
 import abc
 import re
-from typing import Optional
+from typing import Generic, Optional, TypeVar
 
 from typing_extensions import Self
 
@@ -50,7 +50,7 @@ class BarcodeSection:
         if len(set(self.section_tag) - {"A", "C", "G", "T", "N"}) != 0:
             raise BarcodeSchemaError(
                 f"barcode section {self.section_name} contains invalid nucleotides "
-                f"'{set(self.section_tag - {'A', 'C', 'G', 'T', 'N'})}' : {self.section_tag}"
+                f"'{set(self.section_tag) - {'A', 'C', 'G', 'T', 'N'}}' : {self.section_tag}"
             )
 
     def get_dna_sequence(self) -> str:
@@ -64,6 +64,13 @@ class BarcodeSection:
     def has_overhang(self) -> bool:
         """Returns true if the barcode section has overhang"""
         return self.section_overhang is not None
+
+    def get_overhang_length(self) -> int:
+        """Returns the length of the overhang, or 0 if no overhang"""
+        if self.section_overhang is not None:
+            return len(self.section_overhang)
+        else:
+            return 0
 
     def has_identical_tag(self, other: "BarcodeSection") -> bool:
         """
@@ -391,7 +398,7 @@ class BarcodeSchema(abc.ABC):
             (i, section) for i, section in enumerate(self.barcode_sections) if isinstance(section, UMIBarcodeSection)
         ]
         if len(_umi_section) > 1:
-            raise BarcodeSchemaError("barcode schemas must contain at most one umi barcode section")
+            raise BarcodeSchemaError("barcode schemas can contain at most one umi barcode section")
         else:
             if _umi_section:
                 self.umi_section = _umi_section[0][1]
@@ -908,23 +915,6 @@ class DELBarcodeSchema(BarcodeSchema):
                     self.building_block_sections.append(bb_section)
                     self._building_block_section_idxs.append(_bb_section_idx)
 
-        # check that library section is not inbetween building block sections
-        _found_library = False
-        _found_bb_section = False
-        self._library_in_front = True
-        for section in self.barcode_sections:
-            if _found_bb_section and not _found_library:
-                self._library_in_front = False
-            if isinstance(section, LibraryBarcodeSection):
-                _found_library = True
-            elif isinstance(section, BuildingBlockBarcodeSection):
-                if _found_library and _found_bb_section:
-                    raise BarcodeSchemaError(
-                        "barcode schemas must not have the library section between the building block sections"
-                    )
-                _found_bb_section = True
-                _found_library = False
-
     def get_required_section_names(self) -> list[str]:
         """
         Get the names of all required barcode sections
@@ -950,36 +940,6 @@ class DELBarcodeSchema(BarcodeSchema):
     def get_building_block_section_names(self) -> list[str]:
         """Get list of building block section names"""
         return [section.section_name for section in self.building_block_sections]
-
-    def is_library_tag_in_front(self) -> bool:
-        """
-        Return `True` if the library tag is before the building block sections
-
-        Notes
-        -----
-        Because library tags must be before or after all barcode sections
-        if this is `False`  it means the library tag is at the 'back' of the barcode
-
-        Returns
-        -------
-        bool
-        """
-        return self._library_in_front
-
-    def is_library_tag_in_back(self) -> bool:
-        """
-        Return `True` if the library tag is after of the building block sections
-
-        Notes
-        -----
-        Because library tags must be before or after all barcode sections
-        if this is `False`  it means the library tag is at the 'front' of the barcode
-
-        Returns
-        -------
-        bool
-        """
-        return not self._library_in_front
 
     def get_length_before_section(self, section: str | BarcodeSection) -> int:
         """
@@ -1055,3 +1015,33 @@ class ToolCompoundBarcodeSchema(BarcodeSchema):
             raise BarcodeSchemaError("barcode schemas must contain only one tool compound barcode section")
         else:
             self.tool_compound_section = _tool_compound_sections[0][1]
+
+    def get_required_section_names(self) -> list[str]:
+        """
+        Get the names of all required barcode sections
+
+        Required sections are the library tag and the tool compound tag,
+        and the umi (if present)
+
+        Returns
+        -------
+        list[str]
+            list of required barcode section names
+        """
+        required_sections: list[str] = [self.library_section.section_name, self.tool_compound_section.section_name]
+        if self.umi_section:
+            required_sections.append(self.umi_section.section_name)
+        return required_sections
+
+
+B = TypeVar("B", bound="BarcodeSchema")
+
+
+class BarcodedMixin(Generic[B]):
+    """Mixin to flag an object as having a barcode schema"""
+
+    barcode_schema: B
+
+    def get_barcode_schema(self) -> B:
+        """Return the barcode schema associated with the library."""
+        return self.barcode_schema
