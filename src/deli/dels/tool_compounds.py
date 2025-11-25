@@ -381,7 +381,7 @@ class TaggedToolCompoundLibrary(ToolCompoundLibrary, BarcodedMixin[ToolCompoundB
         except KeyError as e:
             if fail_on_missing:
                 raise KeyError(
-                    f"TaggedToolCompound with tag {str} not found in tool library with library tag "
+                    f"TaggedToolCompound with tag {query} not found in tool library with library tag "
                     f"'{self.barcode_schema.library_section.section_tag}'"
                 ) from e
             else:
