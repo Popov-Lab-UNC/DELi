@@ -24,7 +24,7 @@ from numba import njit
 from regex import BESTMATCH, Match, Pattern, compile
 
 from deli.dels.barcode import BarcodeSchema
-from deli.dels.library import DELibrary, DELibraryCollection
+from deli.dels.combinatorial import DELibrary, DELibraryCollection
 from deli.dels.tool_compounds import TaggedToolCompoundLibrary
 
 from ._base import FailedDecodeAttempt
@@ -935,7 +935,7 @@ class LibraryDemultiplexer(abc.ABC):
         self.tool_compounds = tool_compounds if tool_compounds is not None else []
         self.libraries = libraries
 
-        self._all_libraries: list[TaggedLibrary] = list(libraries.libraries) + self.tool_compounds
+        self.all_libraries: list[TaggedLibrary] = list(libraries.libraries) + self.tool_compounds
 
     @abc.abstractmethod
     def demultiplex(
@@ -1051,7 +1051,7 @@ class QueryBasesLibraryDemultiplexer(LibraryDemultiplexer, Generic[Q], abc.ABC):
             the dynamic library aligners for each library
         """
         aligners: dict[TaggedLibrary, BarcodeAligner] = {}
-        for library in self._all_libraries:
+        for library in self.all_libraries:
             _found_existing: bool = False
             for other_library, aligner in aligners.items():
                 if library.barcode_schema == other_library.barcode_schema:
@@ -1296,7 +1296,7 @@ class LibraryTagRegexLibraryDemultiplexer(LibraryTagLibraryDemultiplexer[_RegexQ
         as the only static section in the query.
         """
         queries: list[_RegexQuery] = list()
-        for library in self._all_libraries:
+        for library in self.all_libraries:
             before_lib_section_names = [
                 sec.section_name for sec in library.barcode_schema.get_static_sections_before_library()
             ]
@@ -1365,7 +1365,7 @@ class LibraryTagCutadaptLibraryDemultiplexer(LibraryTagLibraryDemultiplexer[_Cut
         as the only static section in the query. These will be SingleAdapters
         """
         queries: list[_CutadaptQuery] = list()
-        for library in self._all_libraries:
+        for library in self.all_libraries:
             queries.append(
                 _CutadaptQuery(libraries=[library], section_names=("library",), error_tolerance=self.error_tolerance)
             )
@@ -1503,7 +1503,7 @@ class SinglePrimerLibraryDemultiplexer(NoLibraryTagLibraryDemultiplexer[Q], abc.
         """
         # map all possible static barcode to the barcode schemas they cover
         static_seq_groups: defaultdict[tuple[str, str], set[int]] = defaultdict(set)
-        for idx, library in enumerate(self._all_libraries):
+        for idx, library in enumerate(self.all_libraries):
             static_section_tags = [
                 (sec.get_dna_sequence(), sec.section_name) for sec in library.barcode_schema.static_sections
             ]
@@ -1512,7 +1512,7 @@ class SinglePrimerLibraryDemultiplexer(NoLibraryTagLibraryDemultiplexer[Q], abc.
 
         # greedily pick sequences that cover the most remaining barcode schemas
         candidates = static_seq_groups.copy()
-        uncovered = set(range(len(self._all_libraries)))
+        uncovered = set(range(len(self.all_libraries)))
         chosen: list[Q] = []
         while uncovered:
             best_seq: tuple[str, str] | None = None
@@ -1526,7 +1526,7 @@ class SinglePrimerLibraryDemultiplexer(NoLibraryTagLibraryDemultiplexer[Q], abc.
                 raise RuntimeError("this is impossible, something went wrong. Please raise an issue")
             else:
                 new_idxes = set(candidates[best_seq]) & uncovered
-                libraries: list[TaggedLibrary] = list([self._all_libraries[i] for i in new_idxes])
+                libraries: list[TaggedLibrary] = list([self.all_libraries[i] for i in new_idxes])
 
                 chosen.append(self._get_query_object(libraries=libraries, section_names=(best_seq[1],)))
 
@@ -1571,7 +1571,7 @@ class FlankingPrimersLibraryDemultiplexer(NoLibraryTagLibraryDemultiplexer[Q], a
         """
         # map all possible static barcode to the barcode schemas they cover
         static_seq_groups: defaultdict[tuple[tuple[str, str], tuple[str, str]], set[int]] = defaultdict(set)
-        for idx, library in enumerate(self._all_libraries):
+        for idx, library in enumerate(self.all_libraries):
             before_lib_sections = library.barcode_schema.get_static_sections_before_library()
             after_lib_sections = library.barcode_schema.get_static_sections_after_library()
 
@@ -1592,7 +1592,7 @@ class FlankingPrimersLibraryDemultiplexer(NoLibraryTagLibraryDemultiplexer[Q], a
 
         # greedily pick sequences that cover the most remaining barcode schemas
         candidates = static_seq_groups.copy()
-        uncovered = set(range(len(self._all_libraries)))
+        uncovered = set(range(len(self.all_libraries)))
         chosen: list[Q] = []
         while uncovered:
             best_seq: tuple[tuple[str, str], tuple[str, str]] | None = None
@@ -1606,7 +1606,7 @@ class FlankingPrimersLibraryDemultiplexer(NoLibraryTagLibraryDemultiplexer[Q], a
                 raise RuntimeError("this is impossible, something went wrong. Please raise an issue")
             else:
                 new_idxes = set(candidates[best_seq]) & uncovered
-                libraries: list[TaggedLibrary] = [self._all_libraries[i] for i in new_idxes]
+                libraries: list[TaggedLibrary] = [self.all_libraries[i] for i in new_idxes]
 
                 chosen.append(
                     self._get_query_object(
