@@ -94,6 +94,7 @@ with open(f"./{selection.selection_id}_cube.csv", "w") as f:
                     _row += f",{_smi}"
             _row += f",{compound_data['raw_count']}"
             _row += f",{degen_count}\n"
+            f.write(_row)
 
 # reset the umi counts in the stats object
 merged_stats.num_seqs_degen_per_lib = updated_num_seqs_degen_per_lib
