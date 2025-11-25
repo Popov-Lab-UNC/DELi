@@ -80,7 +80,7 @@ process Decode {
 
     script:
     """
-    python ${workflow.projectDir}/decode.py --decode_file ${params.decode_run} --fastq_file ${fastq_file} ${params.debug ? '--debug ' : ''}${params.save_failed ? '--save-failed ' : ''}
+    python ${workflow.projectDir}/decode.py --decode_file ${params.decode_run} --fastq_file ${fastq_file} ${params.debug ? '--debug ' : ''}${params.save_failed ? '--save_failed ' : ''}
     """
 }
 

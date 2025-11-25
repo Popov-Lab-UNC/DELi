@@ -3,7 +3,7 @@
 import argparse
 import os
 
-from deli.decode import DecodingRunner
+from deli.decode.runner import DecodingRunner
 
 
 parser = argparse.ArgumentParser()

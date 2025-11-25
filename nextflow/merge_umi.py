@@ -7,8 +7,9 @@ import os
 from collections import defaultdict
 from itertools import zip_longest
 
-from deli.decode import DecodeStatistics, build_decoding_report
-from deli.dels import Selection
+from deli.decode.decoder import DecodeStatistics
+from deli.decode.report import build_decoding_report
+from deli.dels.selection import SequencedSelection
 
 
 parser = argparse.ArgumentParser()
@@ -50,7 +51,7 @@ for statistic_file in statistic_files[1:]:
     merged_stats += loaded_statistics
 
 # build the cube file
-selection = Selection.from_yaml(args.decode_file)
+selection = SequencedSelection.from_yaml(args.decode_file)
 _max_cycle_size = selection.library_collection.max_cycle_size()
 
 # build cube file header
