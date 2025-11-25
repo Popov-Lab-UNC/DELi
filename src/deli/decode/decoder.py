@@ -4,7 +4,7 @@ import abc
 import json
 import os
 from collections import defaultdict
-from typing import Any, Generic, Iterator, Optional, TypeVar, cast
+from typing import Any, Generic, Iterator, Optional, TypeVar
 
 from dnaio import SequenceRecord
 
@@ -573,7 +573,7 @@ class DELCollectionDecoder:
         for attempt, (seq_alignment, _) in enumerate(alignment_iter):
             if attempt >= MAX_RETRIES:
                 break
-            decoded_compound = library_decoder.decode_sequence(cast(ValidCall[Any], library_call), seq_alignment)
+            decoded_compound = library_decoder.decode_sequence(library_call, seq_alignment)
             if isinstance(decoded_compound, DecodedCompound):
                 return decoded_compound
         if decoded_compound is None:
