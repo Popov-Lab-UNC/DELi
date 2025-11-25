@@ -241,7 +241,8 @@ class ToolCompoundLibrary(Library, DeliDataLoadable):
         import json
         import os
 
-        data = json.load(open(name_or_path, "r"))
+        with open(name_or_path, "r") as f:
+            data = json.load(f)
 
         tool_compounds: list[ToolCompound] = list()
         for tc_data in data["tool_compounds"]:
