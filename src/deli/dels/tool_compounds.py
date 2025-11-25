@@ -330,7 +330,8 @@ class TaggedToolCompoundLibrary(ToolCompoundLibrary, BarcodedMixin[ToolCompoundB
         import json
         import os
 
-        data = json.load(open(name_or_path, "r"))
+        with open(name_or_path, "r") as f:
+            data = json.load(f)
 
         barcode_schema = ToolCompoundBarcodeSchema.from_dict(data["barcode_schema"])
         tool_compounds: list[TaggedToolCompound] = list()
