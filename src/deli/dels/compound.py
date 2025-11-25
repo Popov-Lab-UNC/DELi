@@ -240,7 +240,7 @@ class DELCompound(DELCompoundRaw):
 
         Raises
         ------
-        DELCompoundException
+        EnumerationRunError
             when enumeration fails for any reason.
         """
         return self.library.enumerator.enumerate_by_bbs(self.building_blocks)

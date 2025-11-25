@@ -1120,6 +1120,7 @@ class QueryBasesLibraryDemultiplexer(LibraryDemultiplexer, Generic[Q], abc.ABC):
                     new_locator = LibraryLocator(library.barcode_schema, query.section_names)
                     query_locators.append(new_locator)
                     lib_locator_map[library] = new_locator
+            locators[query] = query_locators
         return locators
 
     def _get_best_match(self, sequence: SequenceRecord) -> _Match | None:

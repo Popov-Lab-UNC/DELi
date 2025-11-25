@@ -200,6 +200,12 @@ class DecodeStatistics:
 class DecodedCompound(abc.ABC):
     """Base class for compounds that were decoded from a DNA read"""
 
+    umi: UMI | None
+
+    def has_umi(self) -> bool:
+        """Check if the decoded compound has a UMI"""
+        return self.umi is not None
+
     @abc.abstractmethod
     def to_cube_row_dict(self) -> dict[str, str]:
         """
@@ -218,6 +224,27 @@ class DecodedCompound(abc.ABC):
             the smiles for the building block from cycle ##
 
         When writing to a cube, if any key is missing it will be filed with "null"
+        """
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def get_smiles(self) -> str:
+        """
+        Get the SMILES of the decoded compound
+
+        Note
+        ----
+        Should enumerate the compound if able and needed
+
+        Returns
+        -------
+        str
+            the enumerated SMILES of the compound
+
+        Raises
+        ------
+        EnumerationRunError
+            if enumeration fails
         """
         raise NotImplementedError()
 
@@ -312,6 +339,22 @@ class DecodedDELCompound(DELCompound, DecodedCompound):
             row_dict[f"BB{idx:02d}_smiles"] = bb.smi if bb.has_smiles() else "null"
         return row_dict
 
+    def get_smiles(self) -> str:
+        """
+        Get the SMILES of the decoded compound
+
+        Returns
+        -------
+        str
+            the enumerated SMILES of the compound
+
+        Raises
+        ------
+        EnumerationRunError
+            if enumeration fails
+        """
+        return self.enumerate().smi
+
 
 class DecodedToolCompound(DecodedCompound):
     """
@@ -355,15 +398,34 @@ class DecodedToolCompound(DecodedCompound):
         """
         if self.tool_compound.has_smiles():
             return {
-                "library_id": self.tool_library_call.obj.library_id,
+                "library_id": "ToolCompound",
                 "compound_id": self.tool_compound.compound_id,
                 "smiles": self.tool_compound.smi,
             }
         else:
             return {
-                "library_id": self.tool_library_call.obj.library_id,
+                "library_id": "ToolCompound",
                 "compound_id": self.tool_compound.compound_id,
             }
+
+    def get_smiles(self) -> str:
+        """
+        Get the SMILES of the decoded tool compound
+
+        Returns
+        -------
+        str
+            the SMILES of the compound
+
+        Raises
+        ------
+        ValueError
+            if the tool compound has no SMILES
+        """
+        if self.tool_compound.has_smiles():
+            return self.tool_compound.smi
+        else:
+            raise ValueError(f"Tool compound {self.tool_compound.compound_id} has no SMILES")
 
 
 class ReadTooShort(FailedDecodeAttempt):
@@ -816,18 +878,16 @@ class DELibraryDecoder(LibraryDecoder[DELibrary]):
         wiggle: bool = False,
         default_error_correction_mode_str: str = "levenshtein_dist:1,asymmetrical",
     ):
-        super().__init__(library, wiggle, default_error_correction_mode_str)
-
-        self._has_doped = len(self.library.tool_compounds) > 0
+        self._has_doped = len(library.tool_compounds) > 0
         # make "fake" building blocks for the doped compounds
         # ids are equal to the tool compound ids
         self._doped_building_blocks: list[list[TaggedBuildingBlock]] = list()
         self._doped_id_map: dict[str, DopedToolCompound] = {
-            tool_comp.compound_id: tool_comp for tool_comp in self.library.tool_compounds
+            tool_comp.compound_id: tool_comp for tool_comp in library.tool_compounds
         }
-        for i in range(self.library.num_cycles):
+        for i in range(library.num_cycles):
             cycle_bbs: list[TaggedBuildingBlock] = list()
-            for tool_comp in self.library.tool_compounds:
+            for tool_comp in library.tool_compounds:
                 cycle_bbs.append(
                     TaggedBuildingBlock(
                         bb_id=tool_comp.compound_id,
@@ -835,6 +895,7 @@ class DELibraryDecoder(LibraryDecoder[DELibrary]):
                     )
                 )
             self._doped_building_blocks.append(cycle_bbs)
+        super().__init__(library, wiggle, default_error_correction_mode_str)
 
     def _get_callers(self) -> dict[BarcodeSection, BarcodeCaller]:
         callers: dict[BarcodeSection, BarcodeCaller[TaggedBuildingBlock]] = {}

@@ -891,14 +891,12 @@ class DELBarcodeSchema(BarcodeSchema):
     """
 
     def __init__(self, barcode_sections: list[BarcodeSection]):
-        super().__init__(barcode_sections=barcode_sections)
-
         # check for building block sections
         self.building_block_sections: list[BuildingBlockBarcodeSection] = list()
         self._building_block_section_idxs: list[int] = list()
         _building_block_sections = [
             (i, section)
-            for i, section in enumerate(self.barcode_sections)
+            for i, section in enumerate(barcode_sections)
             if isinstance(section, BuildingBlockBarcodeSection)
         ]
         if len(_building_block_sections) == 0:
@@ -914,6 +912,7 @@ class DELBarcodeSchema(BarcodeSchema):
                 else:
                     self.building_block_sections.append(bb_section)
                     self._building_block_section_idxs.append(_bb_section_idx)
+        super().__init__(barcode_sections=barcode_sections)
 
     def get_required_section_names(self) -> list[str]:
         """
