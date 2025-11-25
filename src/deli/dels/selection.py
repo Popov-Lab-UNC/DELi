@@ -2,13 +2,14 @@
 
 import os
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 
 import yaml
 
 from deli.dna import SequenceGlobReader, SequenceReader
 
-from .library import DELibrary, DELibraryCollection, Library, LibraryCollection
+from .combinatorial import CombinatorialLibrary, DELibrary, DELibraryCollection, LibraryCollection
+from .tool_compounds import TaggedToolCompoundLibrary, ToolCompoundLibrary
 
 
 class SectionCondition:
@@ -78,6 +79,7 @@ class Selection:
     def __init__(
         self,
         library_collection: LibraryCollection,
+        tool_compounds: Optional[Sequence[ToolCompoundLibrary]] = None,
         date_ran: datetime | None = None,
         target_id: str | None = None,
         selection_condition: str | None = None,
@@ -91,6 +93,8 @@ class Selection:
         ----------
         library_collection: LibraryCollection
             the library collection used in the selection
+        tool_compounds: Sequence[ToolCompoundLibrary] | None
+            the tool compound libraries used in the selection, defaults to None if not provided
         date_ran: datetime | None
             the date the selection was run, defaults to now if None
         target_id: str | None
@@ -103,6 +107,7 @@ class Selection:
             any additional information about the selection, defaults to None if not provided
         """
         self.library_collection: LibraryCollection = library_collection
+        self.tool_compounds: Sequence[ToolCompoundLibrary] = tool_compounds if tool_compounds else []
         self.selection_id = selection_id if selection_id else "Unknown"
         self.date_ran = date_ran
 
@@ -127,10 +132,12 @@ class Selection:
         Selection
             the Selection object created from the dictionary
         """
-        lib_collection = LibraryCollection([Library.load(lib) for lib in data["libraries"]])
+        lib_collection = LibraryCollection([CombinatorialLibrary.load(lib) for lib in data["libraries"]])
+        tool_compounds = [ToolCompoundLibrary.load(tc) for tc in data.get("tool_compounds", [])]
 
         return cls(
             library_collection=lib_collection,
+            tool_compounds=tool_compounds,
             date_ran=datetime.fromisoformat(data["date_ran"]) if data.get("date_ran") is not None else None,
             target_id=data.get("target_id"),
             selection_condition=data.get("selection_condition"),
@@ -170,6 +177,7 @@ class Selection:
             "selection_id": self.selection_id,
             "additional_info": self.selection_condition.additional_info,
             "libraries": [lib.library_id for lib in self.library_collection.libraries],
+            "tool_compounds": [tc.library_id for tc in self.tool_compounds],
         }
         return _data
 
@@ -192,6 +200,7 @@ class SequencedSelection(Selection):
         self,
         library_collection: DELibraryCollection,
         sequence_files: list[str],
+        tool_compounds: Optional[Sequence[TaggedToolCompoundLibrary]] = None,
         date_ran: Optional[datetime] = None,
         target_id: Optional[str] = None,
         selection_condition: Optional[str] = None,
@@ -207,6 +216,8 @@ class SequencedSelection(Selection):
             the library collection used in the selection
         sequence_files: list[str]
             the list of barcode files for the selection
+        tool_compounds: Sequence[TaggedToolCompoundLibrary] | None
+            the tool compound libraries used in the selection, defaults to None if not provided
         date_ran: datetime | None
             the date the selection was run, defaults to now if None
         target_id: str | None
@@ -220,6 +231,7 @@ class SequencedSelection(Selection):
         """
         super().__init__(
             library_collection=library_collection,
+            tool_compounds=tool_compounds,
             date_ran=date_ran,
             target_id=target_id,
             selection_condition=selection_condition,
@@ -227,6 +239,7 @@ class SequencedSelection(Selection):
             additional_info=additional_info,
         )
         self.library_collection: DELibraryCollection = library_collection  # for type checking
+        self.tool_compounds: Sequence[TaggedToolCompoundLibrary] = tool_compounds if tool_compounds else []
         self.sequence_files = sequence_files
 
         if len(self.sequence_files) < 1:
@@ -251,9 +264,11 @@ class SequencedSelection(Selection):
             the Selection object created from the dictionary
         """
         lib_collection = DELibraryCollection([DELibrary.load(lib) for lib in data["libraries"]])
+        tool_compounds = [TaggedToolCompoundLibrary.load(tc) for tc in data.get("tool_compounds", [])]
         return cls(
             library_collection=lib_collection,
             sequence_files=data.get("sequence_files", []),
+            tool_compounds=tool_compounds,
             date_ran=datetime.fromisoformat(data["date_ran"]),
             target_id=data.get("target_id"),
             selection_condition=data.get("selection_condition"),

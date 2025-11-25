@@ -23,13 +23,14 @@ def get_plot_files(directory, file_extensions=[".png"]):
         ]
     return []
 
+
 def get_html_files(directory):
     """Retrieve HTML files as text from a given directory."""
     if os.path.exists(directory) and os.path.isdir(directory):
         html_files = []
         for f in os.listdir(directory):
             if f.endswith(".html"):
-                with open(os.path.join(directory, f), 'r', encoding='utf-8') as file:
+                with open(os.path.join(directory, f), "r", encoding="utf-8") as file:
                     html_files.append(file.read())
         return html_files
     return []
@@ -91,7 +92,9 @@ def generate_report(
     ]
 
     # Use the source template directly to ensure we get the latest version
-    template_path = os.path.join(os.path.dirname(__file__), "..", "templates", "analysis_report.html")
+    template_path = os.path.join(
+        os.path.dirname(__file__), "..", "templates", "analysis_report.html"
+    )
     template = jinja2.Template(open(template_path).read())
 
     rendered_html = template.render(

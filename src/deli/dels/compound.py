@@ -1,18 +1,18 @@
 """for classes relating to DEL compounds"""
 
+import abc
 from typing import TYPE_CHECKING
-
-from .building_block import BuildingBlock
 
 
 # for mypy to recognize the library type hints
 if TYPE_CHECKING:
     from deli.enumeration.enumerator import EnumeratedDELCompound
 
-    from .library import Library, LibraryCollection
+    from .building_block import BuildingBlock
+    from .combinatorial import CombinatorialLibrary, LibraryCollection
 
 
-def generate_compound_id(library_id: str, building_blocks: list[str]) -> str:
+def generate_del_compound_id(library_id: str, building_blocks: list[str]) -> str:
     """
     Generate a compound ID from the library ID and building block IDs.
 
@@ -37,7 +37,45 @@ class DELCompoundException(Exception):
     pass
 
 
-class DELCompoundRaw:
+class Compound(abc.ABC):
+    """
+    Abstract base class compounds
+
+    Compounds must have a `compound_id`.
+    This is the only requirement to implement this interface.
+    """
+
+    def __init__(self, compound_id: str):
+        self.compound_id = compound_id
+
+    def __eq__(self, other):
+        """Check if two Compound objects are equal (share the same compound_id)"""
+        if not isinstance(other, Compound):  # any child of this class can be equal
+            return False
+        return self.compound_id == other.compound_id
+
+    def __hash__(self):
+        """Return the hash of the object."""
+        return hash(self.compound_id)
+
+    def __repr__(self):
+        """Return a string representation of the object."""
+        return f"{self.__class__.__name__}({self.compound_id})"
+
+    @abc.abstractmethod
+    def to_dict(self) -> dict[str, str]:
+        """
+        Convert this Compound to a dict of info required to recreate it.
+
+        Returns
+        -------
+        dict
+            A dictionary representation of the compound.
+        """
+        pass
+
+
+class DELCompoundRaw(Compound):
     """
     A DEL compound that only stores minimal information to identify it.
 
@@ -74,21 +112,7 @@ class DELCompoundRaw:
         """
         self.library_id = library_id
         self.building_block_ids = building_blocks_ids
-        self.compound_id = generate_compound_id(self.library_id, self.building_block_ids)
-
-    def __eq__(self, other):
-        """Check if two Compound objects are equal (share the same compound_id)"""
-        if not isinstance(other, DELCompound):  # any child of this class can be equal
-            return False
-        return self.compound_id == other.compound_id
-
-    def __hash__(self):
-        """Return the hash of the object."""
-        return hash(self.compound_id)
-
-    def __repr__(self):
-        """Return a string representation of the object."""
-        return f"{self.__class__.__name__}({self.compound_id})"
+        super().__init__(compound_id=generate_del_compound_id(self.library_id, self.building_block_ids))
 
     def load_compound(self, collection: "LibraryCollection") -> "DELCompound":
         """
@@ -113,20 +137,17 @@ class DELCompoundRaw:
             when the library or building blocks cannot be found to create the compound.
         """
         try:
-            library: "Library" = collection.get_library(self.library_id)
+            library: "CombinatorialLibrary" = collection.get_library(self.library_id)
         except KeyError as e:
             raise DELCompoundException(f"Library {self.library_id} not found in collection") from e
 
         _bbs: list[BuildingBlock] = list()
-        for i, (bb_set, bb_id) in enumerate(
-            zip(library.bb_sets, self.building_block_ids, strict=False)
-        ):
+        for i, (bb_set, bb_id) in enumerate(zip(library.bb_sets, self.building_block_ids, strict=False)):
             try:
                 _bbs.append(bb_set.get_bb_by_id(bb_id, fail_on_missing=True))
             except KeyError as e:
                 raise DELCompoundException(
-                    f"Building block {bb_id} for cycle {i + 1} "
-                    f"not found in library {self.library_id}"
+                    f"Building block {bb_id} for cycle {i + 1} not found in library {self.library_id}"
                 ) from e
         return DELCompound(library=library, building_blocks=_bbs)
 
@@ -173,8 +194,8 @@ class DELCompound(DELCompoundRaw):
 
     def __init__(
         self,
-        library: "Library",
-        building_blocks: list[BuildingBlock],
+        library: "CombinatorialLibrary",
+        building_blocks: list["BuildingBlock"],
     ):
         """
         Initialize the DELCompound object.
@@ -190,9 +211,7 @@ class DELCompound(DELCompoundRaw):
         self.library = library
         self.building_blocks = building_blocks
 
-        super().__init__(
-            library_id=library.library_id, building_blocks_ids=[bb.bb_id for bb in building_blocks]
-        )
+        super().__init__(library_id=library.library_id, building_blocks_ids=[bb.bb_id for bb in building_blocks])
 
     def to_raw(self) -> "DELCompoundRaw":
         """
@@ -221,7 +240,7 @@ class DELCompound(DELCompoundRaw):
 
         Raises
         ------
-        DELCompoundException
+        EnumerationRunError
             when enumeration fails for any reason.
         """
         return self.library.enumerator.enumerate_by_bbs(self.building_blocks)

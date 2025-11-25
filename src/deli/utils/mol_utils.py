@@ -23,6 +23,12 @@ class SmilesMixin:
 
     This class is used as the main way to check if a compound can be used
     in downstream applications that require a SMILES strings.
+
+    Notes
+    -----
+    Once created, the SMILES string of the object is immutable.
+    If you need to modify the SMILES, create a new object with the modified SMILES.
+    The RDKit Mol object is cached after first access to avoid repeated parsing.
     """
 
     _smiles: None | str = None
@@ -44,8 +50,7 @@ class SmilesMixin:
     def smi(self, value):
         """Cannot set the SMILES for a compound, once created it is immutable"""
         raise ChemicalObjectError(
-            f"Cannot set SMILES for {self.__class__.__name__} object directly; "
-            f"SMILES can only be set at initialization"
+            f"Cannot set SMILES for {self.__class__.__name__} object directly; SMILES can only be set at initialization"
         )
 
     @smi.deleter
@@ -62,15 +67,13 @@ class SmilesMixin:
                     _mol = to_mol(self._smiles, fail_on_error=True)
                     self._mol = _mol
                 except ValueError as e:
-                    raise ChemicalObjectError(
-                        f"Cannot create RDKit Mol from SMILES: {self._smiles}"
-                    ) from e
+                    raise ChemicalObjectError(f"Cannot create RDKit Mol from SMILES: {self._smiles}") from e
             else:
                 raise ChemicalObjectError(
-                    f"{self.__class__.__name__} object missing SMILES string, "
-                    f"cannot generate mol attribute"
+                    f"{self.__class__.__name__} object missing SMILES string, cannot generate mol attribute"
                 )
-        return self._mol
+        else:
+            return self._mol
 
     @mol.setter
     def mol(self, value):

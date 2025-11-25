@@ -31,7 +31,7 @@ _custom_order_7_3 = "p1,p2,d3,p4,d5,d6,d7"
 _hamming_order_15_4 = "p1,p2,d3,p4,d5,d6,d7,p8,d9,d10,d11,d12,d13,d14,d15"
 _custom_order_15_4 = "p1,p2,d3,p4,d5,d6,d7,p8,d9,d10,d11,d12,d13,d14,d15"
 
-DELI_DATA_SUB_DIRS: Final = ("libraries", "building_blocks", "reactions")
+DELI_DATA_SUB_DIRS: Final = ("libraries", "building_blocks", "reactions", "tool_compounds")
 
 DELI_CONFIG = None
 
@@ -58,8 +58,7 @@ def get_deli_config() -> "_DeliConfig":
             DELI_CONFIG = _DeliConfig.load_config(Path.home() / ".deli")
         else:
             warnings.warn(
-                f"no DELi config file in home directory; "
-                f"creating default DELi config: {Path.home() / '.deli'}",
+                f"no DELi config file in home directory; creating default DELi config: {Path.home() / '.deli'}",
                 stacklevel=1,
             )
             init_deli_config(Path.home() / ".deli", fail_on_exist=False)
@@ -148,8 +147,7 @@ class _DeliConfig:
                     _path = Path(value).resolve()
                 except TypeError as e:
                     raise TypeError(
-                        f"'deli_data_directory' must be a str, bytes or "
-                        f"os.PathLike object, not {type(value)}"
+                        f"'deli_data_directory' must be a str, bytes or os.PathLike object, not {type(value)}"
                     ) from e
             else:
                 _path = value.resolve()
@@ -172,9 +170,7 @@ class _DeliConfig:
             self._bb_mask = value
         else:
             if len(value) != 3:
-                raise DELiConfigError(
-                    f"'bb_mask' must be a string of 3 characters, not {len(value)}: '{value}'"
-                )
+                raise DELiConfigError(f"'bb_mask' must be a string of 3 characters, not {len(value)}: '{value}'")
             if not isinstance(value, str):
                 raise DELiConfigError(f"'bb_mask' must be a 'string', not '{type(value)}'")
 
@@ -193,8 +189,7 @@ class _DeliConfig:
                 _dict = dict(value)
             except TypeError as e:
                 raise TypeError(
-                    f"'nuc_2_int' must be a type 'dict' or castable "
-                    f"to a dict, found type '{type(value)}'"
+                    f"'nuc_2_int' must be a type 'dict' or castable to a dict, found type '{type(value)}'"
                 ) from e
         else:
             _dict = value
@@ -219,8 +214,7 @@ class _DeliConfig:
         # check that only 0, 1, 2, 3 are used as values
         if {0, 1, 2, 3} != set(_dict.values()):
             raise DELiConfigError(
-                f"'nuc_2_int' must map nucleotides to values 0, 1, 2, 3; "
-                f"found values '{set(_dict.values())}'"
+                f"'nuc_2_int' must map nucleotides to values 0, 1, 2, 3; found values '{set(_dict.values())}'"
             )
         self._nuc_2_int = _dict
 
@@ -234,9 +228,7 @@ class _DeliConfig:
         config = configparser.RawConfigParser()
         try:
             if config.read(os.path.normpath(path)) is None:
-                raise FileNotFoundError(
-                    f"cannot find deli config file at '{os.path.normpath(path)}'"
-                )
+                raise FileNotFoundError(f"cannot find deli config file at '{os.path.normpath(path)}'")
         except configparser.Error as e:
             raise DELiConfigError(
                 f"error reading config file at '{os.path.normpath(path)}';\n"
@@ -297,15 +289,11 @@ class _DeliConfig:
                 try:
                     hamming_order = config.get(section, "hamming_order")
                 except configparser.NoOptionError as e:
-                    raise DELiConfigError(
-                        f"missing 'hamming_order' option in hamming section '{section}'"
-                    ) from e
+                    raise DELiConfigError(f"missing 'hamming_order' option in hamming section '{section}'") from e
                 try:
                     custom_order = config.get(section, "custom_order")
                 except configparser.NoOptionError as e:
-                    raise DELiConfigError(
-                        f"missing 'custom_order' option in hamming section '{section}'"
-                    ) from e
+                    raise DELiConfigError(f"missing 'custom_order' option in hamming section '{section}'") from e
 
                 try:
                     _true_order_nums = [int(_[1:]) for _ in hamming_order.split(",")]
@@ -315,9 +303,7 @@ class _DeliConfig:
                         f"'{section}'; see DELi hamming docs for details about how to "
                         f"define hamming code order"
                     ) from e
-                if (_true_order_nums != sorted(_true_order_nums)) or (
-                    _true_order_nums[0] not in {0, 1}
-                ):
+                if (_true_order_nums != sorted(_true_order_nums)) or (_true_order_nums[0] not in {0, 1}):
                     raise DELiConfigError(
                         f"invalid hamming order '{hamming_order}' in section '{section}'; "
                         f"see DELi hamming docs for details about how to define "
@@ -334,8 +320,7 @@ class _DeliConfig:
                     ) from e
                 if len(_real_order_nums) != len(_true_order_nums):
                     raise DELiConfigError(
-                        f"hamming section '{section}' has a parity "
-                        f"length mismatch; see DELi hamming docs for details"
+                        f"hamming section '{section}' has a parity length mismatch; see DELi hamming docs for details"
                     )
                 _codes[name] = (_true_order_nums, _real_order_nums)
 
@@ -426,9 +411,7 @@ def init_deli_data_directory(path: Path, fail_on_exist: bool = True, overwrite: 
     path = path.resolve()
     if path.exists():
         if fail_on_exist:
-            raise FileExistsError(
-                f"'{path}' already exists; set 'fail_on_exist' to False to overwrite"
-            )
+            raise FileExistsError(f"'{path}' already exists; set 'fail_on_exist' to False to overwrite")
         elif not path.is_dir():
             raise NotADirectoryError(f"'{path}' is not a directory")
     else:
@@ -464,8 +447,7 @@ def init_deli_config(
 
     if _path.exists() and fail_on_exist:
         raise FileExistsError(
-            f"'{_path}' already exists; "
-            f"set 'fail_on_exist' to False to overwrite OR use `deli config init --overwrite`"
+            f"'{_path}' already exists; set 'fail_on_exist' to False to overwrite OR use `deli config init --overwrite`"
         )
 
     _config = (
@@ -518,9 +500,7 @@ def _build_default_hamming_code_strings(
         _codes["8_4"] = ("p0,p1,p2,d3,p4,d5,d6,d7", "p0,p1,p2,d3,p4,d5,d6,d7")
 
     for i in range(9, 16):
-        _hamming_code_str = ",".join(
-            [f"p{j}" if log2(j).is_integer() else f"d{j}" for j in range(1, i + 1)]
-        )
+        _hamming_code_str = ",".join([f"p{j}" if log2(j).is_integer() else f"d{j}" for j in range(1, i + 1)])
         _codes[f"{i}_4"] = (_hamming_code_str, _hamming_code_str)
         if include_extra_parity:
             _codes[f"{i + 1}_5"] = ("p0," + _hamming_code_str, "p0," + _hamming_code_str)
@@ -598,15 +578,12 @@ def accept_deli_data_name(
         decorator = _build_argument_validation_decorator(_build_deli_data_path, target_param)
     except ValueError as err:  # will throw this error if the function lacks a "path" argument
         raise RuntimeError(
-            "cannot decorate function without 'path' parameter "
-            "with the `accept_deli_data_name` decorator"
+            "cannot decorate function without 'path' parameter with the `accept_deli_data_name` decorator"
         ) from err
     return decorator
 
 
-def _build_argument_validation_decorator(
-    validator_func: Callable[[Any], Any], target_arg_name: str
-):
+def _build_argument_validation_decorator(validator_func: Callable[[Any], Any], target_arg_name: str):
     """
     General decorator generator for validating a given argument with a validator function.
     """

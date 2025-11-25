@@ -11,10 +11,11 @@ import yaml
 from tqdm import tqdm
 
 from deli._logging import get_dummy_logger, get_logger
-from deli.dels.library import DELibrary, DELibraryCollection
+from deli.dels.combinatorial import DELibrary, DELibraryCollection
 from deli.dels.selection import Selection, SequencedSelection
 from deli.enumeration.enumerator import EnumerationRunError
 
+from ._base import FailedDecodeAttempt
 from .decoder import DecodedDELCompound, DecodeStatistics, DELCollectionDecoder
 from .degen import DELCollectionCounter, DELCollectionIdCounter, DELCollectionIdUmiCounter
 from .library_demultiplex import (
@@ -50,6 +51,8 @@ class DecodingSettings(dict):
 
     Parameters
     ----------
+    ignore_tool_compounds: bool, default = False
+        if true, will ignore any tool compounds during decoding
     demultiplexer_algorithm: Literal["cutadapt", "regex", "full"], default = "regex"
         The demultiplexing algorithm to use.
         - "cutadapt": use a cutadapt to locate sections
@@ -106,6 +109,7 @@ class DecodingSettings(dict):
 
     def __init__(
         self,
+        ignore_tool_compounds: bool = False,
         demultiplexer_algorithm: Literal["cutadapt", "regex", "full"] = "regex",
         demultiplexer_mode: Literal["library", "single", "flanking"] = "single",
         realign: bool = False,
@@ -119,6 +123,7 @@ class DecodingSettings(dict):
         default_error_correction_mode_str: str = "levenshtein_dist:1,asymmetrical",
     ):
         super().__init__(
+            ignore_tool_compounds=ignore_tool_compounds,
             demultiplexer_algorithm=demultiplexer_algorithm,
             demultiplexer_mode=demultiplexer_mode,
             realign=realign,
@@ -203,6 +208,8 @@ class DecodingRunnerResults:
         self.decode_statistics = decode_statistics
         self.degen = degen
 
+        self._max_cycle_size: int = max([library.num_cycles for library in self.selection.library_collection])
+
     def write_decode_report(self, out_path: str):
         """
         Write the decoding statistics for this run
@@ -240,8 +247,8 @@ class DecodingRunnerResults:
     def write_cube(
         self,
         out_path: str,
-        include_library_id_col: bool = False,
-        include_bb_id_cols: bool = False,
+        include_library_id_col: bool = True,
+        include_bb_id_cols: bool = True,
         include_bb_smi_cols: bool = False,
         include_raw_count_col: bool = True,
         enumerate_smiles: bool = False,
@@ -382,22 +389,24 @@ class DecodingRunnerResults:
                 # write header
                 f.write(_header)
                 for library_count_set in self.degen.del_counter.values():
-                    for decode_barcode, counts in library_count_set.items():
-                        _row = f"{decode_barcode.compound_id}"
+                    for decoded_compound, counts in library_count_set.items():
+                        _row_dict = decoded_compound.to_cube_row_dict()
+                        _row = _row_dict["compound_id"]
                         if include_library_id_col:
-                            _row += f"{delimiter}{decode_barcode.library.library_id}"
-                        for bb in decode_barcode.building_blocks:
+                            _row += f"{delimiter}{_row_dict.get('library_id', 'null')}"
+                        for i in range(1, self._max_cycle_size + 1):
                             if include_bb_id_cols:
-                                _row += f"{delimiter}{bb.bb_id}"
+                                _row += f"{delimiter}{_row_dict.get(f'BB{i:02d}_id', 'null')}"
                             if include_bb_smi_cols:
-                                _row += f"{delimiter}{bb.smi if (bb.has_smiles()) else 'null'}"
+                                _row += f"{delimiter}{_row_dict.get(f'BB{i:02d}_smiles', 'null')}"
+
                         if enumerate_smiles:
                             try:
-                                _smi = decode_barcode.enumerate().smi
-                            except (EnumerationRunError, RuntimeError) as e:
+                                _smi = decoded_compound.get_smiles()
+                            except (EnumerationRunError, RuntimeError, ValueError) as e:
                                 if fail_on_failed_numeration:
                                     raise RuntimeError(
-                                        f"Failed to enumerate SMILES for decoded DEL ID {decode_barcode.compound_id}"
+                                        f"Failed to enumerate SMILES for decoded DEL ID {decoded_compound.compound_id}"
                                     ) from e
                                 _smi = "null"
                             _row += f"{delimiter}{_smi}"
@@ -464,12 +473,14 @@ class DecodingRunner:
         if demultiplex_algorithm == "full":
             demultiplexer = FullSeqAlignmentLibraryDemultiplexer(
                 libraries=self.selection.library_collection,
+                tool_compounds=list(self.selection.tool_compounds),
                 revcomp=self.decode_settings["revcomp"],
             )
         elif demultiplex_algorithm == "cutadapt":
             if demultiplex_mode == "library":
                 demultiplexer = LibraryTagCutadaptLibraryDemultiplexer(
                     libraries=self.selection.library_collection,
+                    tool_compounds=list(self.selection.tool_compounds),
                     min_overlap=self.decode_settings["min_library_overlap"],
                     error_tolerance=self.decode_settings["library_error_tolerance"],
                     revcomp=self.decode_settings["revcomp"],
@@ -478,6 +489,7 @@ class DecodingRunner:
             elif demultiplex_mode == "single":
                 demultiplexer = SinglePrimerCutadaptLibraryDemultiplexer(
                     libraries=self.selection.library_collection,
+                    tool_compounds=list(self.selection.tool_compounds),
                     min_overlap=self.decode_settings["min_library_overlap"],
                     error_tolerance=self.decode_settings["library_error_tolerance"],
                     revcomp=self.decode_settings["revcomp"],
@@ -487,6 +499,7 @@ class DecodingRunner:
             elif demultiplex_mode == "flanking":
                 demultiplexer = FlankingPrimersCutadaptLibraryDemultiplexer(
                     libraries=self.selection.library_collection,
+                    tool_compounds=list(self.selection.tool_compounds),
                     min_overlap=self.decode_settings["min_library_overlap"],
                     error_tolerance=self.decode_settings["library_error_tolerance"],
                     revcomp=self.decode_settings["revcomp"],
@@ -501,6 +514,7 @@ class DecodingRunner:
             if demultiplex_mode == "library":
                 demultiplexer = LibraryTagRegexLibraryDemultiplexer(
                     libraries=self.selection.library_collection,
+                    tool_compounds=list(self.selection.tool_compounds),
                     error_tolerance=self.decode_settings["library_error_tolerance"],
                     revcomp=self.decode_settings["revcomp"],
                     realign=self.decode_settings["realign"],
@@ -508,6 +522,7 @@ class DecodingRunner:
             elif demultiplex_mode == "single":
                 demultiplexer = SinglePrimerRegexLibraryDemultiplexer(
                     libraries=self.selection.library_collection,
+                    tool_compounds=list(self.selection.tool_compounds),
                     error_tolerance=self.decode_settings["library_error_tolerance"],
                     revcomp=self.decode_settings["revcomp"],
                     error_correction_mode_str=self.decode_settings["default_error_correction_mode_str"],
@@ -516,6 +531,7 @@ class DecodingRunner:
             elif demultiplex_mode == "flanking":
                 demultiplexer = FlankingPrimersRegexLibraryDemultiplexer(
                     libraries=self.selection.library_collection,
+                    tool_compounds=list(self.selection.tool_compounds),
                     error_tolerance=self.decode_settings["library_error_tolerance"],
                     revcomp=self.decode_settings["revcomp"],
                     error_correction_mode_str=self.decode_settings["default_error_correction_mode_str"],
@@ -610,7 +626,7 @@ class DecodingRunner:
                 if self.degen.count_barcode(decoded_barcode):
                     # only up the degen count if not a degenerate read
                     self.decoder.decode_statistics.num_seqs_degen_per_lib[decoded_barcode.library.library_id] += 1
-            elif fail_csv_file is not None:
+            elif (isinstance(decoded_barcode, FailedDecodeAttempt)) and (fail_csv_file is not None):
                 # if we are saving failed reads, save the read
                 fail_csv_file.write(
                     f"{seq_record.id}\t"

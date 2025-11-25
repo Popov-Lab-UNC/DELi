@@ -32,7 +32,7 @@ from deli.configure import (
     validate_deli_data_dir,
 )
 from deli.decode.runner import DecodingRunner
-from deli.dels.library import Library
+from deli.dels.combinatorial import CombinatorialLibrary
 
 
 def _timestamp() -> str:
@@ -328,7 +328,7 @@ def enumerate_(library_file, out_path, tqdm, fail_on_error, drop_failed):
 
     _start = datetime.datetime.now()
 
-    enumerator = Library.load(library_file)
+    enumerator = CombinatorialLibrary.load(library_file)
     enumerator.enumerate_to_file(
         output_file,
         separator=",",

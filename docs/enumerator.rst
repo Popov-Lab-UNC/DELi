@@ -203,3 +203,9 @@ Command-Line Interface
 DELi's CLI includes a command for enumerating DELs from a library file: ``deli enumerate``.
 All you need to do is provide the path to a library JSON file. See the :ref:`CLI docs <deli-enumeration-cli-docs>`
 for more info.
+
+Loading Enumerators from Files
+------------------------------
+You can load a ``DELEnumerator`` object directly from a JSON file using the
+``DELEnumerator.load`` method. The JSON file must contain the reaction tree and building block set
+definitions. See the :ref:`defining enumerators docs <define-enum-docs>` for more info on how to define these files.

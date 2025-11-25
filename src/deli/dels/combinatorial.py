@@ -13,9 +13,11 @@ from deli.enumeration.enumerator import EnumeratedDELCompound, Enumerator
 from deli.enumeration.reaction import ReactionTree
 from deli.utils import to_smi
 
-from .barcode import BarcodeSchema, BuildingBlockBarcodeSection
+from .barcode import BarcodedMixin, BuildingBlockBarcodeSection, DELBarcodeSchema
+from .base import Library
 from .building_block import BuildingBlock, BuildingBlockSet, TaggedBuildingBlockSet
 from .compound import DELCompound
+from .tool_compounds import DopedToolCompound, ToolCompound
 
 
 RESERVED_CONFIG_KEYS = [
@@ -88,6 +90,38 @@ def _parse_library_json(data: dict, load_dna: bool) -> dict[str, Any]:
     bb_sets: list[BuildingBlockSet] = [_[1] for _ in _observed_sets]
     bb_set_ids = set([bb_set.bb_set_id for bb_set in bb_sets])
 
+    # check for doped compounds and validate
+    tool_compounds: list[ToolCompound] = list()
+    if "doped" in data.keys():
+        for doped_bb in data["doped"]:
+            doped_compound_id = doped_bb.get("compound_id", None)
+            if doped_compound_id is None:
+                raise LibraryBuildError("doped building blocks must have a 'doped_compound_id' field")
+            smiles = doped_bb.get("smiles", None)
+            if load_dna:
+                _bb_tags: list[str] = list()
+                for _bb_cycle in _bb_cycles:
+                    bb_cycle_tag = doped_bb.get(f"bb{_bb_cycle}", None)
+                    if bb_cycle_tag is not None:
+                        raise LibraryBuildError(
+                            f"doped compound {doped_compound_id} missing 'bb{_bb_cycle}' "
+                            f"for {len(_bb_cycles)} cycle library"
+                        )
+                tool_compounds.append(
+                    DopedToolCompound(
+                        compound_id=doped_compound_id,
+                        smiles=smiles,
+                        bb_tags=tuple(_bb_tags),
+                    )
+                )
+            else:
+                tool_compounds.append(
+                    ToolCompound(
+                        compound_id=doped_compound_id,
+                        smiles=smiles,
+                    )
+                )
+
     # check for scaffold and linker
     linker = data.get("linker", None)
     truncated_linker = data.get("truncated_linker", None)
@@ -113,10 +147,14 @@ def _parse_library_json(data: dict, load_dna: bool) -> dict[str, Any]:
         "enumerator": enumerator,
         "scaffold": data.get("scaffold"),
     }
+
+    if len(tool_compounds) > 0:
+        res["tool_compounds"] = tool_compounds
+
     if load_dna:
         res.update(
             {
-                "barcode_schema": BarcodeSchema.from_dict(data["barcode_schema"]),
+                "barcode_schema": DELBarcodeSchema.from_dict(data["barcode_schema"]),
                 "dna_barcode_on": data.get("dna_barcode_on", None),
             }
         )
@@ -129,12 +167,9 @@ class LibraryBuildError(Exception):
     pass
 
 
-BBSetType = TypeVar("BBSetType", bound=BuildingBlockSet)
-
-
-class Library(DeliDataLoadable):
+class CombinatorialLibrary(Library, DeliDataLoadable):
     """
-    A Library is a DEL that lacks information about the DNA barcodes
+    A Library of compounds built combinatorially from building blocks
 
     This is primarily to provide support for a situation where everything
     about the library is known, but no decoding by DELi is needed
@@ -152,6 +187,7 @@ class Library(DeliDataLoadable):
         self,
         library_id: str,
         bb_sets: Sequence[BuildingBlockSet],
+        tool_compounds: Optional[Sequence[ToolCompound]] = None,
         enumerator: Optional[Enumerator] = None,
         scaffold: Optional[str] = None,
     ):
@@ -166,6 +202,8 @@ class Library(DeliDataLoadable):
             the sets of building-block used to build this library
             order in list should be the same as the order of synthesis
             must have length >= 2
+        tool_compounds : optional, List[ToolCompound]
+            list of tool compounds (doped compounds) in the library
         enumerator : optional, Enumerator
             The Enumerator used to build this library
         scaffold: optional, str
@@ -178,9 +216,10 @@ class Library(DeliDataLoadable):
             the parameters passed to build the library are not compatible with each other
             error message will contain specific details of build issue
         """
-        self.library_id = library_id
+        super().__init__(library_id=library_id)
         self.bb_sets = bb_sets
         self.scaffold = scaffold
+        self.tool_compounds: Sequence[ToolCompound] = tool_compounds if tool_compounds else []
 
         self.library_size = (
             reduce(mul, [len(bb_set) for bb_set in self.bb_sets])
@@ -207,13 +246,13 @@ class Library(DeliDataLoadable):
 
     def __eq__(self, other):
         """Check equality of libraries by their id"""
-        if isinstance(other, Library):
+        if isinstance(other, CombinatorialLibrary):
             return True
         return False
 
     @classmethod
     @accept_deli_data_name("libraries", "json")
-    def load(cls, path: str) -> "Library":
+    def load(cls, path: str) -> "CombinatorialLibrary":
         """
         Load a library from the DELi data directory
 
@@ -235,7 +274,7 @@ class Library(DeliDataLoadable):
 
         Returns
         -------
-        Library
+        CombinatorialLibrary
         """
         library_id = Path(path).stem.replace(" ", "_")
         _cls = cls(library_id=library_id, **_parse_library_json(json.load(open(path)), load_dna=False))
@@ -504,7 +543,7 @@ class Library(DeliDataLoadable):
             output_file.write(separator.join(row) + "\n")
 
 
-class DELibrary(Library):
+class DELibrary(CombinatorialLibrary, BarcodedMixin[DELBarcodeSchema]):
     """
     Contains information about a DNA-encoded library
 
@@ -521,8 +560,9 @@ class DELibrary(Library):
     def __init__(
         self,
         library_id: str,
-        barcode_schema: BarcodeSchema,
+        barcode_schema: DELBarcodeSchema,
         bb_sets: Sequence[TaggedBuildingBlockSet],
+        tool_compounds: Optional[Sequence[DopedToolCompound]] = None,
         enumerator: Optional[Enumerator] = None,
         dna_barcode_on: Optional[str] = None,
         linker: Optional[str] = None,
@@ -536,12 +576,14 @@ class DELibrary(Library):
         ----------
         library_id : str
             name/id of the library
-        barcode_schema : BarcodeSchema
+        barcode_schema : DELBarcodeSchema
             The barcode schema defining how the barcodes are designed
         bb_sets : Sequence[TaggedBuildingBlockSet]
             the sets of building-block used to build this library
-            order in list should be order of synthesis
+            order in list should be the same as order of synthesis
             must have length >= 2
+        tool_compounds : optional, Sequence[DopedToolCompound] = None
+            list of tool compounds (doped compounds) in the library
         enumerator : ReactionTree
             The enumerator used to build this library
         dna_barcode_on: optional, str
@@ -564,9 +606,12 @@ class DELibrary(Library):
         super().__init__(
             library_id=library_id,
             bb_sets=bb_sets,
+            tool_compounds=tool_compounds,
             enumerator=enumerator,
             scaffold=scaffold,
         )
+        # type hint again
+        self.tool_compounds: Sequence[DopedToolCompound] = tool_compounds if tool_compounds else []
         self.bb_sets: Sequence[TaggedBuildingBlockSet] = bb_sets  # for type checker
 
         self.barcode_schema = barcode_schema
@@ -577,18 +622,37 @@ class DELibrary(Library):
         self.library_tag = self.barcode_schema.library_section.get_dna_sequence()
 
         ### VALIDATION ###
+        # num bb sets matches barcode schema
         if self.num_cycles != barcode_schema.get_num_building_block_sections():
             raise LibraryBuildError(
                 f"Number of library cycles does not match observed_barcode schema cycles; "
                 f"got {self.num_cycles} and {barcode_schema.get_num_building_block_sections()}"
             )
 
+        # Validate dna_barcode_on is attachd to an existing cycle or scaffold
         if isinstance(self.dna_barcode_on, str):
             if self.dna_barcode_on not in [bb_set.bb_set_id for bb_set in self.bb_sets]:
                 if scaffold is not None and self.dna_barcode_on != "scaffold":
                     raise LibraryBuildError(f"cannot find cycle {self.dna_barcode_on} to put DNA barcode on")
                 if scaffold is None and self.dna_barcode_on == "scaffold":
                     raise LibraryBuildError("no scaffold to attach DNA observed_barcode to")
+
+        # Validate that all doped compounds have valid bb tags
+        # and do not overlap with existing building block tags
+        for tool_compound in self.tool_compounds:
+            if len(tool_compound.bb_tags) != self.num_cycles:
+                raise LibraryBuildError(
+                    f"doped compound {tool_compound.compound_id} has {len(tool_compound.bb_tags)} "
+                    f"bb tags; expected {self.num_cycles} for library {self.library_id}"
+                )
+            for i, (bb_tag, bb_set) in enumerate(zip(tool_compound.bb_tags, self.bb_sets, strict=True)):
+                # if not `None` means tag exists already
+                if bb_set.search_tags(bb_tag, fail_on_missing=False) is not None:
+                    raise LibraryBuildError(
+                        f"doped compound {tool_compound.compound_id} in library {self.library_id} "
+                        f"has bb cycle {i} tag '{bb_tag}' which is found cycle {i} building block "
+                        f"set {bb_set.bb_set_id}"
+                    )
 
     @classmethod
     @accept_deli_data_name("libraries", "json")
@@ -626,7 +690,7 @@ class DELibrary(Library):
         self,
     ) -> Iterator[tuple[BuildingBlockBarcodeSection, TaggedBuildingBlockSet]]:
         """
-        Iterate through building block sets and their respective barcode sections sections
+        Iterate through building block sets and their respective barcode sections
 
         Yields
         ------
@@ -636,7 +700,7 @@ class DELibrary(Library):
             yield bb_section, bb_set
 
 
-LibType = TypeVar("LibType", bound=Library)
+LibType = TypeVar("LibType", bound=CombinatorialLibrary)
 
 
 class LibraryCollection(Generic[LibType]):
@@ -650,7 +714,7 @@ class LibraryCollection(Generic[LibType]):
 
         Parameters
         ----------
-        libraries: List[Library]
+        libraries: List[CombinatorialLibrary]
             libraries to include in the library schema group
         """
         self.libraries: Sequence[LibType] = libraries
@@ -686,7 +750,7 @@ class LibraryCollection(Generic[LibType]):
 
         Returns
         -------
-        Library
+        CombinatorialLibrary
 
         Raises
         ------

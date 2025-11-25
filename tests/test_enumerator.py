@@ -4,7 +4,7 @@ import os
 
 import pytest
 
-from deli.dels.library import DELibrary, Library
+from deli.dels.combinatorial import CombinatorialLibrary, DELibrary
 from deli.enumeration.enumerator import EnumeratedDELCompound
 
 
@@ -15,14 +15,14 @@ pytestmark = pytest.mark.filterwarnings("ignore::deli.enumeration.reaction.React
 @pytest.mark.unit
 def test_enumerator_load_from_file():
     """Test loading enumerator from file"""
-    lib = Library.load("DEL006")
+    lib = CombinatorialLibrary.load("DEL006")
     assert lib.can_enumerate()
 
 
 @pytest.fixture
-def del_enumerator() -> Library:
+def del_enumerator() -> CombinatorialLibrary:
     """An example DEL to load"""
-    return Library.load("DEL006")
+    return CombinatorialLibrary.load("DEL006")
 
 
 @pytest.fixture
@@ -73,6 +73,5 @@ def test_enumerator_enumerate_bb(del_enumerator):
     compound = del_enumerator.enumerate_by_bb_ids(bb_ids)
 
     assert (
-        compound.smi == "[H]N(C(=O)c1ccc2c(c1)N=C(c1ccc3cccnc3c1)N2Cc1ccc"
-        "(-n2cccn2)cc1)[C@@H](Cc1ccc(I)cc1)C([15NH2])=O"
+        compound.smi == "[H]N(C(=O)c1ccc2c(c1)N=C(c1ccc3cccnc3c1)N2Cc1ccc(-n2cccn2)cc1)[C@@H](Cc1ccc(I)cc1)C([15NH2])=O"
     )

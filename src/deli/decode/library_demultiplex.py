@@ -5,7 +5,7 @@ import itertools
 import sys
 import warnings
 from collections import defaultdict
-from typing import Generic, Iterator, Optional, TypeVar, no_type_check
+from typing import Generic, Iterator, Optional, TypeAlias, TypeVar, no_type_check
 
 import numpy as np
 from Bio.Align import PairwiseAligner, substitution_matrices
@@ -24,7 +24,8 @@ from numba import njit
 from regex import BESTMATCH, Match, Pattern, compile
 
 from deli.dels.barcode import BarcodeSchema
-from deli.dels.library import DELibrary, DELibraryCollection
+from deli.dels.combinatorial import DELibrary, DELibraryCollection
+from deli.dels.tool_compounds import TaggedToolCompoundLibrary
 
 from ._base import FailedDecodeAttempt
 from .barcode_calling import BarcodeCaller, FailedBarcodeLookup, ValidCall, get_barcode_caller
@@ -34,6 +35,8 @@ from .barcode_calling import BarcodeCaller, FailedBarcodeLookup, ValidCall, get_
 Q_co = TypeVar("Q_co", bound="_Query", covariant=True)
 M_co = TypeVar("M_co", bound="_Match", covariant=True)
 Q = TypeVar("Q", bound="_Query")
+TaggedLibrary: TypeAlias = DELibrary | TaggedToolCompoundLibrary
+ValidLibraryCall: TypeAlias = ValidCall[DELibrary | TaggedToolCompoundLibrary]
 
 
 class AlignedSeq:
@@ -78,33 +81,18 @@ class AlignedSeq:
         return self.sequence.sequence[start:stop]
 
 
-class SectionSequenceAligner:
+class SectionSequenceMapper(abc.ABC):
     """
-    Aligner for sequences based on static barcode sections
+    Mapper for barcodes based on known static barcode sections
 
-    The alignment algorithm uses the positions of known static barcode
-    sections to locate the region that other sections should be found
-    in the observed sequence. This works by pre-compling a map of
-    "adjustments" from the static sections to the required sections
-    based on the distance and direction between the sections.
-    This enables rapid alignment of sequences based on the static sections.
+    Given the known locations of pre-defined static barcode sections,
+    a mapper will be able to locate and extract the part of the read
+    that corresponds to other barcode sections
 
-    The aligner is only based on the distances between sections and their
-    names, not the nucleotides in them. Therefore, if all your DELs in a
-    given collection have the same sections, with the same lengths you
-    only need one aligner object for all of them. You can figure out this
-    by using the `is_schema_compatible` method on the `BarcodeSchema`.
-
-    If multiple static sections are used, they might disagree slightly on
-    where the section is due to INDELs in the read. In this case, the
-    union of their predicted spans is used. For example if two static
-    sections predict the same required section to be at (10, 20) and (12, 22),
-    the final predicted span will be (10, 22).
-
-    Notes
-    -----
-    Will only align the sections listed as required by the
-    `get_required_sections` method of the `BarcodeSchema`.
+    It does this buy pre-compiling a map of adjustments from the static
+    sections to the required sections based on the distance and direction.
+    This way, at runtime it just needs to do a bit of math to locate the
+    sections.
 
     Parameters
     ----------
@@ -118,15 +106,14 @@ class SectionSequenceAligner:
         self.barcode_schema = barcode_schema
         self.alignment_sections = alignment_sections
 
-        _required_sections = self.barcode_schema.get_required_sections()
+        self._required_sections = self.barcode_schema.get_required_section_names()
         self._spans = self.barcode_schema.get_section_spans(exclude_overhangs=False)
-        self._span_map = {sec_nam: (100000, 0) for sec_nam in _required_sections}
+        self._span_map = {sec_nam: (100000, 0) for sec_nam in self._required_sections}
 
         self._adjustment_table: dict[str, dict[str, tuple[int, int]]] = dict()
         for alignment_section in self.alignment_sections:
-            # alignment_section_span = self._spans[alignment_section]
             self._adjustment_table[alignment_section] = dict()
-            for required_section in _required_sections:
+            for required_section in self._required_sections:
                 required_barcode_section = self.barcode_schema.get_section(required_section)
                 dist = self.barcode_schema.get_length_between_sections(
                     alignment_section, required_section, include_direction=True
@@ -147,39 +134,58 @@ class SectionSequenceAligner:
                     adjusted_stop = adjusted_start + len(required_barcode_section.section_tag)
                 self._adjustment_table[alignment_section][required_section] = (adjusted_start, adjusted_stop)
 
-    def align_sequence(
-        self, sequence: SequenceRecord, alignment_section_spans: dict[str, tuple[int, int]]
-    ) -> AlignedSeq:
+    @abc.abstractmethod
+    def _get_sections_to_map(self) -> list[str]:
+        """Get the names of the sections to map to"""
+        raise NotImplementedError()
+
+    def calculate_section_span(
+        self, section_name: str, alignment_section_spans: dict[str, tuple[int, int]]
+    ) -> tuple[int, int]:
         """
-        Align a sequence based on the provided alignment section spans
+        Given a section name and static section spans, determine the span of the section
 
         Parameters
         ----------
-        sequence: SequenceRecord
-            the sequence to align
+        section_name: str,
+            the name of the section to calculate the span for
         alignment_section_spans: dict[str, tuple[int, int]]
             the mapping of alignment section names to their (start, stop) indices in the sequence
-            determined by the alignment algorithm
 
         Returns
         -------
-        AlignedSeq
+        tuple[int, int]
+            the (start, stop) indices of the section in the sequence
         """
-        _span_map = self._span_map.copy()
+        _span = (100000, 0)  # init to extreme values
         for alignment_section, (align_start, align_stop) in alignment_section_spans.items():
-            for required_section, (adj_start, adj_stop) in self._adjustment_table[alignment_section].items():
-                cur_start, cur_stop = _span_map[required_section]
-                if adj_start < 0:
-                    _span_map[required_section] = (
-                        max(min(align_start + adj_start + 1, cur_start), 0),
-                        max(align_start + adj_stop + 1, cur_stop),
-                    )
-                else:
-                    _span_map[required_section] = (
-                        max(min(align_stop + adj_start - 1, cur_start), 0),
-                        max(align_stop + adj_stop - 1, cur_stop),
-                    )
-        return AlignedSeq(sequence=sequence, section_spans=_span_map)
+            adj_start, adj_stop = self._adjustment_table[alignment_section][section_name]
+            if adj_start < 0:
+                _span = (
+                    max(min(align_start + adj_start + 1, _span[0]), 0),
+                    max(align_start + adj_stop + 1, _span[1]),
+                )
+            else:
+                _span = (
+                    max(min(align_stop + adj_start - 1, _span[0]), 0),
+                    max(align_stop + adj_stop - 1, _span[1]),
+                )
+        return _span
+
+
+class LibraryLocator(SectionSequenceMapper):
+    """
+    Given a read and known static barcode sections, locate the library section
+
+    This is a specialized mapper that only locates the library section
+    based on the known static barcode sections. This is useful for
+    demultiplexing reads to libraries quickly, without needing to
+    align all the required sections.
+    """
+
+    def _get_sections_to_map(self) -> list[str]:
+        """Only need to map library section for this one"""
+        return ["library"]
 
     def get_library_seq(self, sequence: SequenceRecord, alignment_section_spans: dict[str, tuple[int, int]]) -> str:
         """
@@ -195,20 +201,7 @@ class SectionSequenceAligner:
         alignment_section_spans: dict[str, tuple[int, int]]
             the mapping of alignment section names to their (start, stop) indices in the sequence
         """
-        # TODO this is redundent code with the align_sequence method, refactor at some point to avoid
-        _library_span = (100000, 0)
-        for alignment_section, (align_start, align_stop) in alignment_section_spans.items():
-            adj_start, adj_stop = self._adjustment_table[alignment_section]["library"]
-            if adj_start < 0:
-                _library_span = (
-                    max(min(align_start + adj_start + 1, _library_span[0]), 0),
-                    max(align_start + adj_stop + 1, _library_span[1]),
-                )
-            else:
-                _library_span = (
-                    max(min(align_stop + adj_start - 1, _library_span[0]), 0),
-                    max(align_stop + adj_stop - 1, _library_span[1]),
-                )
+        _library_span = self.calculate_section_span("library", alignment_section_spans)
         return sequence.sequence[_library_span[0] : _library_span[1]]
 
     def iter_possible_library_seqs(
@@ -247,6 +240,65 @@ class SectionSequenceAligner:
                 yield library_span[start:end]
                 start += 1
                 end = start + length
+
+
+class SectionSequenceAligner(SectionSequenceMapper):
+    """
+    A sequence aligner based on static section locations
+
+    The alignment algorithm uses the positions of known static barcode
+    sections to locate the region that other sections should be found
+    in the observed sequence. This works by pre-compling a map of
+    "adjustments" from the static sections to the required sections
+    based on the distance and direction between the sections.
+    This enables rapid alignment of sequences based on the static sections.
+
+    The aligner is only based on the distances between sections and their
+    names, not the nucleotides in them. Therefore, if all your DELs in a
+    given collection have the same sections, with the same lengths you
+    only need one aligner object for all of them. You can figure out this
+    by using the `is_schema_compatible` method on the `BarcodeSchema`.
+
+    If multiple static sections are used, they might disagree slightly on
+    where the section is due to INDELs in the read. In this case, the
+    union of their predicted spans is used. For example if two static
+    sections predict the same required section to be at (10, 20) and (12, 22),
+    the final predicted span will be (10, 22).
+
+    Notes
+    -----
+    Will only align the sections listed as required by the
+    `get_required_sections` method of the `BarcodeSchema`.
+    """
+
+    def _get_sections_to_map(self) -> list[str]:
+        """Map to only the required sections minus the library tag (already located)"""
+        required = self.barcode_schema.get_required_section_names()
+        required.remove("library")  # not need for this library
+        return required
+
+    def align_sequence(
+        self, sequence: SequenceRecord, alignment_section_spans: dict[str, tuple[int, int]]
+    ) -> Iterator[tuple[AlignedSeq, float]]:
+        """
+        Align a sequence based on the provided alignment section spans
+
+        Parameters
+        ----------
+        sequence: SequenceRecord
+            the sequence to align
+        alignment_section_spans: dict[str, tuple[int, int]]
+            the mapping of alignment section names to their (start, stop) indices in the sequence
+            determined by the alignment algorithm
+
+        Returns
+        -------
+        AlignedSeq
+        """
+        _span_map = self._span_map.copy()
+        for required_section in self._required_sections:
+            _span_map[required_section] = self.calculate_section_span(required_section, alignment_section_spans)
+        return iter([(AlignedSeq(sequence=sequence, section_spans=_span_map), 0)])
 
 
 class BarcodeAligner:
@@ -306,11 +358,11 @@ class BarcodeAligner:
         )
         self.barcode_ref = barcode_schema.get_full_barcode()
         self.spans = barcode_schema.get_section_spans(exclude_overhangs=True)
-        self._required_sections = barcode_schema.get_required_sections()
+        self._required_sections = barcode_schema.get_required_section_names()
         if not include_library_section:
             self._required_sections.remove("library")
 
-    def align(self, sequence: SequenceRecord) -> Iterator[tuple[AlignedSeq, float]]:
+    def align_sequence(self, sequence: SequenceRecord) -> Iterator[tuple[AlignedSeq, float]]:
         """
         Align a sequence to the barcode reference
 
@@ -376,14 +428,14 @@ class _Query(Generic[M_co], abc.ABC):
 
     Parameters
     ----------
-    libraries: list[DELibrary]
+    libraries: list[TaggedLibrary]
         the libraries covered by this query
     section_names: tuple[str, ...]
         the names of the static sections to use for querying
     """
 
-    def __init__(self, libraries: list[DELibrary], section_names: tuple[str, ...]):
-        self.libraries = libraries
+    def __init__(self, libraries: list[TaggedLibrary], section_names: tuple[str, ...]):
+        self.libraries: list[TaggedLibrary] = libraries
         self.section_names = section_names
 
         self._sec_name2seq: dict[str, str] = dict()
@@ -429,7 +481,7 @@ class _Query(Generic[M_co], abc.ABC):
                 _prev_sec_name = section_name
 
         # get trim adjustments to required regions for each library
-        self._trim_adjustments: dict[DELibrary, tuple[int, int]] = dict()
+        self._trim_adjustments: dict[TaggedLibrary, tuple[int, int]] = dict()
         for library in self.libraries:
             _min_sec_start = 100000
             _max_sec_end = 0
@@ -501,13 +553,13 @@ class _Match(Generic[Q_co], abc.ABC):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def trim_seq(self, library_call: ValidCall[DELibrary], sequence: SequenceRecord) -> SequenceRecord:
+    def trim_seq(self, library_call: ValidLibraryCall, sequence: SequenceRecord) -> SequenceRecord:
         """
         Trim a sequence based on the match and library call
 
         Parameters
         ----------
-        library_call: ValidCall[DELibrary]
+        library_call: ValidLibraryCall
             the library call to use for trimming
 
         sequence: SequenceRecord
@@ -545,7 +597,7 @@ class _RegexQuery(_Query["_RegexMatch"]):
 
     Parameters
     ----------
-    libraries: list[DELibrary]
+    libraries: list[TaggedLibrary]
         the libraries covered by this query
     section_names: tuple[str, ...]
         the names of the static sections to use for querying
@@ -560,7 +612,7 @@ class _RegexQuery(_Query["_RegexMatch"]):
         the compiled regex pattern used for matching
     """
 
-    def __init__(self, libraries: list[DELibrary], section_names: tuple[str, ...], error_tolerance: int = 1):
+    def __init__(self, libraries: list[TaggedLibrary], section_names: tuple[str, ...], error_tolerance: int = 1):
         super().__init__(libraries, section_names)
 
         # build the regex string
@@ -625,7 +677,7 @@ class _RegexMatch(_Match[_RegexQuery]):
             section_name: span for section_name, span in zip(self.query.section_names, self.match.regs[1:], strict=True)
         }
 
-    def trim_seq(self, library_call: ValidCall[DELibrary], sequence: SequenceRecord) -> SequenceRecord:
+    def trim_seq(self, library_call: ValidLibraryCall, sequence: SequenceRecord) -> SequenceRecord:
         start_adj, end_adj = self.query._trim_adjustments[library_call.obj]
         # build the trim
         trim = slice(
@@ -660,7 +712,7 @@ class _CutadaptQuery(_Query["_CutadaptMatch"]):
 
     Parameters
     ----------
-    libraries: list[DELibrary]
+    libraries: list[TaggedLibrary]
         the libraries covered by this query
     section_names: tuple[str, ...]
         the names of the static sections to use for querying
@@ -672,14 +724,14 @@ class _CutadaptQuery(_Query["_CutadaptMatch"]):
 
     def __init__(
         self,
-        libraries: list[DELibrary],
+        libraries: list[TaggedLibrary],
         section_names: tuple[str, ...],
         error_tolerance: int = 1,
         min_overlap: int = 8,
     ):
         if len(section_names) > 2:
             raise CutAdaptError(
-                "Cutadapt based queries can only handle up to 2 static sections; found {len(section_names)} sections"
+                f"Cutadapt based queries can only handle up to 2 static sections; found {len(section_names)} sections"
             )
         super().__init__(libraries, section_names)
 
@@ -815,7 +867,7 @@ class _LinkedCutadaptMatch(_CutadaptMatch):
             back_match.adapter.name: (back_match.rstart + front_match.rstop, back_match.rstop + front_match.rstop),
         }
 
-    def trim_seq(self, library_call: ValidCall[DELibrary], sequence: SequenceRecord) -> SequenceRecord:
+    def trim_seq(self, library_call: ValidLibraryCall, sequence: SequenceRecord) -> SequenceRecord:
         start_adj, end_adj = self.query._trim_adjustments[library_call.obj]
         # build the trim
         trim_start = max(
@@ -848,7 +900,7 @@ class _SingleCutadaptMatch(_CutadaptMatch):
             self.match.adapter.name: (self.match.rstart, self.match.rstop),
         }
 
-    def trim_seq(self, library_call: ValidCall[DELibrary], sequence: SequenceRecord) -> SequenceRecord:
+    def trim_seq(self, library_call: ValidLibraryCall, sequence: SequenceRecord) -> SequenceRecord:
         start_adj, end_adj = self.query._trim_adjustments[library_call.obj]
         trim_start = max(0, min(self.match.rstart - end_adj, library_call.obj.barcode_schema.required_start) - 10)
         trim_end = max(self.match.rstop + end_adj, library_call.obj.barcode_schema.required_end) + 10
@@ -873,20 +925,30 @@ class LibraryDemultiplexer(abc.ABC):
     In DELi we call these two combined steps "library demultiplexing"
     """
 
-    def __init__(self, libraries: DELibraryCollection, revcomp: bool = True):
+    def __init__(
+        self,
+        libraries: DELibraryCollection,
+        tool_compounds: Optional[list[TaggedToolCompoundLibrary]],
+        revcomp: bool = True,
+    ):
         self.revcomp = revcomp
+        self.tool_compounds = tool_compounds if tool_compounds is not None else []
         self.libraries = libraries
+
+        self.all_libraries: list[TaggedLibrary] = list(libraries.libraries) + self.tool_compounds
 
     @abc.abstractmethod
     def demultiplex(
         self, sequence: SequenceRecord
-    ) -> tuple[ValidCall[DELibrary], Iterator[tuple[AlignedSeq, float]]] | FailedDecodeAttempt:
+    ) -> tuple[ValidLibraryCall, Iterator[tuple[AlignedSeq, float]]] | FailedDecodeAttempt:
         """
         Demultiplex a sequence into a library call and alignments
 
         This both determine the library the sequence belongs to, as
         generate a set of alignments of the sequence to the library's
         barcode schema, mapping the barcode sections to the read
+
+
 
         Parameters
         ----------
@@ -895,7 +957,7 @@ class LibraryDemultiplexer(abc.ABC):
 
         Returns
         -------
-        tuple[ValidCall[DELibrary], Iterator[tuple[AlignedSeq, float]]] | FailedDecodeAttempt
+        tuple[ValidCall[DELibrary | ToolCompoundLibrary], Iterator[tuple[AlignedSeq, float]]] | FailedDecodeAttempt
             the library call and alignments, or a failed decode attempt
             if demultiplexing failed
         """
@@ -929,14 +991,15 @@ class QueryBasesLibraryDemultiplexer(LibraryDemultiplexer, Generic[Q], abc.ABC):
         the dynamic barcode aligners for each library.
         will be a unique object for every library
         will be empty if `build_dynamic_aligners_` is False
-    _section_seq_aligners: dict[DELibrary, SectionSequenceAligner]
+    _section_seq_aligners: dict[DELibrary, DELSectionSequenceAligner]
         the static section sequence aligners for each library
         may be shared between libraries if they have
         compatible barcode schemas
         will be empty if `build_section_seq_aligners_` is False
-    _unique_section_seq_aligners: dict[Q, list[SectionSequenceAligner]]
-        the unique static section sequence aligners for each query
-        since some libraries my share section aligners.
+    _library_locaters: dict[Q, list[LibraryLocators]]
+        the required library locators for each query needed to
+        correctly locate the library barcode for all libraries
+        the respective query covers
     _queries: list[Q]
         the queries used for demultiplexing
     """
@@ -947,14 +1010,15 @@ class QueryBasesLibraryDemultiplexer(LibraryDemultiplexer, Generic[Q], abc.ABC):
         realign: bool = False,
         build_dynamic_aligners_: bool = False,
         build_section_seq_aligners_: bool = False,
+        build_library_locaters_: bool = False,
         **kwargs,
     ):
         self.realign = realign
         super().__init__(*args, **kwargs)
 
-        self._library_aligners: dict[DELibrary, BarcodeAligner] = dict()
-        self._section_seq_aligners: dict[DELibrary, SectionSequenceAligner] = dict()
-        self._unique_section_seq_aligners: dict[Q, list[SectionSequenceAligner]] = dict()
+        self._library_aligners: dict[TaggedLibrary, BarcodeAligner] = dict()
+        self._section_seq_aligners: dict[TaggedLibrary, SectionSequenceAligner] = dict()
+        self._library_locaters: dict[Q, list[LibraryLocator]] = dict()
         self._queries: list[Q] = self._get_queries()
 
         if build_dynamic_aligners_ or self.realign:  # only initialize these if we need them
@@ -962,15 +1026,9 @@ class QueryBasesLibraryDemultiplexer(LibraryDemultiplexer, Generic[Q], abc.ABC):
 
         if build_section_seq_aligners_:  # only initialize these if we need them
             self._section_seq_aligners = self._get_section_seq_aligners()
-            for query in self._queries:
-                aligner_group: list[SectionSequenceAligner] = []
-                aligner_group_ids: set[int] = set()
-                for library in query.libraries:
-                    aligner = self._section_seq_aligners[library]
-                    if id(aligner) not in aligner_group_ids:
-                        aligner_group.append(aligner)
-                        aligner_group_ids.add(id(aligner))
-                self._unique_section_seq_aligners[query] = aligner_group
+
+        if build_library_locaters_:
+            self._library_locaters = self._get_library_locators()
 
     @abc.abstractmethod
     def _get_queries(self) -> list[Q]:
@@ -983,17 +1041,17 @@ class QueryBasesLibraryDemultiplexer(LibraryDemultiplexer, Generic[Q], abc.ABC):
         """
         raise NotImplementedError()
 
-    def _get_library_aligners(self) -> dict[DELibrary, BarcodeAligner]:
+    def _get_library_aligners(self) -> dict[TaggedLibrary, BarcodeAligner]:
         """
         Get the dynamic library aligners for each library
 
         Returns
         -------
-        dict[DELibrary, BarcodeAligner]
+        dict[TaggedLibrary, BarcodeAligner]
             the dynamic library aligners for each library
         """
-        aligners: dict[DELibrary, BarcodeAligner] = {}
-        for library in self.libraries:
+        aligners: dict[TaggedLibrary, BarcodeAligner] = {}
+        for library in self.all_libraries:
             _found_existing: bool = False
             for other_library, aligner in aligners.items():
                 if library.barcode_schema == other_library.barcode_schema:
@@ -1002,9 +1060,10 @@ class QueryBasesLibraryDemultiplexer(LibraryDemultiplexer, Generic[Q], abc.ABC):
                     break
             if not _found_existing:
                 aligners[library] = BarcodeAligner(library.barcode_schema)
+
         return aligners
 
-    def _get_section_seq_aligners(self) -> dict[DELibrary, SectionSequenceAligner]:
+    def _get_section_seq_aligners(self) -> dict[TaggedLibrary, SectionSequenceAligner]:
         """
         Get the static section sequence aligners for each library
 
@@ -1014,21 +1073,55 @@ class QueryBasesLibraryDemultiplexer(LibraryDemultiplexer, Generic[Q], abc.ABC):
 
         Returns
         -------
-        dict[DELibrary, SectionSequenceAligner]
+        dict[DELibrary, DELSectionSequenceAligner]
             the static section sequence aligners for each library
         """
-        aligners: dict[DELibrary, SectionSequenceAligner] = {}
+        aligners: dict[TaggedLibrary, SectionSequenceAligner] = {}
         for query in self._queries:
             for library in query.libraries:
                 _found_existing: bool = False
                 for other_library, aligner in aligners.items():
-                    if library.barcode_schema.is_schema_compatible(other_library.barcode_schema):
+                    if library.barcode_schema.is_schema_align_compatible(other_library.barcode_schema):
                         aligners[library] = aligner
                         _found_existing = True
                         break
                 if not _found_existing:
                     aligners[library] = SectionSequenceAligner(library.barcode_schema, query.section_names)
         return aligners
+
+    def _get_library_locators(self) -> dict[Q, list[LibraryLocator]]:
+        """
+        Get the library locators for each query
+
+        For any given query, this will look at the libraries it covers
+        and then determine the minimum set of library locators needed
+        to cover all libraries to avoid duplicate work during
+        decoding.
+
+        Returns
+        -------
+        dict[_Query, list[LibraryLocators]
+            map of queries to the library locators that need to be
+            used during decoding
+        """
+        locators: dict[Q, list[LibraryLocator]] = {}
+        for query in self._queries:
+            query_locators: list[LibraryLocator] = []
+            lib_locator_map: dict[TaggedLibrary, LibraryLocator] = {}
+            for library in query.libraries:
+                _covered = False
+                for other_library, _ in lib_locator_map.items():
+                    if library.barcode_schema.is_static_library_locate_compatible(
+                        other_library.barcode_schema, list(query.section_names)
+                    ):
+                        _covered = True
+                        break
+                if not _covered:
+                    new_locator = LibraryLocator(library.barcode_schema, query.section_names)
+                    query_locators.append(new_locator)
+                    lib_locator_map[library] = new_locator
+            locators[query] = query_locators
+        return locators
 
     def _get_best_match(self, sequence: SequenceRecord) -> _Match | None:
         """
@@ -1094,7 +1187,7 @@ class QueryBasesLibraryDemultiplexer(LibraryDemultiplexer, Generic[Q], abc.ABC):
     def _make_alignments(
         self,
         best_match: _Match,
-        library_call: ValidCall[DELibrary],
+        library_call: ValidLibraryCall,
         sequence: SequenceRecord,
         _static_alignment_spans: Optional[dict[str, tuple[int, int]]] = None,
     ) -> Iterator[tuple[AlignedSeq, float]]:
@@ -1109,7 +1202,7 @@ class QueryBasesLibraryDemultiplexer(LibraryDemultiplexer, Generic[Q], abc.ABC):
         ----------
         best_match: _Match
             the best match found for the sequence
-        library_call: ValidCall[DELibrary]
+        library_call: ValidLibraryCall
             the library call generated from the best match
         sequence: SequenceRecord
             the sequence to align
@@ -1123,14 +1216,12 @@ class QueryBasesLibraryDemultiplexer(LibraryDemultiplexer, Generic[Q], abc.ABC):
             # this will trim the sequence to the region we care about with a 10bp buffer on each side
             trimmed_seq = best_match.trim_seq(library_call, sequence)
             realigner: BarcodeAligner = self._library_aligners[library_call.obj]
-            return realigner.align(trimmed_seq)
+            return realigner.align_sequence(trimmed_seq)
         else:
             _static_alignment_spans = (
                 best_match.get_section_spans() if _static_alignment_spans is None else _static_alignment_spans
             )
-            return iter(
-                [(self._section_seq_aligners[library_call.obj].align_sequence(sequence, _static_alignment_spans), 0.0)]
-            )
+            return self._section_seq_aligners[library_call.obj].align_sequence(sequence, _static_alignment_spans)
 
 
 class LibraryTagLibraryDemultiplexer(QueryBasesLibraryDemultiplexer[Q], abc.ABC):
@@ -1151,7 +1242,7 @@ class LibraryTagLibraryDemultiplexer(QueryBasesLibraryDemultiplexer[Q], abc.ABC)
 
     def demultiplex(
         self, sequence: SequenceRecord
-    ) -> tuple[ValidCall[DELibrary], Iterator[tuple[AlignedSeq, float]]] | FailedDecodeAttempt:
+    ) -> tuple[ValidLibraryCall, Iterator[tuple[AlignedSeq, float]]] | FailedDecodeAttempt:
         """See :meth:`~deli.decode.library_demultiplexer.LibraryDemultiplexer.demultiplex`."""
         best_match = self._get_best_match(sequence)
 
@@ -1174,6 +1265,8 @@ class LibraryTagRegexLibraryDemultiplexer(LibraryTagLibraryDemultiplexer[_RegexQ
     ----------
     libraries: DELibraryCollection
         the libraries to demultiplex
+    tool_compounds: Optional[list[TaggedToolCompoundLibrary]], default = None
+        the tool compounds to look for during decoding
     error_tolerance: int, default = 1
         the number of errors to allow in the library tag section
         these can be INDELs or SNPs
@@ -1186,10 +1279,15 @@ class LibraryTagRegexLibraryDemultiplexer(LibraryTagLibraryDemultiplexer[_RegexQ
     """
 
     def __init__(
-        self, libraries: DELibraryCollection, error_tolerance: int = 1, realign: bool = False, revcomp: bool = True
+        self,
+        libraries: DELibraryCollection,
+        tool_compounds: Optional[list[TaggedToolCompoundLibrary]] = None,
+        error_tolerance: int = 1,
+        realign: bool = False,
+        revcomp: bool = True,
     ):
         self.error_tolerance = error_tolerance
-        super().__init__(libraries=libraries, realign=realign, revcomp=revcomp)
+        super().__init__(libraries=libraries, tool_compounds=tool_compounds, realign=realign, revcomp=revcomp)
 
     def _get_queries(self) -> list[_RegexQuery]:
         """
@@ -1199,7 +1297,7 @@ class LibraryTagRegexLibraryDemultiplexer(LibraryTagLibraryDemultiplexer[_RegexQ
         as the only static section in the query.
         """
         queries: list[_RegexQuery] = list()
-        for library in self.libraries:
+        for library in self.all_libraries:
             before_lib_section_names = [
                 sec.section_name for sec in library.barcode_schema.get_static_sections_before_library()
             ]
@@ -1232,6 +1330,8 @@ class LibraryTagCutadaptLibraryDemultiplexer(LibraryTagLibraryDemultiplexer[_Cut
     ----------
     libraries: DELibraryCollection
         the libraries to demultiplex
+    tool_compounds: Optional[list[TaggedToolCompoundLibrary]], default = None
+        the tool compounds to look for during decoding
     error_tolerance: int, default = 1
         the number of errors to allow in the library tag section
         these can be INDELs or SNPs
@@ -1248,6 +1348,7 @@ class LibraryTagCutadaptLibraryDemultiplexer(LibraryTagLibraryDemultiplexer[_Cut
     def __init__(
         self,
         libraries: DELibraryCollection,
+        tool_compounds: Optional[list[TaggedToolCompoundLibrary]] = None,
         error_tolerance: int = 1,
         realign: bool = False,
         min_overlap: int = 8,
@@ -1255,7 +1356,7 @@ class LibraryTagCutadaptLibraryDemultiplexer(LibraryTagLibraryDemultiplexer[_Cut
     ):
         self.error_tolerance = error_tolerance
         self.min_overlap = min_overlap
-        super().__init__(libraries=libraries, realign=realign, revcomp=revcomp)
+        super().__init__(libraries=libraries, tool_compounds=tool_compounds, realign=realign, revcomp=revcomp)
 
     def _get_queries(self) -> list[_CutadaptQuery]:
         """
@@ -1265,7 +1366,7 @@ class LibraryTagCutadaptLibraryDemultiplexer(LibraryTagLibraryDemultiplexer[_Cut
         as the only static section in the query. These will be SingleAdapters
         """
         queries: list[_CutadaptQuery] = list()
-        for library in self.libraries:
+        for library in self.all_libraries:
             queries.append(
                 _CutadaptQuery(libraries=[library], section_names=("library",), error_tolerance=self.error_tolerance)
             )
@@ -1289,10 +1390,10 @@ class NoLibraryTagLibraryDemultiplexer(QueryBasesLibraryDemultiplexer[Q], abc.AB
     """
 
     def __init__(self, *args, error_correction_mode_str: str = "levenshtein_dist:2,asymmetrical", **kwargs):
-        super().__init__(*args, build_section_seq_aligners_=True, **kwargs)
+        super().__init__(*args, build_section_seq_aligners_=True, build_library_locaters_=True, **kwargs)
 
         # maps queries to barcode callers for the libraries in that query
-        self._library_callers: dict[Q, BarcodeCaller[DELibrary]] = {
+        self._library_callers: dict[Q, BarcodeCaller[DELibrary | TaggedToolCompoundLibrary]] = {
             query: get_barcode_caller(
                 {library.library_tag: library for library in query.libraries},
                 error_correction_mode_str=error_correction_mode_str,
@@ -1301,7 +1402,7 @@ class NoLibraryTagLibraryDemultiplexer(QueryBasesLibraryDemultiplexer[Q], abc.AB
         }
 
     @abc.abstractmethod
-    def _get_query_object(self, libraries: list[DELibrary], section_names: tuple[str, ...]) -> Q:
+    def _get_query_object(self, libraries: list[TaggedLibrary], section_names: tuple[str, ...]) -> Q:
         """
         Initialize the correct query object for the demultiplexer
         """
@@ -1309,7 +1410,7 @@ class NoLibraryTagLibraryDemultiplexer(QueryBasesLibraryDemultiplexer[Q], abc.AB
 
     def demultiplex(
         self, sequence: SequenceRecord
-    ) -> tuple[ValidCall[DELibrary], Iterator[tuple[AlignedSeq, float]]] | FailedDecodeAttempt:
+    ) -> tuple[ValidLibraryCall, Iterator[tuple[AlignedSeq, float]]] | FailedDecodeAttempt:
         """See :meth:`~deli.decode.library_demultiplexer.LibraryDemultiplexer.demultiplex`."""
         best_match = self._get_best_match(sequence)
 
@@ -1321,7 +1422,7 @@ class NoLibraryTagLibraryDemultiplexer(QueryBasesLibraryDemultiplexer[Q], abc.AB
         _static_alignment_spans = best_match.get_section_spans()
 
         # Now find the best matching library within the best regex query
-        library_call: ValidCall[DELibrary] | FailedBarcodeLookup = FailedBarcodeLookup("placeholder")
+        library_call: ValidLibraryCall | FailedBarcodeLookup = FailedBarcodeLookup("placeholder")
         if len(best_match.query.libraries) == 1:
             library_call = ValidCall(best_match.query.libraries[0], 0.0)  # only one possible library
         else:
@@ -1333,9 +1434,10 @@ class NoLibraryTagLibraryDemultiplexer(QueryBasesLibraryDemultiplexer[Q], abc.AB
             # we've already tried to avoid some redundant work.
             observed_possible_lib_seqs: set[str] = set()
 
-            for init_aligner in self._unique_section_seq_aligners[best_match.query]:
-                _best_internal_call: ValidCall[DELibrary] | FailedBarcodeLookup = FailedBarcodeLookup("placeholder")
+            for init_aligner in self._library_locaters[best_match.query]:
+                _best_internal_call: ValidLibraryCall | FailedBarcodeLookup = FailedBarcodeLookup("placeholder")
                 _best_internal_score = 100.0
+                # allow some flexability in the library tag location
                 for possible_library_seq in init_aligner.iter_possible_library_seqs(sequence, _static_alignment_spans):
                     # track which sequences we've already tried
                     if possible_library_seq in observed_possible_lib_seqs:
@@ -1343,6 +1445,7 @@ class NoLibraryTagLibraryDemultiplexer(QueryBasesLibraryDemultiplexer[Q], abc.AB
                     else:
                         observed_possible_lib_seqs.add(possible_library_seq)
 
+                    # try and call this one
                     _library_call = self._library_callers[best_match.query].decode_barcode(possible_library_seq)
                     if not isinstance(_library_call, FailedBarcodeLookup):
                         if _library_call.score < _best_internal_score:
@@ -1352,7 +1455,7 @@ class NoLibraryTagLibraryDemultiplexer(QueryBasesLibraryDemultiplexer[Q], abc.AB
                         library_call = _best_internal_call
                         break  # perfect match found
 
-                if _best_internal_call is not None:
+                if _best_internal_call is not None:  # library locator made a call
                     if _best_internal_score == 0:
                         library_call = _best_internal_call
                         break  # perfect match found
@@ -1364,7 +1467,7 @@ class NoLibraryTagLibraryDemultiplexer(QueryBasesLibraryDemultiplexer[Q], abc.AB
         if isinstance(library_call, FailedBarcodeLookup):
             return FailedLibraryBarcodeLookup(sequence)
         elif self.realign:
-            return library_call, self._library_aligners[library_call.obj].align(sequence)
+            return library_call, self._library_aligners[library_call.obj].align_sequence(sequence)
         else:
             return library_call, self._make_alignments(
                 best_match, library_call, sequence, _static_alignment_spans=_static_alignment_spans
@@ -1401,7 +1504,7 @@ class SinglePrimerLibraryDemultiplexer(NoLibraryTagLibraryDemultiplexer[Q], abc.
         """
         # map all possible static barcode to the barcode schemas they cover
         static_seq_groups: defaultdict[tuple[str, str], set[int]] = defaultdict(set)
-        for idx, library in enumerate(self.libraries):
+        for idx, library in enumerate(self.all_libraries):
             static_section_tags = [
                 (sec.get_dna_sequence(), sec.section_name) for sec in library.barcode_schema.static_sections
             ]
@@ -1410,7 +1513,7 @@ class SinglePrimerLibraryDemultiplexer(NoLibraryTagLibraryDemultiplexer[Q], abc.
 
         # greedily pick sequences that cover the most remaining barcode schemas
         candidates = static_seq_groups.copy()
-        uncovered = set(range(len(self.libraries)))
+        uncovered = set(range(len(self.all_libraries)))
         chosen: list[Q] = []
         while uncovered:
             best_seq: tuple[str, str] | None = None
@@ -1424,7 +1527,7 @@ class SinglePrimerLibraryDemultiplexer(NoLibraryTagLibraryDemultiplexer[Q], abc.
                 raise RuntimeError("this is impossible, something went wrong. Please raise an issue")
             else:
                 new_idxes = set(candidates[best_seq]) & uncovered
-                libraries: list[DELibrary] = list([self.libraries.libraries[i] for i in new_idxes])
+                libraries: list[TaggedLibrary] = list([self.all_libraries[i] for i in new_idxes])
 
                 chosen.append(self._get_query_object(libraries=libraries, section_names=(best_seq[1],)))
 
@@ -1469,7 +1572,7 @@ class FlankingPrimersLibraryDemultiplexer(NoLibraryTagLibraryDemultiplexer[Q], a
         """
         # map all possible static barcode to the barcode schemas they cover
         static_seq_groups: defaultdict[tuple[tuple[str, str], tuple[str, str]], set[int]] = defaultdict(set)
-        for idx, library in enumerate(self.libraries):
+        for idx, library in enumerate(self.all_libraries):
             before_lib_sections = library.barcode_schema.get_static_sections_before_library()
             after_lib_sections = library.barcode_schema.get_static_sections_after_library()
 
@@ -1490,7 +1593,7 @@ class FlankingPrimersLibraryDemultiplexer(NoLibraryTagLibraryDemultiplexer[Q], a
 
         # greedily pick sequences that cover the most remaining barcode schemas
         candidates = static_seq_groups.copy()
-        uncovered = set(range(len(self.libraries)))
+        uncovered = set(range(len(self.all_libraries)))
         chosen: list[Q] = []
         while uncovered:
             best_seq: tuple[tuple[str, str], tuple[str, str]] | None = None
@@ -1504,7 +1607,7 @@ class FlankingPrimersLibraryDemultiplexer(NoLibraryTagLibraryDemultiplexer[Q], a
                 raise RuntimeError("this is impossible, something went wrong. Please raise an issue")
             else:
                 new_idxes = set(candidates[best_seq]) & uncovered
-                libraries: list[DELibrary] = [self.libraries.libraries[i] for i in new_idxes]
+                libraries: list[TaggedLibrary] = [self.all_libraries[i] for i in new_idxes]
 
                 chosen.append(
                     self._get_query_object(
@@ -1531,6 +1634,8 @@ class SinglePrimerCutadaptLibraryDemultiplexer(SinglePrimerLibraryDemultiplexer[
     ----------
     libraries: DELibraryCollection
         the libraries to use for demultiplexing
+    tool_compounds: Optional[list[TaggedToolCompoundLibrary]], default = None
+        the tool compounds to look for during decoding
     revcomp: bool, default = True
         whether to revcomp the sequences when demultiplexing
     realign: bool, default = False
@@ -1548,6 +1653,7 @@ class SinglePrimerCutadaptLibraryDemultiplexer(SinglePrimerLibraryDemultiplexer[
     def __init__(
         self,
         libraries: DELibraryCollection,
+        tool_compounds: Optional[list[TaggedToolCompoundLibrary]] = None,
         revcomp: bool = True,
         realign: bool = False,
         error_tolerance: int = 1,
@@ -1557,13 +1663,14 @@ class SinglePrimerCutadaptLibraryDemultiplexer(SinglePrimerLibraryDemultiplexer[
         self.min_overlap = min_overlap
         super().__init__(
             libraries=libraries,
+            tool_compounds=tool_compounds,
             realign=realign,
             error_correction_mode_str=error_correction_mode_str,
             error_tolerance=error_tolerance,
             revcomp=revcomp,
         )
 
-    def _get_query_object(self, libraries: list[DELibrary], section_names: tuple[str, ...]) -> _CutadaptQuery:
+    def _get_query_object(self, libraries: list[TaggedLibrary], section_names: tuple[str, ...]) -> _CutadaptQuery:
         """Get the correct cutadapt query object for single primer demultiplexing"""
         return _CutadaptQuery(
             libraries=libraries,
@@ -1586,6 +1693,8 @@ class FlankingPrimersCutadaptLibraryDemultiplexer(FlankingPrimersLibraryDemultip
     ----------
     libraries: DELibraryCollection
         the libraries to use for demultiplexing
+    tool_compounds: Optional[list[TaggedToolCompoundLibrary]], default = None
+        the tool compounds to look for during decoding
     revcomp: bool, default = True
         whether to revcomp the sequences when demultiplexing
     realign: bool, default = False
@@ -1603,6 +1712,7 @@ class FlankingPrimersCutadaptLibraryDemultiplexer(FlankingPrimersLibraryDemultip
     def __init__(
         self,
         libraries: DELibraryCollection,
+        tool_compounds: Optional[list[TaggedToolCompoundLibrary]] = None,
         revcomp: bool = True,
         realign: bool = False,
         error_tolerance: int = 1,
@@ -1612,13 +1722,14 @@ class FlankingPrimersCutadaptLibraryDemultiplexer(FlankingPrimersLibraryDemultip
         self.min_overlap = min_overlap
         super().__init__(
             libraries=libraries,
+            tool_compounds=tool_compounds,
             realign=realign,
             error_correction_mode_str=error_correction_mode_str,
             error_tolerance=error_tolerance,
             revcomp=revcomp,
         )
 
-    def _get_query_object(self, libraries: list[DELibrary], section_names: tuple[str, ...]) -> _CutadaptQuery:
+    def _get_query_object(self, libraries: list[TaggedLibrary], section_names: tuple[str, ...]) -> _CutadaptQuery:
         """Get the correct cutadapt query object for flanking primer demultiplexing"""
         return _CutadaptQuery(
             libraries=libraries,
@@ -1638,6 +1749,8 @@ class SinglePrimerRegexLibraryDemultiplexer(SinglePrimerLibraryDemultiplexer[_Re
     ----------
     libraries: DELibraryCollection
         the libraries to use for demultiplexing
+    tool_compounds: Optional[list[TaggedToolCompoundLibrary]], default = None
+        the tool compounds to look for during decoding
     revcomp: bool, default = True
         whether to revcomp the sequences when demultiplexing
     realign: bool, default = False
@@ -1652,6 +1765,7 @@ class SinglePrimerRegexLibraryDemultiplexer(SinglePrimerLibraryDemultiplexer[_Re
     def __init__(
         self,
         libraries: DELibraryCollection,
+        tool_compounds: Optional[list[TaggedToolCompoundLibrary]] = None,
         realign: bool = False,
         revcomp: bool = True,
         error_tolerance: int = 1,
@@ -1659,13 +1773,14 @@ class SinglePrimerRegexLibraryDemultiplexer(SinglePrimerLibraryDemultiplexer[_Re
     ):
         super().__init__(
             libraries=libraries,
+            tool_compounds=tool_compounds,
             realign=realign,
             error_correction_mode_str=error_correction_mode_str,
             error_tolerance=error_tolerance,
             revcomp=revcomp,
         )
 
-    def _get_query_object(self, libraries: list[DELibrary], section_names: tuple[str, ...]) -> _RegexQuery:
+    def _get_query_object(self, libraries: list[TaggedLibrary], section_names: tuple[str, ...]) -> _RegexQuery:
         """Get the correct regex query object for single primer demultiplexing"""
         return _RegexQuery(
             libraries=libraries,
@@ -1684,6 +1799,8 @@ class FlankingPrimersRegexLibraryDemultiplexer(FlankingPrimersLibraryDemultiplex
     ----------
     libraries: DELibraryCollection
         the libraries to use for demultiplexing
+    tool_compounds: Optional[list[TaggedToolCompoundLibrary]], default = None
+        the tool compounds to look for during decoding
     revcomp: bool, default = True
         whether to revcomp the sequences when demultiplexing
     realign: bool, default = False
@@ -1698,6 +1815,7 @@ class FlankingPrimersRegexLibraryDemultiplexer(FlankingPrimersLibraryDemultiplex
     def __init__(
         self,
         libraries: DELibraryCollection,
+        tool_compounds: Optional[list[TaggedToolCompoundLibrary]] = None,
         revcomp: bool = True,
         realign: bool = False,
         error_tolerance: int = 1,
@@ -1705,13 +1823,14 @@ class FlankingPrimersRegexLibraryDemultiplexer(FlankingPrimersLibraryDemultiplex
     ):
         super().__init__(
             libraries=libraries,
+            tool_compounds=tool_compounds,
             realign=realign,
             error_correction_mode_str=error_correction_mode_str,
             error_tolerance=error_tolerance,
             revcomp=revcomp,
         )
 
-    def _get_query_object(self, libraries: list[DELibrary], section_names: tuple[str, ...]) -> _RegexQuery:
+    def _get_query_object(self, libraries: list[TaggedLibrary], section_names: tuple[str, ...]) -> _RegexQuery:
         """Get the correct regex query object for flanking primer demultiplexing"""
         return _RegexQuery(
             libraries=libraries,
@@ -1745,29 +1864,40 @@ class FullSeqAlignmentLibraryDemultiplexer(LibraryDemultiplexer):
     ----------
     libraries: DELibraryCollection
         the libraries to use for demultiplexing
+    tool_compounds: Optional[list[TaggedToolCompoundLibrary]], default = None
+        the tool compounds to look for during decoding
     revcomp: bool, default = False
         whether to also consider the reverse complement of the sequence
         Note: This is guaranteed to double the amount of work done, since it will
         need to align every read twice. Using an external tool to standardize
         the orientation of all reads before demultiplexing is recommended.
+
+    Attributes
+    ----------
+    aligners: list[BarcodeAligner]
+        the aligners for each library used to align the full sequence
     """
 
-    def __init__(self, libraries: DELibraryCollection, revcomp: bool = False):
-        super().__init__(libraries=libraries, revcomp=revcomp)
+    def __init__(
+        self,
+        libraries: DELibraryCollection,
+        tool_compounds: Optional[list[TaggedToolCompoundLibrary]],
+        revcomp: bool = False,
+    ):
+        super().__init__(libraries=libraries, tool_compounds=tool_compounds, revcomp=revcomp)
 
-        self.libraries = self.libraries
-        self.aligner = [
+        self.aligners = [
             BarcodeAligner(library.barcode_schema, include_library_section=False) for library in self.libraries
         ]
 
     def demultiplex(
         self, sequence: SequenceRecord
-    ) -> tuple[ValidCall[DELibrary], Iterator[tuple[AlignedSeq, float]]] | FailedDecodeAttempt:
+    ) -> tuple[ValidLibraryCall, Iterator[tuple[AlignedSeq, float]]] | FailedDecodeAttempt:
         """See :meth:`~deli.decode.library_demultiplexer.LibraryDemultiplexer.demultiplex`."""
-        best_alignments: tuple[ValidCall[DELibrary], Iterator[tuple[AlignedSeq, float]]] | None = None
+        best_alignments: tuple[ValidLibraryCall, Iterator[tuple[AlignedSeq, float]]] | None = None
         best_score = 0.0
-        for library, aligner in zip(self.libraries, self.aligner, strict=False):
-            alignments = aligner.align(sequence)
+        for library, aligner in zip(self.libraries, self.aligners, strict=False):
+            alignments = aligner.align_sequence(sequence)
             alignment, score = alignments.__next__()
             if score > best_score:
                 best_alignments = (
@@ -1788,10 +1918,10 @@ class FullSeqAlignmentLibraryDemultiplexer(LibraryDemultiplexer):
         # but that processing part is so expensive that it is not worth doing here
         if self.revcomp:
             revcomp_seq = sequence.reverse_complement()
-            best_revcomp_alignments: tuple[ValidCall[DELibrary], Iterator[tuple[AlignedSeq, float]]] | None = None
+            best_revcomp_alignments: tuple[ValidLibraryCall, Iterator[tuple[AlignedSeq, float]]] | None = None
             best_revcomp_score = 0.0
-            for library, aligner in zip(self.libraries, self.aligner, strict=False):
-                alignments = aligner.align(revcomp_seq)
+            for library, aligner in zip(self.libraries, self.aligners, strict=False):
+                alignments = aligner.align_sequence(revcomp_seq)
                 alignment, score = alignments.__next__()
                 if score > best_revcomp_score:
                     best_revcomp_alignments = (
