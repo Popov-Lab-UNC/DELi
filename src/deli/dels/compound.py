@@ -195,7 +195,7 @@ class DELCompound(DELCompoundRaw):
     def __init__(
         self,
         library: "CombinatorialLibrary",
-        building_blocks: list[BuildingBlock],
+        building_blocks: list["BuildingBlock"],
     ):
         """
         Initialize the DELCompound object.
