@@ -340,7 +340,7 @@ class TaggedToolCompoundLibrary(ToolCompoundLibrary, BarcodedMixin[ToolCompoundB
                 raise ToolCompoundParsingError(f"tool compound missing 'compound_id' field from file '{name_or_path}'")
             elif "tag" not in tc_data:
                 raise ToolCompoundParsingError(
-                    f"tagged tool compound {data['compound_id']} missing 'tag' field from file '{name_or_path}'"
+                    f"tagged tool compound {tc_data['compound_id']} missing 'tag' field from file '{name_or_path}'"
                 )
             else:
                 tool_compounds.append(TaggedToolCompound.from_dict(tc_data))
