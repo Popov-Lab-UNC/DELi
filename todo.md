@@ -8,6 +8,7 @@ Below is a *rough* outline of which features we hope to add and when we think th
 - [ ] Adding `reactions` to the DELi data directory to support better reaction management/readability
 - [ ] Support for any filesystem using `fsspec`
 - [ ] UMI clustering
+- [ ] Support for Null building blocks and tool compounds
 
 2026 Q1
 - [ ] Overhaul of analysis module, specifically the code class to be more generalizable to all file inputs (will result in a major version bump)

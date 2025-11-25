@@ -1,5 +1,5 @@
 general:
-  data: "examples/UNCDEL006_BRD4_Analyze/UNCDEL006_BRD4.csv"
+  data: "UNCDEL006_BRD4.csv"
   lib_size: 850000
   output_dir: "DEL6"
 
