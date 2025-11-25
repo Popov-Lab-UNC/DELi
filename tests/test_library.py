@@ -6,7 +6,7 @@ import pytest
 
 from deli.dels.barcode import BuildingBlockBarcodeSection
 from deli.dels.building_block import BuildingBlockSet
-from deli.dels.library import DELibrary, DELibraryCollection, LibraryBuildError
+from deli.dels.combinatorial import DELibrary, DELibraryCollection, LibraryBuildError
 
 
 @pytest.mark.functional
