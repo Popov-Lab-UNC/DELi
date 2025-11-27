@@ -7,9 +7,14 @@ additional_info: "This is an example selection for DELi"
 libraries:
     - "DEL006"
 
+sequence_files:
+    - "./UNCDEL006_BRD4.fastq"
+
 decode_settings:
-    library_error_tolerance: 0.1
+    library_error_tolerance: 2
     min_library_overlap: 8
     revcomp: YES
-    bb_calling_approach: "bio"
-    disable_error_correction: NO
+    demultiplexer_mode: "single"
+    demultiplexer_algorithm: "regex"
+    realign: NO
+    wiggle: YES
