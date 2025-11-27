@@ -2,14 +2,14 @@
 
 import os
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Optional, Sequence
 
 import yaml
 
-from deli.dna import SequenceGlobReader, SequenceReader
-
-from .combinatorial import CombinatorialLibrary, DELibrary, DELibraryCollection, LibraryCollection
-from .tool_compounds import TaggedToolCompoundLibrary, ToolCompoundLibrary
+from deli.dels.combinatorial import CombinatorialLibrary, DELibrary, DELibraryCollection, LibraryCollection
+from deli.dels.tool_compounds import TaggedToolCompoundLibrary, ToolCompoundLibrary
+from deli.dna.io import SequenceReader, get_reader
 
 
 class SectionCondition:
@@ -199,7 +199,7 @@ class SequencedSelection(Selection):
     def __init__(
         self,
         library_collection: DELibraryCollection,
-        sequence_files: list[str],
+        sequence_reader: SequenceReader,
         tool_compounds: Optional[Sequence[TaggedToolCompoundLibrary]] = None,
         date_ran: Optional[datetime] = None,
         target_id: Optional[str] = None,
@@ -214,7 +214,7 @@ class SequencedSelection(Selection):
         ----------
         library_collection: DELibraryCollection
             the library collection used in the selection
-        sequence_files: list[str]
+        sequence_reader: SequenceReader
             the list of barcode files for the selection
         tool_compounds: Sequence[TaggedToolCompoundLibrary] | None
             the tool compound libraries used in the selection, defaults to None if not provided
@@ -240,13 +240,12 @@ class SequencedSelection(Selection):
         )
         self.library_collection: DELibraryCollection = library_collection  # for type checking
         self.tool_compounds: Sequence[TaggedToolCompoundLibrary] = tool_compounds if tool_compounds else []
-        self.sequence_files = sequence_files
+        self.sequence_reader: SequenceReader = sequence_reader
 
-        if len(self.sequence_files) < 1:
-            raise ValueError("A SequencedSelection must have at least 1 sequence file; found 0")
-
-        # validate sequence files
-        SequenceGlobReader(self.sequence_files)
+    @property
+    def sequence_files(self) -> tuple[Path, ...]:
+        """The sequence files associated with this selection"""
+        return self.sequence_reader.get_sequence_files()
 
     @classmethod
     def from_dict(cls, data: dict) -> "SequencedSelection":
@@ -265,9 +264,11 @@ class SequencedSelection(Selection):
         """
         lib_collection = DELibraryCollection([DELibrary.load(lib) for lib in data["libraries"]])
         tool_compounds = [TaggedToolCompoundLibrary.load(tc) for tc in data.get("tool_compounds", [])]
+        sequence_reader = get_reader(data.get("sequence_files", []))
+
         return cls(
             library_collection=lib_collection,
-            sequence_files=data.get("sequence_files", []),
+            sequence_reader=sequence_reader,
             tool_compounds=tool_compounds,
             date_ran=datetime.fromisoformat(data["date_ran"]),
             target_id=data.get("target_id"),
@@ -287,14 +288,3 @@ class SequencedSelection(Selection):
         _data = super().to_json_str()
         _data["sequence_files"] = self.sequence_files
         return _data
-
-    def get_sequence_reader(self) -> SequenceReader:
-        """
-        Get a sequence reader for the selection's sequence files.
-
-        Returns
-        -------
-        SequenceReader
-            a SequenceReader object for the selection's sequence files
-        """
-        return SequenceGlobReader(self.sequence_files)

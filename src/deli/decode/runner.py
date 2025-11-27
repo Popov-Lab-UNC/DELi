@@ -12,9 +12,10 @@ from tqdm import tqdm
 
 from deli._logging import get_dummy_logger, get_logger
 from deli.dels.combinatorial import DELibrary, DELibraryCollection
-from deli.dels.selection import Selection, SequencedSelection
 from deli.enumeration.enumerator import EnumerationRunError
+from deli.selection import Selection, SequencedSelection
 
+from ..dna.io import get_reader
 from ._base import FailedDecodeAttempt
 from .decoder import DecodedDELCompound, DecodeStatistics, DELCollectionDecoder
 from .degen import DELCollectionCounter, DELCollectionIdCounter, DELCollectionIdUmiCounter
@@ -611,7 +612,7 @@ class DecodingRunner:
         # look through all sequences in the selection
         for i, seq_record in enumerate(
             tqdm(
-                self.selection.get_sequence_reader(),
+                self.selection.sequence_reader,
                 desc=f"Running Decoding for selection {self.selection.selection_id}",
                 disable=not use_tqdm,
             )
@@ -677,7 +678,7 @@ class DecodingRunner:
     def from_file(
         cls,
         decode_file: str,
-        fastq_files: list[str] | None = None,
+        fastq_files: list[os.PathLike] | None = None,
         ignore_decode_seqs: bool = False,
         debug: bool = False,
         disable_logging: bool = False,
@@ -723,16 +724,15 @@ class DecodingRunner:
         Raises
         ------
         DecodingRunParsingError
-            raised if both `fastq_files` and the "sequence_files" key in the
-            passed `decode_file` are not provided OR if both are provided and
-            `ignore_decode_seqs` is `False`.
+            raised if both `fastq_files` and the "sequence_files" key in the `decode_file`
+            are not provided OR if both are provided and `ignore_decode_seqs` is `False`.
 
         Returns
         -------
         DecodingExperiment
         """
         # just to make it list for typing constancy
-        _fastq_files: list[str]
+        _fastq_files: list[os.PathLike]
         if fastq_files is None:
             _fastq_files = []
         else:
@@ -741,7 +741,7 @@ class DecodingRunner:
         data = yaml.safe_load(open(decode_file, "r"))
 
         # check this early so we do not waste time loading libraries if format error
-        _seq_files: list[str]
+        _seq_files: list[os.PathLike] = []
         _decode_seq_files = data.get("sequence_files", [])
         if (len(_fastq_files) > 0) and (len(_decode_seq_files) > 0):
             # if we are ignoring the decode seqs, just use the fastq files
@@ -768,6 +768,8 @@ class DecodingRunner:
         else:
             _seq_files = _decode_seq_files
 
+        _seq_reader = get_reader(_seq_files)
+
         # load in the libraries
         try:
             _libraries: list[str] = data["libraries"]
@@ -793,7 +795,7 @@ class DecodingRunner:
         # make selection object
         _selection = SequencedSelection(
             library_collection=_library_collection,
-            sequence_files=_seq_files,
+            sequence_reader=_seq_reader,
             date_ran=_date_ran_timestamp,
             target_id=_target_id,
             selection_condition=_selection_condition,
