@@ -573,17 +573,29 @@ class DecodingRunner:
         else:
             self.degen = DELCollectionIdCounter()
 
-    def run(self, save_failed_to: str | os.PathLike | None = None, use_tqdm: bool = False) -> DecodingRunnerResults:
+    def run(
+        self,
+        save_failed_to: Optional[os.PathLike] = None,
+        save_all_decodes_to: Optional[os.PathLike] = None,
+        use_tqdm: bool = False,
+    ) -> DecodingRunnerResults:
         """
         Run the decoder
 
         Parameters
         ----------
-        save_failed_to: str | PathLike | None, default = None
+        save_failed_to: PathLike, default = None
             if provided, will save failed reads to this directory
             file will be named <selection_id>_decode_failed.tsv
             will include the read_id, the barcode, the quality chain,
             and reason failed
+        save_all_decodes_to: PathLike, default = None
+            if provided, will save all successful decoded reads to this directory.
+            File(s) will be named <selection_id>_<fastq_source_file_name>_decodes.tsv
+            There will be one file per input fastq file, where all decodes from that
+            fastq file are saved in a single output file.
+            will include the fastq sequence ID, the DEL compound ID, the DEL ID, and the
+            associated UMI (if applicable)
         use_tqdm: bool, default = False
             turn on a tqdm tracking bar
             only recommended if running a single
@@ -597,26 +609,45 @@ class DecodingRunner:
         self.logger.info(f"Running decoding for selection: {self.selection.selection_id}")
 
         # open failed reads file if specified
-        self.logger.info(f"Saving failed reads to {save_failed_to} for selection {self.selection.selection_id}")
-        _failed_file = (
-            os.path.join(save_failed_to, f"{self.selection.selection_id}_decode_failed.tsv")
-            if save_failed_to is not None
-            else None
-        )
+        _failed_file: str | None = None
+        if save_failed_to is not None:
+            _failed_file = os.path.join(save_failed_to, f"{self.selection.selection_id}_decode_failed.tsv")
+            self.logger.info(f"Saving failed reads to {_failed_file} for selection {self.selection.selection_id}")
+
         fail_csv_file = open(_failed_file, "w") if _failed_file is not None else None
 
         # write header to the failed reads CSV
         if fail_csv_file is not None:
             fail_csv_file.write("read_id\tbarcode\tquality\tfail_type\tfail_desc\n")
 
+        if save_all_decodes_to is not None:
+            os.makedirs(save_all_decodes_to, exist_ok=True)
+            self.logger.info(f"Saving all decodes to {save_all_decodes_to} for selection {self.selection.selection_id}")
+
+        curr_decode_out_file = None
+        curr_fastq_file: str = ""
         # look through all sequences in the selection
-        for i, seq_record in enumerate(
+        for i, (fastq_file, seq_record) in enumerate(
             tqdm(
-                self.selection.sequence_reader,
+                self.selection.sequence_reader.iter_seqs_with_filenames(),
                 desc=f"Running Decoding for selection {self.selection.selection_id}",
                 disable=not use_tqdm,
             )
         ):
+            # handle writing to different decode files per fastq
+            if curr_fastq_file != fastq_file:
+                curr_fastq_file = fastq_file
+                if save_all_decodes_to is not None:
+                    if curr_decode_out_file is not None:
+                        curr_decode_out_file.close()
+                    decode_out_path = os.path.join(
+                        save_all_decodes_to,
+                        f"{self.selection.selection_id}_{os.path.basename(fastq_file)}_decodes.tsv",
+                    )
+                    self.logger.debug(f"Writing decoded reads for fastq file {curr_fastq_file} to {decode_out_path}")
+                    curr_decode_out_file = open(decode_out_path, "w")
+                    curr_decode_out_file.write("read_id\tdel_compound_id\tlibrary_id\tumi\n")
+
             self.decoder.decode_statistics.num_seqs_read += 1
 
             # decode the read
@@ -627,6 +658,14 @@ class DecodingRunner:
                 if self.degen.count_barcode(decoded_barcode):
                     # only up the degen count if not a degenerate read
                     self.decoder.decode_statistics.num_seqs_degen_per_lib[decoded_barcode.library.library_id] += 1
+                if curr_decode_out_file is not None:
+                    umi_str = decoded_barcode.umi if decoded_barcode.umi is not None else "null"
+                    curr_decode_out_file.write(
+                        f"{seq_record.id}\t"
+                        f"{decoded_barcode.compound_id}\t"
+                        f"{decoded_barcode.library.library_id}\t"
+                        f"{umi_str}\n"
+                    )
             elif (isinstance(decoded_barcode, FailedDecodeAttempt)) and (fail_csv_file is not None):
                 # if we are saving failed reads, save the read
                 fail_csv_file.write(
@@ -640,9 +679,14 @@ class DecodingRunner:
             if ((i + 1) % 10000) == 0:
                 self.logger.debug(f"Decoded {i + 1} reads for selection {self.selection.selection_id}")
 
+        # close open files
         if fail_csv_file is not None:
             fail_csv_file.close()
             self.logger.debug(f"Saved failed reads to {save_failed_to} for selection {self.selection.selection_id}")
+
+        if curr_decode_out_file is not None:
+            curr_decode_out_file.close()
+            self.logger.debug(f"Saved all decodes to {save_all_decodes_to} for selection {self.selection.selection_id}")
 
         self.logger.info(f"Completed decoding for selection: {self.selection.selection_id}")
         return DecodingRunnerResults(
