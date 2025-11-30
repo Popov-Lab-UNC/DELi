@@ -6,7 +6,6 @@ from deli.dels.building_block import (
     BuildingBlock,
     BuildingBlockSet,
     BuildingBlockSetError,
-    MaskedBuildingBlock,
     TaggedBuildingBlock,
     TaggedBuildingBlockSet,
     generate_building_block_subset_id,
@@ -23,16 +22,6 @@ def test_generate_and_parse_subset_id_roundtrip():
 
     with pytest.raises(ValueError):
         parse_building_block_subset_id("not-a-valid-id")
-
-
-def test_masked_building_block_properties():
-    """Verify MaskedBuildingBlock reports mask status and inequality."""
-    # ensure get_deli_config returns an object with attribute `bb_mask`
-    mb = MaskedBuildingBlock()
-    assert mb.is_mask()
-    assert not mb.is_real()
-    # masked blocks are never equal to anything (including another masked instance)
-    assert not (mb == MaskedBuildingBlock())
 
 
 def test_building_block_equality_and_subset_behavior():

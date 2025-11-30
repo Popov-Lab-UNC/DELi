@@ -7,7 +7,7 @@ from datetime import datetime
 import jinja2
 import plotly.graph_objects as go
 
-from deli.dels.selection import Selection
+from deli.selection import Selection
 
 from .decoder import DecodeStatistics
 
@@ -79,9 +79,7 @@ def _generate_calling_pie_chart(
 
 def _generate_seq_length_hist(decode_stats: DecodeStatistics):
     """Generate the HTML for the seq length histogram"""
-    x_vals = list(
-        range(min(decode_stats.seq_lengths.keys()), max(decode_stats.seq_lengths.keys()) + 1)
-    )
+    x_vals = list(range(min(decode_stats.seq_lengths.keys()), max(decode_stats.seq_lengths.keys()) + 1))
     y_vals = [decode_stats.seq_lengths.get(key, 0) for key in x_vals]
     fig = go.Figure(data=[go.Bar(x=x_vals, y=y_vals)])
     fig.update_layout(
@@ -212,18 +210,14 @@ def build_decoding_report(
         "timestamp": datetime.now().strftime("%b %d, %Y %H:%M"),
         "selection": selection.selection_id,
         "run_date": selection.get_run_date_as_str(),
-        "target": selection.selection_condition.target_id
-        if selection.selection_condition.target_id
-        else "NA",
+        "target": selection.selection_condition.target_id if selection.selection_condition.target_id else "NA",
         "selection_cond": selection.selection_condition.selection_condition
         if selection.selection_condition.selection_condition
         else "NA",
         "additional_info": selection.selection_condition.additional_info
         if selection.selection_condition.additional_info
         else "NA",
-        "libs": ", ".join(
-            sorted([lib.library_id for lib in selection.library_collection.libraries])
-        ),
+        "libs": ", ".join(sorted([lib.library_id for lib in selection.library_collection.libraries])),
         "num_reads": stats.num_seqs_read,
         "num_decoded": stats.num_seqs_decoded,
         "num_degen": stats.num_seqs_degen,
@@ -237,9 +231,7 @@ def build_decoding_report(
     # write the report as a rendered jinja2 template
     # the template is stored as a resource in the package under templates
     # with resources.path("deli.templates", "decode_report.html") as template_path:
-    with resources.as_file(
-        resources.files("deli.templates") / "decode_report.html"
-    ) as template_path:
+    with resources.as_file(resources.files("deli.templates") / "decode_report.html") as template_path:
         template = jinja2.Template(open(template_path).read())
         rendered_content = template.render(jinja_data)
         with open(out_path, "w", encoding="utf-8") as f:

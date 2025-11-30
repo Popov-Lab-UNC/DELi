@@ -621,6 +621,8 @@ class DELibrary(CombinatorialLibrary, BarcodedMixin[DELBarcodeSchema]):
 
         self.library_tag = self.barcode_schema.library_section.get_dna_sequence()
 
+        self.number_of_barcodes = reduce(mul, [bb_set.num_tags for bb_set in self.bb_sets])
+
         ### VALIDATION ###
         # num bb sets matches barcode schema
         if self.num_cycles != barcode_schema.get_num_building_block_sections():
@@ -629,7 +631,7 @@ class DELibrary(CombinatorialLibrary, BarcodedMixin[DELBarcodeSchema]):
                 f"got {self.num_cycles} and {barcode_schema.get_num_building_block_sections()}"
             )
 
-        # Validate dna_barcode_on is attachd to an existing cycle or scaffold
+        # Validate dna_barcode_on is attached to an existing cycle or scaffold
         if isinstance(self.dna_barcode_on, str):
             if self.dna_barcode_on not in [bb_set.bb_set_id for bb_set in self.bb_sets]:
                 if scaffold is not None and self.dna_barcode_on != "scaffold":

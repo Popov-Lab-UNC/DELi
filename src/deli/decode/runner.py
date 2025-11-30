@@ -712,7 +712,7 @@ class DecodingRunner:
             if self.selection.selection_condition.additional_info
             else "NA",
             "data_ran": self.selection.get_run_date_as_str(),
-            "sequence_files": self.selection.sequence_files,
+            "sequence_files": [str(p) for p in self.selection.sequence_files],
             "libraries": [str(lib.loaded_from) for lib in self.selection.library_collection.libraries],
             "decode_settings": self.decode_settings.__dict__,
         }

@@ -178,7 +178,7 @@ class Enumerator:
             for bb_set_id, bb_set_reactant_id in zip(
                 rxn_thread.bb_set_ids, rxn_thread.bb_set_reactant_ids, strict=False
             ):
-                thread_size *= len(self.get_bb_set(bb_set_id).get_bb_subset(bb_set_reactant_id))
+                thread_size *= len(self.get_bb_set(bb_set_id).get_bb_subset(bb_set_reactant_id, drop_null=True))
             total_size += thread_size
         return total_size
 
@@ -279,14 +279,14 @@ class Enumerator:
         # loop through all the threads in the reaction tree
         p_bar = tqdm(total=self.get_enumeration_size(), disable=not use_tqdm)
         for rxn_thread in self.reaction_tree.threads:
-            bb_set_dict = {
-                bb_set_reactant_id: self.get_bb_set(bb_set_id).get_bb_subset(bb_set_reactant_id)
+            bb_list_dict = {
+                bb_set_reactant_id: self.get_bb_set(bb_set_id).get_bb_subset(bb_set_reactant_id, drop_null=True)
                 for bb_set_id, bb_set_reactant_id in zip(
                     rxn_thread.bb_set_ids, rxn_thread.bb_set_reactant_ids, strict=False
                 )
             }
             bb_combos: iter_product[tuple[tuple[str, BuildingBlock], ...]] = iter_product(
-                *[[(bb_set_id, bb) for bb in bb_set] for bb_set_id, bb_set in bb_set_dict.items()]
+                *[[(bb_set_id, bb) for bb in bb_list] for bb_set_id, bb_list in bb_list_dict.items()]
             )
 
             for bb_combo in bb_combos:

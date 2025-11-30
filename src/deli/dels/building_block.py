@@ -6,7 +6,7 @@ import warnings
 from collections import defaultdict
 from typing import Literal, Optional, Sequence, overload
 
-from deli.configure import DeliDataLoadable, accept_deli_data_name, get_deli_config
+from deli.configure import DeliDataLoadable, accept_deli_data_name
 from deli.utils.mol_utils import SmilesMixin
 
 
@@ -154,8 +154,7 @@ def parse_building_block_subset_id(bb_subset_id: str) -> tuple[str, str]:
     splits = bb_subset_id.split(":::")
     if len(splits) != 2:
         raise ValueError(
-            f"building block subset id '{bb_subset_id}' is not in the correct format "
-            f"'<bb_set_id>:::<subset_id>'"
+            f"building block subset id '{bb_subset_id}' is not in the correct format '<bb_set_id>:::<subset_id>'"
         )
     return splits[0], splits[1]
 
@@ -173,27 +172,6 @@ class BaseBuildingBlock(abc.ABC):
         self.bb_id = None
 
     @abc.abstractmethod
-    def is_mask(self) -> bool:
-        """
-        Check if building block is a masked building block or not
-
-        Returns
-        -------
-        bool
-        """
-        raise NotImplementedError
-
-    def is_real(self) -> bool:
-        """
-        Check if building block is a real (not null or mask) building block or not
-
-        Returns
-        -------
-        bool
-        """
-        return not self.is_mask()
-
-    @abc.abstractmethod
     def __eq__(self, other):
         """Determine if two building blocks are equal"""
         raise NotImplementedError
@@ -201,44 +179,6 @@ class BaseBuildingBlock(abc.ABC):
     def __str__(self):
         """Cast to str as the bb_id"""
         return self.bb_id
-
-
-class MaskedBuildingBlock(BaseBuildingBlock):
-    """
-    Defines a Masked Building Block
-
-    Notes
-    -----
-    A masked building block is a placeholder used in synthon-compounds
-    where a specific building block that was present and real is masked
-    out for this analysis
-
-    Attributes
-    ----------
-    bb_id : str = BB_MASK
-        always set to the constant BB_MASK
-    """
-
-    def __init__(self):
-        """Initialize the object"""
-        super().__init__()
-        self.bb_id = get_deli_config().bb_mask
-
-    def is_mask(self) -> bool:
-        """Masked BBs are always masks"""
-        return True
-
-    # def is_null(self) -> bool:
-    #     """Masked BBs are never null"""
-    #     return False
-
-    def __eq__(self, other):
-        """Masked BBs can never be equal to anything"""
-        return False
-
-    def __copy__(self):
-        """Return a new masked BB object"""
-        return self.__class__()
 
 
 class BuildingBlock(BaseBuildingBlock, SmilesMixin):
@@ -283,13 +223,7 @@ class BuildingBlock(BaseBuildingBlock, SmilesMixin):
         -------
         BuildingBlock
         """
-        return cls(
-            data["id"], smiles=data.get("smiles", None), subset_id=data.get("subset_id", None)
-        )
-
-    def is_mask(self) -> bool:
-        """Masked BBs are never masks"""
-        return False
+        return cls(data["id"], smiles=data.get("smiles", None), subset_id=data.get("subset_id", None))
 
     def in_subset(self) -> bool:
         """
@@ -318,6 +252,62 @@ class BuildingBlock(BaseBuildingBlock, SmilesMixin):
         if self.subset_id is None:
             raise RuntimeError(f"building block '{self.bb_id}' does not belong to a subset")
         return self.subset_id
+
+    @staticmethod
+    def is_null() -> bool:
+        """
+        Check if building block is a null building block
+
+        Returns
+        -------
+        bool
+        """
+        return False
+
+
+class NullBuildingBlock(BuildingBlock):
+    """
+    Define a null building block
+
+    Null building blocks are building blocks that are not involved in the combinatorial
+    synthesis of a larger building block set.
+    They can have SMILES or no SMILES, but they will not be considered in any
+    combinatorial enumeration
+
+    In practice, these are common in DELs where a building block position is skipped
+    or capped during synthesis to enable QC.
+
+    Notes
+    -----
+    These are nearly equivalent to BuildingBlock objects, but will
+    always return `True` for `is_null()` method.
+
+    Parameters
+    ----------
+    bb_id: str
+        building block id
+    smiles: Optional[str], default = None
+        SMILES of the building block
+    subset_id: Optional[str], default = None
+        if building block belongs to a subset, the subset id
+    """
+
+    def __init__(self, bb_id: str, smiles: Optional[str] = None, subset_id: Optional[str] = None):
+        """
+        Initialize the null building block
+        """
+        super().__init__(bb_id=bb_id, smiles=smiles, subset_id=subset_id)
+
+    @staticmethod
+    def is_null() -> bool:
+        """
+        Check if building block is a null building block
+
+        Returns
+        -------
+        bool
+        """
+        return True
 
 
 class TaggedBuildingBlock(BuildingBlock):
@@ -371,6 +361,61 @@ class TaggedBuildingBlock(BuildingBlock):
         return cls(bb_id=data["id"], tag=data["tag"], smiles=data.get("smiles", None))
 
 
+class TaggedNullBuildingBlock(TaggedBuildingBlock):
+    """
+    Define a null tagged building block
+
+    Null building blocks are building blocks that are not involved in the combinatorial
+    synthesis of a larger building block set.
+    They can have SMILES or no SMILES, but they will not be considered in any
+    combinatorial enumeration
+
+    In practice, these are common in DELs where a building block position is skipped
+    or capped during synthesis to enable QC.
+
+    These are tagged to enable decoding from DEL selections.
+    Unlike the chemical synthesis, tagged null building blocks will have their
+    possible full tag sequences enumerated during decoding (since DNA ligation
+    occurs even if no chemical synthesis occurs at that position).
+
+    Notes
+    -----
+    These are nearly equivalent to BuildingBlock objects, but will
+    always return `True` for `is_null()` method.
+
+    Parameters
+    ----------
+    bb_id: str
+        building block id
+    tag: str | list[str]
+        the dna tag associated with this building block
+    smiles: str, default = None
+        SMILES of the building block
+    subset_id: str, default = None
+        if building block belongs to a subset, the subset id
+    """
+
+    def __init__(
+        self,
+        bb_id: str,
+        tag: str | list[str],
+        smiles: Optional[str] = None,
+        subset_id: Optional[str] = None,
+    ):
+        super().__init__(bb_id=bb_id, tag=tag, smiles=smiles, subset_id=subset_id)
+
+    @staticmethod
+    def is_null() -> bool:
+        """
+        Check if building block is a null building block
+
+        Returns
+        -------
+        bool
+        """
+        return True
+
+
 class BuildingBlockSet(DeliDataLoadable):
     """
     Holds a set of building blocks
@@ -408,9 +453,7 @@ class BuildingBlockSet(DeliDataLoadable):
         self._validate_bb_set()
 
         self._bb_lookup_table = {bb.bb_id: i for i, bb in enumerate(self.building_blocks)}
-        self._bb_subset_lookup_table: dict[str, list[BuildingBlock]] | None = (
-            self._build_subset_lookup_table()
-        )
+        self._bb_subset_lookup_table: dict[str, list[BuildingBlock]] | None = self._build_subset_lookup_table()
 
         self.has_smiles = all([bb.has_smiles() for bb in self.building_blocks])
 
@@ -473,7 +516,9 @@ class BuildingBlockSet(DeliDataLoadable):
         Notes
         -----
         This is decorated by `accept_deli_data`
-        which makes allows to load by build block set name or path
+        which makes allows to load by build block set name or path.
+        Will load any building block with 'null' in its ID as a NullBuildingBlock.
+        This is not case-sensitive.
 
         Parameters
         ----------
@@ -487,9 +532,7 @@ class BuildingBlockSet(DeliDataLoadable):
         -------
         BuildingBlockSet
         """
-        _cls = cls.load_from_csv(
-            path, set_id=os.path.basename(path).split(".")[0], check_for_smiles=check_for_smiles
-        )
+        _cls = cls.load_from_csv(path, set_id=os.path.basename(path).split(".")[0], check_for_smiles=check_for_smiles)
         _cls.loaded_from = path
         return _cls
 
@@ -499,6 +542,11 @@ class BuildingBlockSet(DeliDataLoadable):
     ) -> "BuildingBlockSet":
         """
         Read a building block set from a csv file
+
+        Notes
+        -----
+        Will load any building block with 'null' in its ID as a NullBuildingBlock.
+        This is not case-sensitive.
 
         Parameters
         ----------
@@ -561,9 +609,11 @@ class BuildingBlockSet(DeliDataLoadable):
                         )
                         continue  # skip since it's a duplicate
                 else:
-                    _building_blocks.append(
-                        BuildingBlock(bb_id=_id, smiles=_smiles, subset_id=_subset)
-                    )
+                    if "null" in _id.lower():
+                        _building_blocks.append(NullBuildingBlock(bb_id=_id, smiles=_smiles, subset_id=_subset))
+                    else:
+                        _building_blocks.append(BuildingBlock(bb_id=_id, smiles=_smiles, subset_id=_subset))
+                    _building_block_map[_id] = _building_blocks[-1]
         return cls(_set_id, _building_blocks)
 
     def __len__(self):
@@ -579,9 +629,7 @@ class BuildingBlockSet(DeliDataLoadable):
         return hash(self.bb_set_id)
 
     @overload
-    def get_bb_by_id(
-        self, query: str, fail_on_missing: Literal[False]
-    ) -> BuildingBlock | None: ...
+    def get_bb_by_id(self, query: str, fail_on_missing: Literal[False]) -> BuildingBlock | None: ...
 
     @overload
     def get_bb_by_id(self, query: str, fail_on_missing: Literal[True]) -> BuildingBlock: ...
@@ -612,9 +660,7 @@ class BuildingBlockSet(DeliDataLoadable):
         _idx = self._bb_lookup_table.get(query, None)
         if _idx is None:
             if fail_on_missing:
-                raise KeyError(
-                    f"BuildingBlock id '{query}' not found in BuildingBlockSet '{self.bb_set_id}'"
-                )
+                raise KeyError(f"BuildingBlock id '{query}' not found in BuildingBlockSet '{self.bb_set_id}'")
             return None
         else:
             return self.building_blocks[_idx]
@@ -622,13 +668,11 @@ class BuildingBlockSet(DeliDataLoadable):
     def _get_subset_lookup_table(self) -> dict[str, list[BuildingBlock]]:
         """Get the subset lookup table if it exists, else raise an error"""
         if self._bb_subset_lookup_table is None:
-            raise ValueError(
-                f"BuildingBlockSet '{self.bb_set_id}' was not initialized with a subset_id_map"
-            )
+            raise ValueError(f"BuildingBlockSet '{self.bb_set_id}' was not initialized with a subset_id_map")
         else:
             return self._bb_subset_lookup_table
 
-    def get_bb_subset(self, subset_id: str) -> list[BuildingBlock]:
+    def get_bb_subset(self, subset_id: str, drop_null: bool = False) -> list[BuildingBlock]:
         """
         Given a subset id, return all building blocks in that subset
 
@@ -642,6 +686,8 @@ class BuildingBlockSet(DeliDataLoadable):
         ----------
         subset_id: str
             the subset id to query
+        drop_null: bool, default = False
+            if `True` will drop null building blocks from the returned list
 
         Returns
         -------
@@ -659,8 +705,7 @@ class BuildingBlockSet(DeliDataLoadable):
             bb_set_id, subset_id = parse_building_block_subset_id(subset_id)
             if bb_set_id != self.bb_set_id:
                 raise KeyError(
-                    f"Building block subset id '{subset_id}' does not belong "
-                    f"to BuildingBlockSet '{self.bb_set_id}'"
+                    f"Building block subset id '{subset_id}' does not belong to BuildingBlockSet '{self.bb_set_id}'"
                 )
         except ValueError:
             # not in bb_subset_id format, assume just subset_id
@@ -668,16 +713,21 @@ class BuildingBlockSet(DeliDataLoadable):
 
         if self._bb_subset_lookup_table is None:
             if subset_id == self.bb_set_id:
-                return list(self.building_blocks)
+                if drop_null:
+                    return self.get_non_null_building_blocks()
+                else:
+                    return list(self.building_blocks)
         try:
             bb_list = self._get_subset_lookup_table()[subset_id]
         except KeyError as e:
-            raise KeyError(
-                f"Subset id '{subset_id}' not found in BuildingBlockSet '{self.bb_set_id}'"
-            ) from e
-        return bb_list
+            raise KeyError(f"Subset id '{subset_id}' not found in BuildingBlockSet '{self.bb_set_id}'") from e
 
-    def get_bb_subsets(self) -> dict[str, list[BuildingBlock]]:
+        if drop_null:
+            return [bb for bb in bb_list if not bb.is_null()]
+        else:
+            return bb_list
+
+    def get_bb_subsets(self, drop_null: bool = False) -> dict[str, list[BuildingBlock]]:
         """
         Get all building block subsets in the set
 
@@ -688,15 +738,22 @@ class BuildingBlockSet(DeliDataLoadable):
         -------
         dict[str, list[BuildingBlock]]
             mapping from building block subset id to list of building blocks in that subset
+        drop_null: bool, default = False
+            if `True` will drop null building blocks from the returned lists
 
         See Also
         --------
         generate_building_block_subset_id
         """
-        return {
-            generate_building_block_subset_id(self.bb_set_id, subset_id): subset
-            for subset_id, subset in self._get_subset_lookup_table().items()
-        }
+        subsets: dict[str, list[BuildingBlock]] = dict()
+        for subset_id, subset in self._get_subset_lookup_table().items():
+            if drop_null:
+                subsets[generate_building_block_subset_id(self.bb_set_id, subset_id)] = [
+                    bb for bb in subset if not bb.is_null()
+                ]
+            else:
+                subsets[generate_building_block_subset_id(self.bb_set_id, subset_id)] = subset
+        return subsets
 
     def get_subset_with_bb(self, bb: BuildingBlock, as_bb_subset_id: bool = False) -> str:
         """
@@ -758,10 +815,29 @@ class BuildingBlockSet(DeliDataLoadable):
         else:
             if any(bb_id == _bb.bb_id for _bb in self.building_blocks):
                 return self.bb_set_id
-        raise KeyError(
-            f"Building block '{bb_id}' not found in any subset "
-            f"of BuildingBlockSet '{self.bb_set_id}'"
-        )
+        raise KeyError(f"Building block '{bb_id}' not found in any subset of BuildingBlockSet '{self.bb_set_id}'")
+
+    def get_null_building_blocks(self) -> list[BuildingBlock]:
+        """
+        Get all null building blocks in the set
+
+        Returns
+        -------
+        list[BuildingBlock]
+            list of null building blocks in the set
+        """
+        return [bb for bb in self.building_blocks if bb.is_null()]
+
+    def get_non_null_building_blocks(self) -> list[BuildingBlock]:
+        """
+        Get all the non-null building blocks in the set
+
+        Returns
+        -------
+        list[BuildingBlock]
+            list of non-null building blocks in the set
+        """
+        return [bb for bb in self.building_blocks if not bb.is_null()]
 
 
 class TaggedBuildingBlockSet(BuildingBlockSet):
@@ -806,10 +882,9 @@ class TaggedBuildingBlockSet(BuildingBlockSet):
                         f"but tag '{_bb.bb_id}' at row {i} has length {len(_tag)}"
                     )
 
-        self._dna_lookup_table = {
-            tag: i for i, bb in enumerate(self.building_blocks) for tag in bb.tags
-        }
+        self._dna_lookup_table = {tag: i for i, bb in enumerate(self.building_blocks) for tag in bb.tags}
         self._bb_lookup_table = {bb.bb_id: i for i, bb in enumerate(self.building_blocks)}
+        self.num_tags = len(self._dna_lookup_table)
 
     def _validate_bb_set(self):
         """Validate the building block set"""
@@ -842,7 +917,9 @@ class TaggedBuildingBlockSet(BuildingBlockSet):
         Notes
         -----
         This is decorated by `accept_deli_data`
-        which makes allows to load by build block set name or path
+        which makes allows to load by build block set name or path.
+        Will load any building block with 'null' in its ID as a NullBuildingBlock.
+        This is not case-sensitive.
 
         Parameters
         ----------
@@ -865,7 +942,14 @@ class TaggedBuildingBlockSet(BuildingBlockSet):
         cls, path: str, set_id: Optional[str] = None, check_for_smiles: bool = False
     ) -> "TaggedBuildingBlockSet":
         """
-        Read a building block set from a csv file
+        Read a tagged building block set from a csv file
+
+        Tagged building block set files *must* have a 'tag' column.
+
+        Notes
+        -----
+        Will load any building block with 'null' in its ID as a NullBuildingBlock.
+        This is not case-sensitive.
 
         Parameters
         ----------
@@ -894,13 +978,11 @@ class TaggedBuildingBlockSet(BuildingBlockSet):
             header = f.readline().strip().split(",")
 
             try:
-                _id_col_idx, _smi_col_idx, _subset_id_col_idx, extra_cols = (
-                    _validate_bb_set_file_header(
-                        header=header,
-                        required_columns={BB_FILE_SMILES_COLUMN, BB_FILE_TAG_COLUMN}
-                        if check_for_smiles
-                        else {BB_FILE_TAG_COLUMN},
-                    )
+                _id_col_idx, _smi_col_idx, _subset_id_col_idx, extra_cols = _validate_bb_set_file_header(
+                    header=header,
+                    required_columns={BB_FILE_SMILES_COLUMN, BB_FILE_TAG_COLUMN}
+                    if check_for_smiles
+                    else {BB_FILE_TAG_COLUMN},
                 )
             except BuildingBlockSetError as e:
                 raise BuildingBlockSetError(
@@ -935,16 +1017,19 @@ class TaggedBuildingBlockSet(BuildingBlockSet):
                             continue  # skip since it's a duplicate
                         _building_block_map[_id].tags.append(_tag)  # skip since it's a duplicate
                 else:
-                    _building_blocks.append(
-                        TaggedBuildingBlock(bb_id=_id, smiles=_smiles, tag=_tag, subset_id=_subset)
-                    )
+                    if "null" in _id.lower():
+                        _building_blocks.append(
+                            TaggedNullBuildingBlock(bb_id=_id, smiles=_smiles, tag=_tag, subset_id=_subset)
+                        )
+                    else:
+                        _building_blocks.append(
+                            TaggedBuildingBlock(bb_id=_id, smiles=_smiles, tag=_tag, subset_id=_subset)
+                        )
                     _building_block_map[_id] = _building_blocks[-1]
         return cls(_set_id, _building_blocks)
 
     @overload
-    def search_tags(
-        self, query: str, fail_on_missing: Literal[False]
-    ) -> TaggedBuildingBlock | None: ...
+    def search_tags(self, query: str, fail_on_missing: Literal[False]) -> TaggedBuildingBlock | None: ...
 
     @overload
     def search_tags(self, query: str, fail_on_missing: Literal[True]) -> TaggedBuildingBlock: ...
@@ -975,10 +1060,7 @@ class TaggedBuildingBlockSet(BuildingBlockSet):
         _idx = self._dna_lookup_table.get(query, None)
         if _idx is None:
             if fail_on_missing:
-                raise KeyError(
-                    f"BuildingBlock DNA tag '{query}' not found "
-                    f"in BuildingBlockSet '{self.bb_set_id}'"
-                )
+                raise KeyError(f"BuildingBlock DNA tag '{query}' not found in BuildingBlockSet '{self.bb_set_id}'")
             return None
         else:
             return self.building_blocks[_idx]
