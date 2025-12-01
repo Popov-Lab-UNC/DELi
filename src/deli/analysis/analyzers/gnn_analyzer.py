@@ -335,5 +335,5 @@ class GNNAnalyzer:
         plt.xlabel("Predicted")
         plt.ylabel("True")
         plt.tight_layout()
-        plt.savefig(f"{output_dir}/{exp_name}_{arch}_classifier.png")
+        plt.savefig(f"{output_dir}/{exp_name}_{arch}_classifier.svg", dpi=300)
         plt.close()

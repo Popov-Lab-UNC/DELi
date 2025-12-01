@@ -639,25 +639,27 @@ class DELi_Cube:
 
                 if comparison_type == "none":
                     ax.bar(
-                        x, final_results["metric_exp1"], width, label=exp_name1, color="skyblue"
+                        x, final_results["metric_exp1"], width, label=exp_name1, color="#56B4E9"
                     )
                     ax.set_xticks(x)
-                    ax.set_xticklabels(x_labels, rotation=90, fontsize=12)
-                    ax.set_xlabel(f"{synthon} Disynthon")
-                    ax.set_ylabel("Enrichment")
+                    ax.set_xticklabels(x_labels, rotation=90, fontsize=14)
+                    ax.set_xlabel(f"{synthon} Disynthon", fontsize=16, labelpad=10)
+                    ax.set_ylabel("Enrichment", fontsize=16, labelpad=10)
+                    ax.tick_params(axis='y', labelsize=14)
                     ax.set_title(
                         f"Top {top_count} {synthon} Disynthons: {exp_name1}",
-                        fontsize=14,
+                        fontsize=18,
                         fontweight="bold",
+                        pad=20
                     )
-                    ax.legend()
+                    ax.legend(fontsize=14)
 
                 else:
                     x1 = [pos - width / 2 for pos in x]
                     x2 = [pos + width / 2 for pos in x]
 
                     ax.bar(
-                        x1, final_results["metric_exp1"], width, label=exp_name1, color="skyblue"
+                        x1, final_results["metric_exp1"], width, label=exp_name1, color="#56B4E9"
                     )
                     ax.bar(
                         x2,
@@ -666,24 +668,26 @@ class DELi_Cube:
                         label=exp_name2
                         if comparison_type == "exp2"
                         else control_name + "_control",
-                        color="orange",
+                        color="#E69F00",
                     )
 
                     ax.set_xticks(x)
-                    ax.set_xticklabels(x_labels, rotation=90, fontsize=12)
-                    ax.set_xlabel(f"{synthon} Disynthon")
-                    ax.set_ylabel("Enrichment")
+                    ax.set_xticklabels(x_labels, rotation=90, fontsize=14)
+                    ax.set_xlabel(f"{synthon} Disynthon", fontsize=16, labelpad=10)
+                    ax.set_ylabel("Enrichment", fontsize=16, labelpad=10)
+                    ax.tick_params(axis='y', labelsize=14)
                     ax.set_title(
                         f"Top {top_count} {synthon} Disynthons: {exp_name1}{' vs ' + (exp_name2 if comparison_type == 'exp2' else control_name + '_control') if comparison_type != 'none' else ''}",
-                        fontsize=14,
+                        fontsize=18,
                         fontweight="bold",
+                        pad=20
                     )
-                    ax.legend()
+                    ax.legend(fontsize=14)
 
                 plt.tight_layout()
 
-                plot_path = f"{output_dir}/top_{synthon}_disynthons_{exp_name1}{' vs ' + (exp_name2 if comparison_type == 'exp2' else control_name) if comparison_type != 'none' else ''}.png"
-                plt.savefig(plot_path)
+                plot_path = f"{output_dir}/top_{synthon}_disynthons_{exp_name1}{' vs ' + (exp_name2 if comparison_type == 'exp2' else control_name) if comparison_type != 'none' else ''}.svg"
+                plt.savefig(plot_path, dpi=300)
                 print(f"Plot saved to {plot_path}")
 
             else:
@@ -795,19 +799,27 @@ class DELi_Cube:
             fig, ax = plt.subplots(figsize=(10, 6), dpi=150)
             if num_valid_indices == 3:
                 set_c = set(filtered_data[filtered_data[valid_indices[2]] > threshold]["DEL_ID"])
-                venn3(
+                v = venn3(
                     [set_a, set_b, set_c],
                     set_labels=(valid_indices[0], valid_indices[1], valid_indices[2]),
                 )
-                plt.title(f"Overlap Diagram for {exp_name} (Three Indices)")
+                plt.title(f"Overlap Diagram for {exp_name} (Three Indices)", fontsize=18, pad=20)
+                for text in v.set_labels:
+                    if text: text.set_fontsize(14)
+                for text in v.subset_labels:
+                    if text: text.set_fontsize(12)
             else:
-                venn2([set_a, set_b], set_labels=(valid_indices[0], valid_indices[1]))
-                plt.title(f"Overlap Diagram for {exp_name} (Two Indices)")
+                v = venn2([set_a, set_b], set_labels=(valid_indices[0], valid_indices[1]))
+                plt.title(f"Overlap Diagram for {exp_name} (Two Indices)", fontsize=18, pad=20)
+                for text in v.set_labels:
+                    if text: text.set_fontsize(14)
+                for text in v.subset_labels:
+                    if text: text.set_fontsize(12)
 
             # Enforce equal aspect and fixed margins; avoid tight bbox to keep scale constant
             ax.set_aspect('equal', adjustable='box')
             fig.subplots_adjust(left=0.08, right=0.92, top=0.88, bottom=0.12)
-            plt.savefig(f"{output_dir}/{exp_name}_overlap_diagram.png")
+            plt.savefig(f"{output_dir}/{exp_name}_overlap_diagram.svg", dpi=300)
             plt.close()
 
         if valid_experiments == 0:
@@ -884,25 +896,37 @@ class DELi_Cube:
                 set_c = set(
                     filtered_data[filtered_data[valid_indices[2]] > threshold][disynthon_type]
                 )
-                venn3(
+                v = venn3(
                     [set_a, set_b, set_c],
                     set_labels=(valid_indices[0], valid_indices[1], valid_indices[2]),
                 )
                 plt.title(
                     f"Venn Diagram for {exp_name} (Three Indices) \n Threshold = {threshold}",
-                    fontsize=16,
+                    fontsize=18,
+                    pad=20
                 )
+                for text in v.set_labels:
+                    if text: text.set_fontsize(14)
+                for text in v.subset_labels:
+                    if text: text.set_fontsize(12)
             else:
-                venn2([set_a, set_b], set_labels=(valid_indices[0], valid_indices[1]))
+                v = venn2([set_a, set_b], set_labels=(valid_indices[0], valid_indices[1]))
                 plt.title(
                     f"Venn Diagram for {exp_name} (Two Indices) \n Threshold = {threshold}",
-                    fontsize=16,
+                    fontsize=18,
+                    pad=20
                 )
-
+                for text in v.set_labels:
+                    if text: text.set_fontsize(14)
+                for text in v.subset_labels:
+                    if text: text.set_fontsize(12)
+            
+            # Center the Venn diagram
+            plt.subplots_adjust(left=0.1, right=0.9, top=0.85, bottom=0.1)
+            
             # Enforce equal aspect and fixed margins; avoid tight bbox to keep scale constant
             ax.set_aspect('equal', adjustable='box')
-            fig.subplots_adjust(left=0.08, right=0.92, top=0.88, bottom=0.12)
-            plt.savefig(f"{output_dir}/{exp_name}_venn_diagram.png")
+            plt.savefig(f"{output_dir}/{exp_name}_venn_diagram.svg", dpi=300)
             plt.close()
 
         if valid_experiments == 0:
@@ -991,6 +1015,8 @@ class DELi_Cube:
                 last_y_pred_rf,
                 label=f"Random Forest (Last Fold R² = {r2_rf_scores[-1]:.2f})",
                 alpha=0.7,
+                s=50,
+                color="#0072B2"
             )
             plt.scatter(
                 last_y_test,
@@ -998,23 +1024,30 @@ class DELi_Cube:
                 label=f"Dummy Regressor (Last Fold R² = {r2_dummy_scores[-1]:.2f})",
                 alpha=0.7,
                 marker="x",
+                s=50,
+                color="#D55E00"
             )
             plt.plot(
                 [min(last_y_test), max(last_y_test)],
                 [min(last_y_test), max(last_y_test)],
                 color="black",
                 linestyle="--",
+                linewidth=2
             )
             plt.title(
-                f"{exp_name} RF Regression: K-Fold Avg R² = {avg_r2_rf:.2f}, Dummy = {avg_r2_dummy:.2f}"
+                f"{exp_name} RF Regression: K-Fold Avg R² = {avg_r2_rf:.2f}, Dummy = {avg_r2_dummy:.2f}",
+                fontsize=16,
+                pad=20
             )
-            plt.xlabel("True Average Enrichment")
-            plt.ylabel("Predicted Average Enrichment")
-            plt.legend(loc="upper left")
+            plt.xlabel("True Average Enrichment", fontsize=14, labelpad=10)
+            plt.ylabel("Predicted Average Enrichment", fontsize=14, labelpad=10)
+            plt.xticks(fontsize=12)
+            plt.yticks(fontsize=12)
+            plt.legend(loc="upper left", fontsize=12)
 
             if output_dir is None:
                 output_dir = "."
-            plt.savefig(f"{output_dir}/{exp_name}_RF_regression.png")
+            plt.savefig(f"{output_dir}/{exp_name}_RF_regression.svg", dpi=300)
             plt.close()
 
     def ml_fingerprints_to_classifier(self, threshold: int = 2, output_dir: str = None) -> None:
@@ -1097,35 +1130,46 @@ class DELi_Cube:
                 annot=True,
                 fmt="d",
                 cmap="Blues",
+                annot_kws={"size": 14},
                 xticklabels=["Not Enriched", "Enriched"],
                 yticklabels=["Not Enriched", "Enriched"],
             )
             plt.title(
                 f"{exp_name} Random Forest Classifier (Avg Acc = {avg_acc_rf:.2f}), Threshold = {threshold} \n"
-                f"Last Fold Confusion Matrix Accuracy= {acc_rf_scores[-1]:.2f}"
+                f"Last Fold Confusion Matrix Accuracy= {acc_rf_scores[-1]:.2f}",
+                fontsize=12,
+                pad=15
             )
-            plt.xlabel("Predicted")
-            plt.ylabel("True")
+            plt.xlabel("Predicted", fontsize=14, labelpad=10)
+            plt.ylabel("True", fontsize=14, labelpad=10)
+            plt.xticks(fontsize=12)
+            plt.yticks(fontsize=12)
+
             plt.subplot(1, 2, 2)
             sns.heatmap(
                 cm_dummy,
                 annot=True,
                 fmt="d",
                 cmap="Blues",
+                annot_kws={"size": 14},
                 xticklabels=["Not Enriched", "Enriched"],
                 yticklabels=["Not Enriched", "Enriched"],
             )
             plt.title(
                 f"{exp_name} Dummy Classifier (Avg Acc = {avg_acc_dummy:.2f}), Threshold = {threshold} \n"
-                f"Last Fold Confusion Matrix Accuracy= {acc_dummy_scores[-1]:.2f}"
+                f"Last Fold Confusion Matrix Accuracy= {acc_dummy_scores[-1]:.2f}",
+                fontsize=12,
+                pad=15
             )
-            plt.xlabel("Predicted")
-            plt.ylabel("True")
+            plt.xlabel("Predicted", fontsize=14, labelpad=10)
+            plt.ylabel("True", fontsize=14, labelpad=10)
+            plt.xticks(fontsize=12)
+            plt.yticks(fontsize=12)
             plt.tight_layout()
 
             if output_dir is None:
                 output_dir = "."
-            plt.savefig(f"{output_dir}/{exp_name}_classifier.png")
+            plt.savefig(f"{output_dir}/{exp_name}_classifier.svg", dpi=300)
             plt.close()
 
     def gnn_classifier(
@@ -1188,34 +1232,35 @@ class DELi_Cube:
             ]
 
             dopts = rdMolDraw2D.MolDrawOptions()
-            dopts.legendFontSize = 20
+            dopts.legendFontSize = 24
+            dopts.bondLineWidth = 1.5
+            dopts.minFontSize = 12
+            #dopts.annotationFontScale = 0.35  # Smaller atom labels for better readability
+            dopts.addAtomIndices = False
 
             try:
-                img = Draw.MolsToGridImage(
-                    mols, molsPerRow=4, subImgSize=(200, 200), legends=legends, drawOptions=dopts
+                svg_string = Draw.MolsToGridImage(
+                    mols, molsPerRow=4, subImgSize=(300, 300), legends=legends, drawOptions=dopts, useSVG=True
                 )
-                # Add filename as text on top
-                draw = ImageDraw.Draw(img)
-                file_name = f"{exp_name}_top_{n}_compounds.png"
-                draw.text((10, 10), file_name[:-4], fill="black")
             except AttributeError:
                 pass
 
             if output_dir is None:
                 output_dir = "."
-            file_name = f"{exp_name}_top_{n}_compounds.png"
+            file_name = f"{exp_name}_top_{n}_compounds.svg"
 
             try:
-                img.save(f"{output_dir}/{file_name}")
-            except AttributeError:
+                with open(f"{output_dir}/{file_name}", "w") as f:
+                    f.write(svg_string)
+            except (AttributeError, IOError):
                 pass
 
             # Optional notebook display - lazy import to avoid hard dependency on IPython/Jupyter
             try:
-                from IPython.display import display
+                from IPython.display import display, SVG
 
                 print(f"Top {n} compounds for {exp_name} based on {metric}")
-                display(img)
+                display(SVG(svg_string))
             except ImportError:
                 pass
 
@@ -1417,5 +1462,28 @@ class DELi_Cube:
             output_file = os.path.join(clusters_dir, f"monosynthon_{synthon_type}_chemical_space.html")
             fig.write_html(output_file)
             print(f"Saved {synthon_type} monosynthon chemical space to {output_file}")
+
+            # Create Matplotlib figure for SVG
+            plt.figure(figsize=(10, 8))
+            sc = plt.scatter(
+                tsne_results[:, 0],
+                tsne_results[:, 1],
+                c=df_synthons['avg_enrichment'],
+                cmap='viridis',
+                alpha=0.7
+            )
+            plt.colorbar(sc, label='Avg Enrichment')
+            plt.title(f"{synthon_type} Monosynthon Chemical Space")
+            plt.xlabel("t-SNE 1")
+            plt.ylabel("t-SNE 2")
+            # Remove ticks to match plotly style
+            plt.xticks([])
+            plt.yticks([])
+            plt.tight_layout()
+
+            output_file_svg = os.path.join(clusters_dir, f"monosynthon_{synthon_type}_chemical_space.svg")
+            plt.savefig(output_file_svg, dpi=300)
+            plt.close()
+            print(f"Saved {synthon_type} monosynthon chemical space SVG to {output_file_svg}")
         
         print(f"Monosynthon chemical space visualizations saved to {clusters_dir}")

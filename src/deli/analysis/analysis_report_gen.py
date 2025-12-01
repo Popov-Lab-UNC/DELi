@@ -13,24 +13,42 @@ def encode_image_to_base64(image_path):
         return base64.b64encode(image_file.read()).decode("utf-8")
 
 
-def get_plot_files(directory, file_extensions=[".png"]):
-    """Retrieve base64-encoded plots from a given directory."""
+def get_plot_files(directory, file_extensions=[".png", ".svg"]):
+    """Retrieve plots from a given directory, returning name and data (base64 for png, text for svg)."""
     if os.path.exists(directory) and os.path.isdir(directory):
-        return [
-            encode_image_to_base64(os.path.join(directory, f))
-            for f in os.listdir(directory)
-            if any(f.endswith(ext) for ext in file_extensions)
-        ]
+        plots = []
+        # Sort files to ensure consistent order
+        files = sorted([f for f in os.listdir(directory) if any(f.endswith(ext) for ext in file_extensions)])
+        for f in files:
+            file_path = os.path.join(directory, f)
+            if f.endswith(".svg"):
+                with open(file_path, "r", encoding="utf-8") as svg_file:
+                    plots.append({
+                        "name": f,
+                        "data": svg_file.read(),
+                        "type": "svg"
+                    })
+            else:
+                plots.append({
+                    "name": f,
+                    "data": encode_image_to_base64(file_path),
+                    "type": "png"
+                })
+        return plots
     return []
 
 def get_html_files(directory):
     """Retrieve HTML files as text from a given directory."""
     if os.path.exists(directory) and os.path.isdir(directory):
         html_files = []
-        for f in os.listdir(directory):
-            if f.endswith(".html"):
-                with open(os.path.join(directory, f), 'r', encoding='utf-8') as file:
-                    html_files.append(file.read())
+        # Sort files to ensure consistent order
+        files = sorted([f for f in os.listdir(directory) if f.endswith(".html")])
+        for f in files:
+            with open(os.path.join(directory, f), 'r', encoding='utf-8') as file:
+                html_files.append({
+                    "name": f,
+                    "content": file.read()
+                })
         return html_files
     return []
 
@@ -68,11 +86,15 @@ def generate_report(
     plot_data = {}
     for key, path in plot_dirs.items():
         if key == "monosynthon_chemical_space_plots":
-            # Handle HTML files for monosynthon plots
-            plot_data[key] = get_html_files(path)
+            # Retrieve HTML files directly
+            html_files = get_html_files(path)
+            # Add a type field to distinguish in template
+            for item in html_files:
+                item["type"] = "html"
+            plot_data[key] = html_files
         else:
-            # Handle PNG files for other plots
-            plot_data[key] = get_plot_files(path, [".png"])
+            # Handle PNG and SVG files for other plots
+            plot_data[key] = get_plot_files(path, [".png", ".svg"])
 
     experiment_info = get_experiment_info(indexes, control_cols)
 
@@ -98,6 +120,8 @@ def generate_report(
         experiment_info=experiment_info,
         sampling_depth_values=sampling_depth_values,
         sampling_depth_only=sampling_depth_values_only,
+        now_date=datetime.now().strftime("%Y-%m-%d"),
+        now_year=datetime.now().year,
         **plot_data,  # Inject base64 plot data
     )
 
