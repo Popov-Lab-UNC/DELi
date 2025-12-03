@@ -33,6 +33,10 @@ jobs:
         run: |
           poetry config virtualenvs.create false --local || true
 
+      - name: Upgrade poetry-core to fix metadata bug related to PEP621
+        run: |
+          pip install --upgrade "poetry-core>=2.0.2"
+
       - name: Install dependencies
         run: |
           poetry install --no-interaction
