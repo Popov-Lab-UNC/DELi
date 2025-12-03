@@ -162,7 +162,7 @@ class DELCompoundRaw(Compound):
         """
         return {
             "library_id": self.library_id,
-            "building_blocks_ids": self.building_block_ids,
+            "building_block_ids": self.building_block_ids,
         }
 
 

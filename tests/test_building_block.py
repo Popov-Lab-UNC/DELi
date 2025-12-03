@@ -44,7 +44,7 @@ def test_tagged_building_block_tags_list():
     assert t.tags == ["AAAA"]
 
 
-def test_building_blockset_load_from_csv_no_subsets(tmp_path):
+def test_building_block_set_load_from_csv_no_subsets(tmp_path):
     """Load a BuildingBlockSet CSV without subset ids and exercise lookups."""
     csv = "id,smiles\nA,C\nB,CC\n"
     p = tmp_path / "bb_no_subsets.csv"
@@ -63,7 +63,7 @@ def test_building_blockset_load_from_csv_no_subsets(tmp_path):
     assert len(all_bbs) == 2
 
 
-def test_building_blockset_with_subsets(tmp_path):
+def test_building_block_set_with_subsets(tmp_path):
     """Load a BuildingBlockSet CSV with subset ids and verify subset helpers."""
     csv = "id,smiles,subset_id\nA,C,s1\nB,CC,s1\nC,CCC,s2\n"
     p = tmp_path / "bb_with_subsets.csv"
@@ -82,6 +82,13 @@ def test_building_blockset_with_subsets(tmp_path):
     assert s.get_subset_with_bb_id("A", as_bb_subset_id=True).startswith(s.bb_set_id + ":::")
 
 
+def test_building_block_set_bad_id(tmp_path):
+    """Check for errors in ids with building block sets"""
+    bb = BuildingBlock("A", smiles="C")
+    with pytest.raises(BuildingBlockSetError):
+        BuildingBlockSet(bb_set_id="set1:::k", building_blocks=[bb])
+
+
 def test_mixed_subset_presence_raises(tmp_path):
     """CSV with mixed presence/absence of subset_id should raise an error."""
     csv = "id,smiles,subset_id\nA,C,s1\nB,CC,\n"
@@ -91,15 +98,24 @@ def test_mixed_subset_presence_raises(tmp_path):
     with pytest.raises(BuildingBlockSetError):
         BuildingBlockSet.load_from_csv(str(p))
 
+    with pytest.raises(BuildingBlockSetError):
+        BuildingBlockSet("tmp", [BuildingBlock("A", "C", subset_id="s1"), BuildingBlock("B", "CC")])
+
 
 def test_duplicate_id_conflicting_smiles_raises(tmp_path):
-    """Duplicate IDs with conflicting SMILES should raise a BuildingBlockSetError."""
+    """Duplicate IDs with conflicting SMILES in a file should raise a BuildingBlockSetError."""
     csv = "id,smiles\nA,C\nA,CC\n"
     p = tmp_path / "bb_dup_smiles.csv"
     p.write_text(csv)
 
     with pytest.raises(BuildingBlockSetError):
         BuildingBlockSet.load_from_csv(str(p))
+
+
+def test_duplicate_id(tmp_path):
+    """Duplicate IDs raise a BuildingBlockSetError."""
+    with pytest.raises(BuildingBlockSetError):
+        BuildingBlockSet("id", [BuildingBlock("A", "C"), BuildingBlock("A", "C")])
 
 
 def test_tagged_building_blockset_csv_and_search(tmp_path):

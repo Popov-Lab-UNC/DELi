@@ -1000,12 +1000,10 @@ class ToolCompoundBarcodeSchema(BarcodeSchema):
     """
 
     def __init__(self, barcode_sections: list[BarcodeSection]):
-        super().__init__(barcode_sections=barcode_sections)
-
         # check for tool compound section
         _tool_compound_sections = [
             (i, section)
-            for i, section in enumerate(self.barcode_sections)
+            for i, section in enumerate(barcode_sections)
             if isinstance(section, ToolCompoundBarcodeSection)
         ]
         if len(_tool_compound_sections) == 0:
@@ -1014,6 +1012,7 @@ class ToolCompoundBarcodeSchema(BarcodeSchema):
             raise BarcodeSchemaError("barcode schemas must contain only one tool compound barcode section")
         else:
             self.tool_compound_section = _tool_compound_sections[0][1]
+        super().__init__(barcode_sections=barcode_sections)
 
     def get_required_section_names(self) -> list[str]:
         """
