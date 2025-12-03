@@ -1,11 +1,10 @@
 # toml
 [project]
 name = "deli-chem"
-version = "0.1.2c"
+version = "0.1.2d"
 description = "DNA encoded library sequence analysis software with custom library design support"
 readme = "README.md"
 requires-python = ">=3.10,<4.0"
-license = "MIT"
 authors = [
   { name = "James Wellnitz", email = "wellnitz.james@gmail.com" },
   { name = "Brandon Novy", email = "novy@unc.edu" },
