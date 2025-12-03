@@ -89,11 +89,11 @@ docs = [
   "sphinx~=7.1.2",
   "sphinx_rtd_theme~=2.0.0"
 ]
-notebook = [
-  "ipykernel>=6.0.0",
-  "notebook>=7.0.0",
-  "ipython>=8.0.0"
-]
+# notebook = [
+#   "ipykernel>=6.0.0",
+#   "notebook>=7.0.0",
+#   "ipython>=8.0.0"
+# ]
 
 [build-system]
 requires = ["poetry-core>=2.0.0"]
