@@ -90,9 +90,9 @@ docs = [
   "sphinx_rtd_theme~=2.0.0"
 ]
 notebook = [
-  "ipykernel==5.5.5",
-  "notebook==7.1.3",
-  "ipython==7.22.0"
+  "ipykernel>=6.0.0",
+  "notebook>=7.0.0",
+  "ipython>=8.0.0"
 ]
 
 [build-system]
