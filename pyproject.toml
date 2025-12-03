@@ -1,11 +1,11 @@
 # toml
 [project]
 name = "deli-chem"
-version = "0.1.2b"
+version = "0.1.2c"
 description = "DNA encoded library sequence analysis software with custom library design support"
 readme = "README.md"
 requires-python = ">=3.10,<4.0"
-license = { text = "MIT" }
+license = "MIT"
 authors = [
   { name = "James Wellnitz", email = "wellnitz.james@gmail.com" },
   { name = "Brandon Novy", email = "novy@unc.edu" },
@@ -22,7 +22,8 @@ classifiers = [
   "Operating System :: OS Independent",
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Science/Research",
-  "Topic :: Scientific/Engineering :: Bio-Informatics"
+  "Topic :: Scientific/Engineering :: Bio-Informatics",
+  "License :: OSI Approved :: MIT License"
 ]
 keywords = [
   "DNA-encoded library",
