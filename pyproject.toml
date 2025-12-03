@@ -1,7 +1,7 @@
 # toml
 [project]
 name = "deli-chem"
-version = "0.1.2rc2"
+version = "0.1.2rc3"
 description = "DNA encoded library sequence analysis software with custom library design support"
 readme = "README.md"
 requires-python = ">=3.10,<4.0"
@@ -107,9 +107,6 @@ packages = [
 
 [tool.poetry.requires-plugins]
 poetry-bumpversion = "^0.3.1"
-
-[tool.poetry.group.notebook]
-optional = true
 
 [tool.poetry_bumpversion.file."docs/conf.py"]
 search = 'release = "{current_version}"'
