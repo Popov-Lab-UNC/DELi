@@ -72,28 +72,21 @@ ml = [
   "torch-geometric==2.6.1"
 ]
 
-[dependency-groups]
-dev = [
-  "pre-commit~=3.8.0",
-  "mypy~=1.8.0",
-  "types-PyYAML==6.0.12.20241230",
-  "poetry-bumpversion~=0.3.1",
-  "ruff~=0.5.5"
-]
-test = [
-  "pytest~=7.2.0",
-  "pytest-cov~=4.0.0",
-  "pytest-html~=3.2.0"
-]
-docs = [
-  "sphinx~=7.1.2",
-  "sphinx_rtd_theme~=2.0.0"
-]
-# notebook = [
-#   "ipykernel>=6.0.0",
-#   "notebook>=7.0.0",
-#   "ipython>=8.0.0"
-# ]
+[tool.poetry.group.dev.dependencies]
+pre-commit = "~=3.8.0"
+mypy = "~=1.8.0"
+types-PyYAML = "==6.0.12.20241230"
+poetry-bumpversion = "~=0.3.1"
+ruff = "~=0.5.5"
+
+[tool.poetry.group.test.dependencies]
+pytest = "~=7.2.0"
+pytest-cov = "~=4.0.0"
+pytest-html = "~=3.2.0"
+
+[tool.poetry.group.docs.dependencies]
+sphinx = "~=7.1.2"
+sphinx_rtd_theme = "~=2.0.0"
 
 [build-system]
 requires = ["poetry-core>=2.0.0"]
