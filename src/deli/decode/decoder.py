@@ -1,12 +1,15 @@
 """code for calling DNA barcodes"""
 
 import abc
+import dataclasses
 import json
 import os
 from collections import defaultdict
-from typing import Any, Generic, Iterator, Optional, TypeVar
+from dataclasses import asdict
+from typing import Any, Generic, Iterator, Optional, TypeVar, Literal
 
 from dnaio import SequenceRecord
+from tqdm import tqdm
 
 from deli.dels.barcode import BarcodeSection
 from deli.dels.base import Library
@@ -15,12 +18,13 @@ from deli.dels.combinatorial import DELibrary
 from deli.dels.compound import DELCompound
 from deli.dels.tool_compounds import DopedToolCompound, TaggedToolCompound, TaggedToolCompoundLibrary, ToolCompound
 from deli.enumeration.enumerator import EnumerationRunError
+from deli.selection import DELSelection
 
-from ._base import FailedDecodeAttempt
+from .base import FailedDecodeAttempt
 from .barcode_calling import AmbiguousBarcodeCall, BarcodeCaller, FailedBarcodeLookup, ValidCall, get_barcode_caller
-from .library_demultiplex import AlignedSeq, FailedStaticAlignment, LibraryDemultiplexer
+from .library_demultiplex import AlignedSeq, FailedStaticAlignment, LibraryDemultiplexer, get_library_demultiplexer_type
 from .umi import UMI
-
+from ..dna import SequenceReader
 
 MAX_RETRIES = 50  # number of alignments to attempt before giving up
 
@@ -30,21 +34,16 @@ class DecodeStatistics:
     Track the statistics of the decoding run
 
     Will count how many sequences are read in,
-    how many are decoded, and how many remain after degen.
-    Will split decode/degen by library.
+    how many are decoded.
     It Will also track the number of times decoding failed,
-    and for what reasons
+    and for what reasons.
 
     Attributes
     ----------
     num_seqs_read: int
         the number of sequences read during decoding
-    seq_lengths: dict[int, int]
-        the distribution of read lengths observed
     num_seqs_decoded_per_lib: dict[str, int]
         the number of sequences decoded per library
-    num_seqs_degen_per_lib: dict[str, int]
-        the number of sequences degened per library
     num_failed_too_short: int
         the number of decoded failed because barcode read was too short
     num_failed_too_long: int
@@ -64,9 +63,7 @@ class DecodeStatistics:
     def __init__(self):
         """Initialize a DecodeStatistics object"""
         self.num_seqs_read: int = 0
-        self.seq_lengths: defaultdict[int, int] = defaultdict(int)
         self.num_seqs_decoded_per_lib: defaultdict[str, int] = defaultdict(int)
-        self.num_seqs_degen_per_lib: defaultdict[str, int] = defaultdict(int)
 
         # track the unique failures
         self.num_failed_too_short: int = 0
@@ -96,22 +93,11 @@ class DecodeStatistics:
         result.num_failed_umi = self.num_failed_umi + other.num_failed_umi
 
         # Merge defaultdicts
-        result.seq_lengths = defaultdict(
-            int,
-            {k: self.seq_lengths[k] + other.seq_lengths[k] for k in set(self.seq_lengths) | set(other.seq_lengths)},
-        )
         result.num_seqs_decoded_per_lib = defaultdict(
             int,
             {
                 k: self.num_seqs_decoded_per_lib[k] + other.num_seqs_decoded_per_lib[k]
                 for k in set(self.num_seqs_decoded_per_lib) | set(other.num_seqs_decoded_per_lib)
-            },
-        )
-        result.num_seqs_degen_per_lib = defaultdict(
-            int,
-            {
-                k: self.num_seqs_degen_per_lib[k] + other.num_seqs_degen_per_lib[k]
-                for k in set(self.num_seqs_degen_per_lib) | set(other.num_seqs_degen_per_lib)
             },
         )
         return result
@@ -128,11 +114,6 @@ class DecodeStatistics:
     def num_seqs_decoded(self) -> int:
         """Number of sequences decoded successfully in total"""
         return sum(self.num_seqs_decoded_per_lib.values())
-
-    @property
-    def num_seqs_degen(self) -> int:
-        """Number of degen sequences observed in total"""
-        return sum(self.num_seqs_degen_per_lib.values())
 
     def to_file(self, out_path: str | os.PathLike, include_read_lengths: bool = False):
         """
@@ -177,15 +158,11 @@ class DecodeStatistics:
 
         result.num_seqs_read = data.get("num_seqs_read", 0)
 
-        result.seq_lengths = defaultdict(int, {int(key): int(val) for key, val in data.get("seq_lengths", {}).items()})
         result.num_seqs_decoded_per_lib = defaultdict(
             int,
             {str(key): int(val) for key, val in data.get("num_seqs_decoded_per_lib", {}).items()},
         )
-        result.num_seqs_degen_per_lib = defaultdict(
-            int,
-            {str(key): int(val) for key, val in data.get("num_seqs_degen_per_lib", {}).items()},
-        )
+
         # collect error info
         result.num_failed_too_short = data.get("num_failed_too_short", 0)
         result.num_failed_too_long = data.get("num_failed_too_long", 0)
@@ -245,6 +222,18 @@ class DecodedCompound(abc.ABC):
         ------
         EnumerationRunError
             if enumeration fails
+        """
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def get_library_id(self) -> str:
+        """
+        Get the library ID of the decoded compound
+
+        Returns
+        -------
+        str
+            the library ID
         """
         raise NotImplementedError()
 
@@ -355,6 +344,17 @@ class DecodedDELCompound(DELCompound, DecodedCompound):
         """
         return self.enumerate().smi
 
+    def get_library_id(self) -> str:
+        """
+        Get the library ID of the decoded compound
+
+        Returns
+        -------
+        str
+            the library ID
+        """
+        return self.library.library_id
+
 
 class DecodedToolCompound(DecodedCompound):
     """
@@ -426,6 +426,17 @@ class DecodedToolCompound(DecodedCompound):
             return self.tool_compound.smi
         else:
             raise ValueError(f"Tool compound {self.tool_compound.compound_id} has no SMILES")
+
+    def get_library_id(self) -> str:
+        """
+        Get the library ID of the decoded compound
+
+        Returns
+        -------
+        str
+            the library ID
+        """
+        return self.tool_compound.compound_id
 
 
 class ReadTooShort(FailedDecodeAttempt):
@@ -577,8 +588,6 @@ class DELCollectionDecoder:
         if len(sequence) < self._min_read_length:
             self.decode_statistics.num_failed_too_short += 1
             return ReadTooShort(sequence)
-
-        self.decode_statistics.seq_lengths[len(sequence)] += 1
 
         _lib_call = self.library_demultiplexer.demultiplex(sequence)
         if isinstance(_lib_call, FailedDecodeAttempt):
@@ -1053,3 +1062,237 @@ class ToolCompoundDecoder(LibraryDecoder[TaggedToolCompoundLibrary]):
             return umi_call
         else:
             return DecodedToolCompound(tool_library_call=library_call, tool_compound_call=tool_comp_call)
+
+
+@dataclasses.dataclass(frozen=True)
+class DecodingSettings:
+    """
+    Define parameters for decoding experiments
+
+    More details about the exact effect of these settings can
+    be found in the "Decoding" docs
+
+    Notes
+    -----
+    Only parameters relating to the algorithm should be here
+    Setting relating to IO should be handled outside this context
+
+    Parameters
+    ----------
+    ignore_tool_compounds: bool, default = False
+        if true, will ignore any tool compounds during decoding
+    demultiplexer_algorithm: Literal["cutadapt", "regex", "full"], default = "regex"
+        The demultiplexing algorithm to use.
+        - "cutadapt": use a cutadapt to locate sections
+        - "regex": use a regular expression based demultiplexer
+        - "full": use a full alignment based demultiplexer
+    demultiplexer_mode: Literal["library", "single", "flanking"], default = "flanking"
+        The demultiplexing section strategy to use.
+        - "library": demultiplex by matching just the library tag
+        - "single": demultiplex by matching a single static barcode section
+        - "flanking": demultiplex by matching barcode sections that flank the library tag
+        (flanking means one before and one after the tag)
+    realign: bool, default = False
+        if true, will perform a local realignment of the read to the
+        libraries barcode schema *after* demultiplexing determine the library.
+        This could help recover reads that have complex alignments due multiple indels
+    library_error_tolerance: int, default = 1
+        The number of errors you are willing to tolerate in any given barcode
+        section during library demultiplexing. Will apply to each section
+        independently. For example, a flanking demultiplexer will allow for
+        1 error in *each* of the flanking sections.
+    library_error_correction_mode_str: str, default = "levenshtein_dist:2,asymmetrical"
+        The error correction mode string to use for library barcode
+        calling during demultiplexing.
+    min_library_overlap: int , default = 8
+        if using a cutadapt style demultiplexer, this is the minimum number of bases
+        that must align to the expected barcode section for a match to be called.
+        See the cutadapt documentation for more details on this parameter.
+    wiggle: bool, default = False
+        if true, will extend aligned sections by 1 bp on each side
+        and then and scan all possible chunks of the expected barcode length,
+        1 smaller and 1 larger than expected length (in that order). If not
+        using a local realignment post demultiplexing this can help recover
+        reads lost to indels in the barcode region.
+    revcomp: bool, default = False
+        If true, search the reverse compliment as well.
+        In most cases it is faster to use an external tools
+        to align and reverse compliment reads before decoding
+    max_read_length: int or None, default = None
+        maximum length of a read to be considered for decoding
+        if above the max, decoding will fail
+        if `None` will default to 5x the min_read_length
+    min_read_length: int or None, default = None
+        minimum length of a read to be considered for decoding
+        if below the min, decoding will fail
+        if `None` will default to the smallest min match length of
+        any library in the collection considered for decoding
+        with 10bp of buffer
+    default_error_correction_mode_str: str, default = "levenshtein_dist:1,asymmetrical"
+        The default error correction mode string to use for decoding.
+        If a barcode section lacks a specified error correction mode,
+        this mode will be used.
+        See the documentation for more details on the format of this string.
+    """
+
+    ignore_tool_compounds: bool = False,
+    demultiplexer_algorithm: Literal["cutadapt", "regex", "full"] = "regex",
+    demultiplexer_mode: Literal["library", "single", "flanking"] = "single",
+    realign: bool = False,
+    library_error_tolerance: int = 1,
+    library_error_correction_mode_str: str = "levenshtein_dist:2,asymmetrical",
+    min_library_overlap: int = 8,
+    revcomp: bool = False,
+    wiggle: bool = False,
+    max_read_length: Optional[int] = None,
+    min_read_length: Optional[int] = None,
+    default_error_correction_mode_str: str = "levenshtein_dist:1,asymmetrical",
+
+    def to_file(self, path: str):
+        """
+        Save settings to a YAML file
+
+        Parameters
+        ----------
+        path : str
+            path to save settings to
+        """
+        import yaml
+        yaml.dump(asdict(self), open(path, "w"))
+
+    @classmethod
+    def from_file(cls, path: str) -> "DecodingSettings":
+        """
+        Load settings from a YAML file
+
+        Will first check if there is a "decode_settings" key
+        and load settings from that sub dict.
+        Otherwise, will load from the YAML file keys
+
+        Parameters
+        ----------
+        path : str
+            Path to YAML file
+
+        Returns
+        -------
+        DecodingSettings
+
+        Raises
+        ------
+        RuntimeError
+            if valid decode settings cannot be loaded from the passed YAML file
+        """
+        import yaml
+        _data = yaml.safe_load(open(path, "r"))
+        if "decode_settings" not in _data:
+            try:
+                return cls(**yaml.safe_load(open(path, "r")))
+            except Exception as e:
+                raise RuntimeError(f"Failed to load decode settings from {path}") from e
+        else:
+            try:
+                return cls(**_data["decode_settings"])
+            except Exception as e:
+                raise RuntimeError(f"Failed to load decode settings from {path}") from e
+
+
+class SelectionDecoder:
+    """
+    Decode reads that can come from a collection of libraries
+
+    This means library demultiplexing is first performed
+
+    For most users, this in the main entry point for doing decoding.
+
+    Notes
+    -----
+    The runner will write logs tracking progress
+    and other warnings.
+    Logger will be named after the runner PID
+
+    Parameters
+    ----------
+    selection: DELSelection
+        the selection with the DEL libraries to decode
+    decode_settings: DecodingSettings | None, default = None
+        the settings to use for decoding
+        if `None`, will use the default settings
+    """
+
+    def __init__(
+            self,
+            selection: DELSelection,
+            decode_settings: DecodingSettings | None = None,
+    ):
+        self.selection: DELSelection = selection
+        self.decode_settings: DecodingSettings = decode_settings if decode_settings is not None else DecodingSettings()
+        self.decode_stats: DecodeStatistics = DecodeStatistics()
+
+        # parse the demultiplexer settings
+        demultiplex_algorithm = self.decode_settings.demultiplexer_algorithm
+        demultiplex_mode = self.decode_settings.demultiplexer_mode
+
+        demultiplexer: LibraryDemultiplexer = (get_library_demultiplexer_type(
+            demultiplex_mode=demultiplex_mode,
+            demultiplex_algorithm=demultiplex_algorithm)
+            (
+                libraries=self.selection.library_collection,
+                tool_compounds=list(self.selection.tool_compounds),
+                **asdict(self.decode_settings)
+            )
+        )
+
+        # initialize all the decoding object required
+        self.decoder = DELCollectionDecoder(
+            library_demultiplexer=demultiplexer,
+            decode_statistics=self.decode_stats,
+            wiggle=self.decode_settings.wiggle,
+            max_read_length=self.decode_settings.max_read_length,
+            min_read_length=self.decode_settings.min_read_length,
+            default_error_correction_mode_str=self.decode_settings.default_error_correction_mode_str,
+        )
+
+    def decode_read(self, read: SequenceRecord) -> DecodedCompound | FailedDecodeAttempt:
+        """
+        Decode a single read
+
+        Parameters
+        ----------
+        read: SequenceReader
+            the read to decode
+
+        Returns
+        -------
+        DecodedDELCompound or FailedDecodeAttempt
+            The decoded compound if successful,
+            else a `FailedDecodeAttempt` explaining why it failed.
+        """
+        self.decode_stats.num_seqs_read += 1
+        decoded_compound = self.decoder.decode_read(read)
+        if isinstance(decoded_compound, DecodedCompound):
+            self.decode_stats.num_seqs_decoded_per_lib[decoded_compound.get_library_id()] += 1
+        return decoded_compound
+
+    def decode_file(self, fastq_file: os.PathLike, use_tqdm: bool = True) -> Iterator[DecodedCompound | FailedDecodeAttempt]:
+        """
+        Decode all reads from a fastq file
+
+        Parameters
+        ----------
+        fastq_file: os.PathLike
+            path to the fastq file to decode reads from
+        use_tqdm: bool, default = True
+            if true, will wrap the iterator in a tqdm progress bar
+
+        Yields
+        ------
+        DecodedDELCompound or FailedDecodeAttempt
+            The decoded compound if successful,
+            else a `FailedDecodeAttempt` explaining why it failed.
+        """
+        from deli.dna.io import SingleFileSequenceReader
+
+        reader = SingleFileSequenceReader(fastq_file)
+        for sequence in tqdm(reader.iter_seqs(), disable=not use_tqdm, desc=f"Decoding file: {fastq_file}"):
+            yield self.decode_read(sequence)

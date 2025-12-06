@@ -6,8 +6,7 @@ import shutil
 import pytest
 
 from deli.decode.barcode_calling import HashMapCollisionError
-from deli.decode.runner import DecodingRunner, DecodingRunnerResults, DecodingRunParsingError
-
+from deli.runners.decode import DecodingRunParsingError, DecodingRunnerResults, DecodingRunner
 
 DECODE_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), "test_data", "example_decode.yaml"))
 DECODE_FILE_ERR_CORRECT = os.path.abspath(

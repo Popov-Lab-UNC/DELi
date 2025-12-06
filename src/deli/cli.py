@@ -31,7 +31,7 @@ from deli.configure import (
     set_deli_data_dir,
     validate_deli_data_dir,
 )
-from deli.decode.runner import DecodingRunner
+from deli.runners.decode import DecodingRunner
 from deli.dels.combinatorial import CombinatorialLibrary
 
 

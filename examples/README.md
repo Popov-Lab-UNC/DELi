@@ -42,8 +42,11 @@ deli decode --tqdm --prefix EXAMPLE ./example_decode.yaml ./UNCDEL006_BRD4.fastq
 The output will default to the CWD.
 
 You could also run decoding from a python script:
+
 ```python
-from deli.decode.runner import DecodingRunner
+
+from deli.runners.decode import DecodingRunner
+
 runner = DecodingRunner.from_file(
     "example_decode.yaml",
     disable_logging=True

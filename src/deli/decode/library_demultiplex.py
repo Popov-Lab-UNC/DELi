@@ -27,7 +27,7 @@ from deli.dels.barcode import BarcodeSchema
 from deli.dels.combinatorial import DELibrary, DELibraryCollection
 from deli.dels.tool_compounds import TaggedToolCompoundLibrary
 
-from ._base import FailedDecodeAttempt
+from .base import FailedDecodeAttempt
 from .barcode_calling import BarcodeCaller, FailedBarcodeLookup, ValidCall, get_barcode_caller
 
 
@@ -374,7 +374,7 @@ class BarcodeAligner:
         These alignments are done on the fly as requested, allowing
         for early stopping if a perfect alignment is found early on
 
-        While the alignment code is will optimized (written in C)
+        While the alignment code is optimized (written in C)
         the coordinate mapping is done in raw Python. It is
         accelerated a bit using numba, but it is still a bottleneck.
 
@@ -586,7 +586,7 @@ class _RegexQuery(_Query["_RegexMatch"]):
     Regex queries will build a fuzzy match group for each static section, and
     a variable length wildcard between them based on the distance between the
     static sections. A buffer of +-5 is used to compensate for possible INDELs.
-    Static sections will also have match group names idential to their section names.
+    Static sections will also have match group names identical to their section names.
     An example looks like:
     `(?:(?P<primer1>AGCTAGCT)){e<=1}.{{10,20}}(?:(?P<primer2>CGTACGTA)){e<=1}`
 
@@ -930,6 +930,7 @@ class LibraryDemultiplexer(abc.ABC):
         libraries: DELibraryCollection,
         tool_compounds: Optional[list[TaggedToolCompoundLibrary]],
         revcomp: bool = True,
+        **kwargs  # ignore extra args
     ):
         self.revcomp = revcomp
         self.tool_compounds = tool_compounds if tool_compounds is not None else []
@@ -1131,7 +1132,7 @@ class QueryBasesLibraryDemultiplexer(LibraryDemultiplexer, Generic[Q], abc.ABC):
         search all queries to find the best match. If no match is found,
         None is returned.
 
-        If revcomp mode is used, will first search the read as if its the positive
+        If revcomp mode is used, will first search the read as if it is the positive
         sequence. If no perfect match is found, will then search the reverse complement
         for a possible better (or perfect) match
 
@@ -1267,7 +1268,7 @@ class LibraryTagRegexLibraryDemultiplexer(LibraryTagLibraryDemultiplexer[_RegexQ
         the libraries to demultiplex
     tool_compounds: Optional[list[TaggedToolCompoundLibrary]], default = None
         the tool compounds to look for during decoding
-    error_tolerance: int, default = 1
+    library_error_tolerance: int, default = 1
         the number of errors to allow in the library tag section
         these can be INDELs or SNPs
     realign: bool, default = False
@@ -1282,12 +1283,13 @@ class LibraryTagRegexLibraryDemultiplexer(LibraryTagLibraryDemultiplexer[_RegexQ
         self,
         libraries: DELibraryCollection,
         tool_compounds: Optional[list[TaggedToolCompoundLibrary]] = None,
-        error_tolerance: int = 1,
+        library_error_tolerance: int = 1,
         realign: bool = False,
         revcomp: bool = True,
+        **kwargs
     ):
-        self.error_tolerance = error_tolerance
-        super().__init__(libraries=libraries, tool_compounds=tool_compounds, realign=realign, revcomp=revcomp)
+        self.library_error_tolerance = library_error_tolerance
+        super().__init__(libraries=libraries, tool_compounds=tool_compounds, realign=realign, revcomp=revcomp, **kwargs)
 
     def _get_queries(self) -> list[_RegexQuery]:
         """
@@ -1308,7 +1310,7 @@ class LibraryTagRegexLibraryDemultiplexer(LibraryTagLibraryDemultiplexer[_RegexQ
                 _RegexQuery(
                     libraries=[library],
                     section_names=tuple(before_lib_section_names + ["library"] + after_lib_section_names),
-                    error_tolerance=self.error_tolerance,
+                    error_tolerance=self.library_error_tolerance,
                 )
             )
         return queries
@@ -1332,13 +1334,13 @@ class LibraryTagCutadaptLibraryDemultiplexer(LibraryTagLibraryDemultiplexer[_Cut
         the libraries to demultiplex
     tool_compounds: Optional[list[TaggedToolCompoundLibrary]], default = None
         the tool compounds to look for during decoding
-    error_tolerance: int, default = 1
+    library_error_tolerance: int, default = 1
         the number of errors to allow in the library tag section
         these can be INDELs or SNPs
     realign: bool, default = False
         whether to realign the barcode region using a semi global
         alignment after the library is called
-    min_overlap: int, default = 8
+    min_library_overlap: int, default = 8
         the minimum overlap required for a match
         see the cutadapt docs for more details
     revcomp: bool, default = True
@@ -1349,14 +1351,15 @@ class LibraryTagCutadaptLibraryDemultiplexer(LibraryTagLibraryDemultiplexer[_Cut
         self,
         libraries: DELibraryCollection,
         tool_compounds: Optional[list[TaggedToolCompoundLibrary]] = None,
-        error_tolerance: int = 1,
+        library_error_tolerance: int = 1,
         realign: bool = False,
-        min_overlap: int = 8,
+        min_library_overlap: int = 8,
         revcomp: bool = True,
+        **kwargs
     ):
-        self.error_tolerance = error_tolerance
-        self.min_overlap = min_overlap
-        super().__init__(libraries=libraries, tool_compounds=tool_compounds, realign=realign, revcomp=revcomp)
+        self.library_error_tolerance = library_error_tolerance
+        self.min_library_overlap = min_library_overlap
+        super().__init__(libraries=libraries, tool_compounds=tool_compounds, realign=realign, revcomp=revcomp, **kwargs)
 
     def _get_queries(self) -> list[_CutadaptQuery]:
         """
@@ -1368,7 +1371,7 @@ class LibraryTagCutadaptLibraryDemultiplexer(LibraryTagLibraryDemultiplexer[_Cut
         queries: list[_CutadaptQuery] = list()
         for library in self.all_libraries:
             queries.append(
-                _CutadaptQuery(libraries=[library], section_names=("library",), error_tolerance=self.error_tolerance)
+                _CutadaptQuery(libraries=[library], section_names=("library",), error_tolerance=self.library_error_tolerance)
             )
         return queries
 
@@ -1389,14 +1392,14 @@ class NoLibraryTagLibraryDemultiplexer(QueryBasesLibraryDemultiplexer[Q], abc.AB
     This library caller supports error correction.
     """
 
-    def __init__(self, *args, error_correction_mode_str: str = "levenshtein_dist:2,asymmetrical", **kwargs):
+    def __init__(self, *args, library_error_correction_mode_str: str = "levenshtein_dist:2,asymmetrical", **kwargs):
         super().__init__(*args, build_section_seq_aligners_=True, build_library_locaters_=True, **kwargs)
 
         # maps queries to barcode callers for the libraries in that query
         self._library_callers: dict[Q, BarcodeCaller[DELibrary | TaggedToolCompoundLibrary]] = {
             query: get_barcode_caller(
                 {library.library_tag: library for library in query.libraries},
-                error_correction_mode_str=error_correction_mode_str,
+                error_correction_mode_str=library_error_correction_mode_str,
             )
             for query in self._queries
         }
@@ -1437,7 +1440,7 @@ class NoLibraryTagLibraryDemultiplexer(QueryBasesLibraryDemultiplexer[Q], abc.AB
             for init_aligner in self._library_locaters[best_match.query]:
                 _best_internal_call: ValidLibraryCall | FailedBarcodeLookup = FailedBarcodeLookup("placeholder")
                 _best_internal_score = 100.0
-                # allow some flexability in the library tag location
+                # allow some flexibility in the library tag location
                 for possible_library_seq in init_aligner.iter_possible_library_seqs(sequence, _static_alignment_spans):
                     # track which sequences we've already tried
                     if possible_library_seq in observed_possible_lib_seqs:
@@ -1486,8 +1489,8 @@ class SinglePrimerLibraryDemultiplexer(NoLibraryTagLibraryDemultiplexer[Q], abc.
     4. determine a final alignment of the read to the given library barcode schema
     """
 
-    def __init__(self, *args, error_tolerance: int = 1, **kwargs):
-        self.error_tolerance = error_tolerance
+    def __init__(self, *args, library_error_tolerance: int = 1, **kwargs):
+        self.library_error_tolerance = library_error_tolerance
         super().__init__(*args, **kwargs)
 
     def _get_queries(self) -> list[Q]:
@@ -1554,8 +1557,8 @@ class FlankingPrimersLibraryDemultiplexer(NoLibraryTagLibraryDemultiplexer[Q], a
     4. determine a final alignment of the read to the given library barcode schema
     """
 
-    def __init__(self, *args, error_tolerance: int = 1, **kwargs):
-        self.error_tolerance = error_tolerance
+    def __init__(self, *args, library_error_tolerance: int = 1, **kwargs):
+        self.library_error_tolerance = library_error_tolerance
         super().__init__(*args, **kwargs)
 
     def _get_queries(self) -> list[Q]:
@@ -1640,12 +1643,12 @@ class SinglePrimerCutadaptLibraryDemultiplexer(SinglePrimerLibraryDemultiplexer[
         whether to revcomp the sequences when demultiplexing
     realign: bool, default = False
         whether to realign the sequences after demultiplexing
-    error_tolerance: int, default = 1
+    library_error_tolerance: int, default = 1
         the number of errors to allow in the static section
         these can be INDELs or SNPs
-    error_correction_mode_str: str, default = levenshtein_dist:2,asymmetrical
+    library_error_correction_mode_str: str, default = levenshtein_dist:2,asymmetrical
         the error correction mode to use for library tag decoding
-    min_overlap: int, default = 8
+    min_library_overlap: int, default = 8
         the minimum overlap required for a match
         see the cutadapt docs for more details
     """
@@ -1656,18 +1659,20 @@ class SinglePrimerCutadaptLibraryDemultiplexer(SinglePrimerLibraryDemultiplexer[
         tool_compounds: Optional[list[TaggedToolCompoundLibrary]] = None,
         revcomp: bool = True,
         realign: bool = False,
-        error_tolerance: int = 1,
-        error_correction_mode_str: str = "levenshtein_dist:2,asymmetrical",
-        min_overlap: int = 8,
+        library_error_tolerance: int = 1,
+        library_error_correction_mode_str: str = "levenshtein_dist:2,asymmetrical",
+        min_library_overlap: int = 8,
+        **kwargs
     ):
-        self.min_overlap = min_overlap
+        self.min_library_overlap = min_library_overlap
         super().__init__(
             libraries=libraries,
             tool_compounds=tool_compounds,
             realign=realign,
-            error_correction_mode_str=error_correction_mode_str,
-            error_tolerance=error_tolerance,
+            library_error_correction_mode_str=library_error_correction_mode_str,
+            library_error_tolerance=library_error_tolerance,
             revcomp=revcomp,
+            **kwargs
         )
 
     def _get_query_object(self, libraries: list[TaggedLibrary], section_names: tuple[str, ...]) -> _CutadaptQuery:
@@ -1675,8 +1680,8 @@ class SinglePrimerCutadaptLibraryDemultiplexer(SinglePrimerLibraryDemultiplexer[
         return _CutadaptQuery(
             libraries=libraries,
             section_names=section_names,
-            error_tolerance=self.error_tolerance,
-            min_overlap=self.min_overlap,
+            error_tolerance=self.library_error_tolerance,
+            min_overlap=self.min_library_overlap,
         )
 
 
@@ -1699,12 +1704,12 @@ class FlankingPrimersCutadaptLibraryDemultiplexer(FlankingPrimersLibraryDemultip
         whether to revcomp the sequences when demultiplexing
     realign: bool, default = False
         whether to realign the sequences after demultiplexing
-    error_tolerance: int, default = 1
+    library_error_tolerance: int, default = 1
         the number of errors to allow in the static section
         these can be INDELs or SNPs
-    error_correction_mode_str: str, default = levenshtein_dist:2,asymmetrical
+    library_error_correction_mode_str: str, default = levenshtein_dist:2,asymmetrical
         the error correction mode to use for library tag decoding
-    min_overlap: int, default = 8
+    min_library_overlap: int, default = 8
         the minimum overlap required for a match
         see the cutadapt docs for more details
     """
@@ -1715,18 +1720,20 @@ class FlankingPrimersCutadaptLibraryDemultiplexer(FlankingPrimersLibraryDemultip
         tool_compounds: Optional[list[TaggedToolCompoundLibrary]] = None,
         revcomp: bool = True,
         realign: bool = False,
-        error_tolerance: int = 1,
-        error_correction_mode_str: str = "levenshtein_dist:2,asymmetrical",
-        min_overlap: int = 8,
+        library_error_tolerance: int = 1,
+        library_error_correction_mode_str: str = "levenshtein_dist:2,asymmetrical",
+        min_library_overlap: int = 8,
+        **kwargs
     ):
-        self.min_overlap = min_overlap
+        self.min_library_overlap = min_library_overlap
         super().__init__(
             libraries=libraries,
             tool_compounds=tool_compounds,
             realign=realign,
-            error_correction_mode_str=error_correction_mode_str,
-            error_tolerance=error_tolerance,
+            library_error_correction_mode_str=library_error_correction_mode_str,
+            library_error_tolerance=library_error_tolerance,
             revcomp=revcomp,
+            **kwargs
         )
 
     def _get_query_object(self, libraries: list[TaggedLibrary], section_names: tuple[str, ...]) -> _CutadaptQuery:
@@ -1734,8 +1741,8 @@ class FlankingPrimersCutadaptLibraryDemultiplexer(FlankingPrimersLibraryDemultip
         return _CutadaptQuery(
             libraries=libraries,
             section_names=section_names,
-            error_tolerance=self.error_tolerance,
-            min_overlap=self.min_overlap,
+            error_tolerance=self.library_error_tolerance,
+            min_overlap=self.min_library_overlap,
         )
 
 
@@ -1755,10 +1762,10 @@ class SinglePrimerRegexLibraryDemultiplexer(SinglePrimerLibraryDemultiplexer[_Re
         whether to revcomp the sequences when demultiplexing
     realign: bool, default = False
         whether to realign the sequences after demultiplexing
-    error_tolerance: int, default = 1
+    library_error_tolerance: int, default = 1
         the number of errors to allow in the static section
         these can be INDELs or SNPs
-    error_correction_mode_str: str, default = levenshtein_dist:2,asymmetrical
+    library_error_correction_mode_str: str, default = levenshtein_dist:2,asymmetrical
         the error correction mode to use for library tag decoding
     """
 
@@ -1768,16 +1775,18 @@ class SinglePrimerRegexLibraryDemultiplexer(SinglePrimerLibraryDemultiplexer[_Re
         tool_compounds: Optional[list[TaggedToolCompoundLibrary]] = None,
         realign: bool = False,
         revcomp: bool = True,
-        error_tolerance: int = 1,
-        error_correction_mode_str: str = "levenshtein_dist:1,asymmetrical",
+        library_error_tolerance: int = 1,
+        library_error_correction_mode_str: str = "levenshtein_dist:1,asymmetrical",
+        **kwargs
     ):
         super().__init__(
             libraries=libraries,
             tool_compounds=tool_compounds,
             realign=realign,
-            error_correction_mode_str=error_correction_mode_str,
-            error_tolerance=error_tolerance,
+            library_error_correction_mode_str=library_error_correction_mode_str,
+            library_error_tolerance=library_error_tolerance,
             revcomp=revcomp,
+            **kwargs
         )
 
     def _get_query_object(self, libraries: list[TaggedLibrary], section_names: tuple[str, ...]) -> _RegexQuery:
@@ -1785,7 +1794,7 @@ class SinglePrimerRegexLibraryDemultiplexer(SinglePrimerLibraryDemultiplexer[_Re
         return _RegexQuery(
             libraries=libraries,
             section_names=section_names,
-            error_tolerance=self.error_tolerance,
+            error_tolerance=self.library_error_tolerance,
         )
 
 
@@ -1805,10 +1814,10 @@ class FlankingPrimersRegexLibraryDemultiplexer(FlankingPrimersLibraryDemultiplex
         whether to revcomp the sequences when demultiplexing
     realign: bool, default = False
         whether to realign the sequences after demultiplexing
-    error_tolerance: int, default = 1
+    library_error_tolerance: int, default = 1
         the number of errors to allow in the static section
         these can be INDELs or SNPs
-    error_correction_mode_str: str, default = levenshtein_dist:2,asymmetrical
+    library_error_correction_mode_str: str, default = levenshtein_dist:2,asymmetrical
         the error correction mode to use for library tag decoding
     """
 
@@ -1818,16 +1827,18 @@ class FlankingPrimersRegexLibraryDemultiplexer(FlankingPrimersLibraryDemultiplex
         tool_compounds: Optional[list[TaggedToolCompoundLibrary]] = None,
         revcomp: bool = True,
         realign: bool = False,
-        error_tolerance: int = 1,
-        error_correction_mode_str: str = "levenshtein_dist:1,asymmetrical",
+        library_error_tolerance: int = 1,
+        library_error_correction_mode_str: str = "levenshtein_dist:1,asymmetrical",
+        **kwargs
     ):
         super().__init__(
             libraries=libraries,
             tool_compounds=tool_compounds,
             realign=realign,
-            error_correction_mode_str=error_correction_mode_str,
-            error_tolerance=error_tolerance,
+            library_error_correction_mode_str=library_error_correction_mode_str,
+            library_error_tolerance=library_error_tolerance,
             revcomp=revcomp,
+            **kwargs
         )
 
     def _get_query_object(self, libraries: list[TaggedLibrary], section_names: tuple[str, ...]) -> _RegexQuery:
@@ -1835,7 +1846,7 @@ class FlankingPrimersRegexLibraryDemultiplexer(FlankingPrimersLibraryDemultiplex
         return _RegexQuery(
             libraries=libraries,
             section_names=section_names,
-            error_tolerance=self.error_tolerance,
+            error_tolerance=self.library_error_tolerance,
         )
 
 
@@ -1856,8 +1867,8 @@ class FullSeqAlignmentLibraryDemultiplexer(LibraryDemultiplexer):
     full barcode schema and call the library that matches best.
 
     WARNING: This is very slow. It should only be used in scenarios where
-    compute is nearly infinite and free and you want to squeeze every
-    ounce of data out of your selection *or* your reads are so riddle with
+    compute is nearly infinite and free, and you want to squeeze every
+    ounce of data out of your selection. *Or* your reads are so riddle with
     errors that other demultiplexing methods fail.
 
     Parameters
@@ -1883,8 +1894,9 @@ class FullSeqAlignmentLibraryDemultiplexer(LibraryDemultiplexer):
         libraries: DELibraryCollection,
         tool_compounds: Optional[list[TaggedToolCompoundLibrary]],
         revcomp: bool = False,
+        **kwargs
     ):
-        super().__init__(libraries=libraries, tool_compounds=tool_compounds, revcomp=revcomp)
+        super().__init__(libraries=libraries, tool_compounds=tool_compounds, revcomp=revcomp, **kwargs)
 
         self.aligners = [
             BarcodeAligner(library.barcode_schema, include_library_section=False) for library in self.libraries
@@ -1998,3 +2010,44 @@ def _query_to_ref_map(coords):
 NoLibraryTagLibraryDemultiplexer.demultiplex.__doc__ = LibraryDemultiplexer.demultiplex.__doc__
 LibraryTagLibraryDemultiplexer.demultiplex.__doc__ = LibraryDemultiplexer.demultiplex.__doc__
 FullSeqAlignmentLibraryDemultiplexer.demultiplex.__doc__ = LibraryDemultiplexer.demultiplex.__doc__
+
+
+def get_library_demultiplexer_type(demultiplex_mode: str, demultiplex_algorithm: str) -> type[LibraryDemultiplexer]:
+    """
+    Get the correct library demultiplexer based on the selected mode and algorithm
+
+    Parameters
+    ----------
+    demultiplex_mode: str
+        the demultiplexing mode to use
+        options: "library", "single", "flanking"
+    demultiplex_algorithm: str
+        the demultiplexing algorithm to use
+        options: "full", "cutadapt", "regex"
+    """
+    if demultiplex_algorithm == "full":
+        return FullSeqAlignmentLibraryDemultiplexer
+    elif demultiplex_algorithm == "cutadapt":
+        if demultiplex_mode == "library":
+            return LibraryTagCutadaptLibraryDemultiplexer
+        elif demultiplex_mode == "single":
+            return SinglePrimerCutadaptLibraryDemultiplexer
+        elif demultiplex_mode == "flanking":
+            return FlankingPrimersCutadaptLibraryDemultiplexer
+        else:
+            raise KeyError(
+                f"demultiplexer_sections '{demultiplex_mode}' not recognized for approach 'cutadapt'"
+            )
+    elif demultiplex_algorithm == "regex":
+        if demultiplex_mode == "library":
+            return LibraryTagRegexLibraryDemultiplexer
+        elif demultiplex_mode == "single":
+            return SinglePrimerRegexLibraryDemultiplexer
+        elif demultiplex_mode == "flanking":
+            return FlankingPrimersRegexLibraryDemultiplexer
+        else:
+            raise KeyError(
+                f"demultiplexer_sections '{demultiplex_mode}' not recognized for approach 'regex'"
+            )
+    else:
+        raise KeyError(f"demultiplexer_mode '{demultiplex_algorithm}' not recognized")
