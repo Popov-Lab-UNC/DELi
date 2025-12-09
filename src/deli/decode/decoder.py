@@ -12,11 +12,11 @@ from dnaio import SequenceRecord
 from tqdm import tqdm
 
 from deli.dels.barcode import BarcodeSection
-from deli.dels.base import Library
+from deli.dels.library import Library
 from deli.dels.building_block import TaggedBuildingBlock
 from deli.dels.combinatorial import DELibrary
 from deli.dels.compound import DELCompound
-from deli.dels.tool_compounds import DopedToolCompound, TaggedToolCompound, TaggedToolCompoundLibrary, ToolCompound
+from deli.dels.tool_compound import DopedToolCompound, TaggedToolCompound, TaggedToolCompoundLibrary, ToolCompound
 from deli.enumeration.enumerator import EnumerationRunError
 from deli.selection import DELSelection
 

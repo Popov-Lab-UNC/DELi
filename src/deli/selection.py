@@ -7,8 +7,9 @@ from typing import Any, Optional, Sequence
 
 import yaml
 
-from deli.dels.combinatorial import CombinatorialLibrary, DELibrary, DELibraryCollection, LibraryCollection
-from deli.dels.tool_compounds import TaggedToolCompoundLibrary, ToolCompoundLibrary
+from deli.dels.combinatorial import CombinatorialLibrary, DELibrary, DELibraryCollection
+from deli.dels.library import LibraryCollection
+from deli.dels.tool_compound import TaggedToolCompoundLibrary, ToolCompoundLibrary
 from deli.dna.io import SequenceReader, get_reader
 
 

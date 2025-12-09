@@ -6,7 +6,7 @@ from deli.configure import DeliDataLoadable, accept_deli_data_name
 from deli.utils.mol_utils import SmilesMixin
 
 from .barcode import BarcodedMixin, ToolCompoundBarcodeSchema
-from .base import Library
+from .library import Library
 from .compound import Compound
 
 
@@ -185,7 +185,7 @@ class TaggedToolCompound(ToolCompound):
 
         Returns
         -------
-        ToolCompound
+        TaggedToolCompound
             The created ToolCompound object.
         """
         return cls(compound_id=data["compound_id"], tag=data["tag"], smiles=data.get("smiles", None))
@@ -197,7 +197,7 @@ class ToolCompoundParsingError(Exception):
     pass
 
 
-class ToolCompoundLibrary(Library, DeliDataLoadable):
+class ToolCompoundLibrary(Library[ToolCompound], DeliDataLoadable):
     """
     A collection of ToolCompounds for use in decoding.
 

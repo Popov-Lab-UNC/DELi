@@ -6,7 +6,7 @@ from collections.abc import Iterator
 from functools import reduce
 from operator import mul
 from pathlib import Path
-from typing import Any, Generic, Literal, Optional, Sequence, TypeVar, overload
+from typing import Any, Literal, Optional, Sequence, TypeVar, overload
 
 from deli.configure import DeliDataLoadable, accept_deli_data_name
 from deli.enumeration.enumerator import EnumeratedDELCompound, Enumerator
@@ -14,10 +14,10 @@ from deli.enumeration.reaction import ReactionTree
 from deli.utils import to_smi
 
 from .barcode import BarcodedMixin, BuildingBlockBarcodeSection, DELBarcodeSchema
-from .base import Library
+from .library import Library, LibraryCollection
 from .building_block import BuildingBlock, BuildingBlockSet, TaggedBuildingBlockSet
 from .compound import DELCompound
-from .tool_compounds import DopedToolCompound, ToolCompound
+from .tool_compound import DopedToolCompound, ToolCompound
 
 
 RESERVED_CONFIG_KEYS = [
@@ -167,7 +167,7 @@ class LibraryBuildError(Exception):
     pass
 
 
-class CombinatorialLibrary(Library, DeliDataLoadable):
+class CombinatorialLibrary(Library[DELCompound], DeliDataLoadable):
     """
     A Library of compounds built combinatorially from building blocks
 
@@ -542,6 +542,40 @@ class CombinatorialLibrary(Library, DeliDataLoadable):
 
             output_file.write(separator.join(row) + "\n")
 
+    def get_compound(self, bb_ids: tuple[str, ...]) -> DELCompound:
+        """
+        Given a full compound ID, return the corresponding DELCompound object.
+
+        Parameters
+        ----------
+        bb_ids: tuple[str, ...]
+            the building block ids that make up the compound
+
+        Returns
+        -------
+        DELCompound
+            The corresponding DELCompound object.
+
+        Raises
+        ------
+        KeyError
+            If the compound ID is not found in the library.
+        """
+        if len(bb_ids) != self.num_cycles:
+            raise KeyError(
+                f"library has {self.num_cycles} cycles; got {len(bb_ids)} building block ids"
+            )
+
+        bbs = [
+            bb_set.get_bb_by_id(bb_id, fail_on_missing=True)
+            for bb_set, bb_id in zip(self.bb_sets, bb_ids, strict=True)
+        ]
+
+        return DELCompound(
+            library=self,
+            building_blocks=bbs,
+        )
+
 
 class DELibrary(CombinatorialLibrary, BarcodedMixin[DELBarcodeSchema]):
     """
@@ -584,7 +618,7 @@ class DELibrary(CombinatorialLibrary, BarcodedMixin[DELBarcodeSchema]):
             must have length >= 2
         tool_compounds : optional, Sequence[DopedToolCompound] = None
             list of tool compounds (doped compounds) in the library
-        enumerator : ReactionTree
+        enumerator : optional, Enumerator
             The enumerator used to build this library
         dna_barcode_on: optional, str
             the id of the bb_set that is linked to the DNA bases
@@ -702,15 +736,10 @@ class DELibrary(CombinatorialLibrary, BarcodedMixin[DELBarcodeSchema]):
             yield bb_section, bb_set
 
 
-LibType = TypeVar("LibType", bound=CombinatorialLibrary)
+class CombinatorialLibraryCollection(LibraryCollection[CombinatorialLibrary]):
+    """base class for any class that holds a group of combinatorial libraries"""
 
-
-class LibraryCollection(Generic[LibType]):
-    """
-    base class for any class that holds a group of DEL libraries
-    """
-
-    def __init__(self, libraries: Sequence[LibType]):
+    def __init__(self, libraries: Sequence[CombinatorialLibrary]):
         """
         Initialize a DELibrarySchemaGroup object
 
@@ -719,50 +748,8 @@ class LibraryCollection(Generic[LibType]):
         libraries: List[CombinatorialLibrary]
             libraries to include in the library schema group
         """
-        self.libraries: Sequence[LibType] = libraries
-        self._library_map = {lib.library_id: lib for lib in self.libraries}
-
-        self.collection_size = sum([lib.library_size for lib in self.libraries])
-
-        ### VALIDATE ###
-        _ids: list[str] = []
-        for _library in self.libraries:
-            # check id uniqueness
-            if _library.library_id in _ids:
-                raise LibraryBuildError(f"multiple libraries share identical `library_id` '{_library.library_id}'")
-            else:
-                _ids.append(_library.library_id)
-
-    def __len__(self) -> int:
-        """Return the number of libraries in the library collection"""
-        return len(self.libraries)
-
-    def __iter__(self) -> Iterator[LibType]:
-        """Iterate through all libraries in the library collection"""
-        return iter(self.libraries)
-
-    def get_library(self, library_id: str) -> LibType:
-        """
-        Return the library from the collection with the same ID
-
-        Parameters
-        ----------
-        library_id: str
-            id of the library to get
-
-        Returns
-        -------
-        CombinatorialLibrary
-
-        Raises
-        ------
-        KeyError
-            if `library_id` not in the collection
-        """
-        try:
-            return self._library_map[library_id]
-        except KeyError as e:
-            raise KeyError(KeyError(f"cannot find library with id '{library_id}' in collection")) from e
+        super().__init__(libraries)
+        self.libraries: Sequence[CombinatorialLibrary] = libraries  # for type checker
 
     def all_libs_can_enumerate(self) -> bool:
         """
@@ -796,7 +783,7 @@ class LibraryCollection(Generic[LibType]):
         return max([lib.num_cycles for lib in self.libraries])
 
 
-class DELibraryCollection(LibraryCollection[DELibrary]):
+class DELibraryCollection(LibraryCollection[DELibrary], CombinatorialLibraryCollection):
     """base class for any class that holds a group of DEL libraries"""
 
     def __init__(self, libraries: Sequence[DELibrary]):

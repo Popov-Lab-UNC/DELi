@@ -25,7 +25,7 @@ from regex import BESTMATCH, Match, Pattern, compile
 
 from deli.dels.barcode import BarcodeSchema
 from deli.dels.combinatorial import DELibrary, DELibraryCollection
-from deli.dels.tool_compounds import TaggedToolCompoundLibrary
+from deli.dels.tool_compound import TaggedToolCompoundLibrary
 
 from .base import FailedDecodeAttempt
 from .barcode_calling import BarcodeCaller, FailedBarcodeLookup, ValidCall, get_barcode_caller

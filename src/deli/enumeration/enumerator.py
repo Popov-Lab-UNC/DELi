@@ -322,7 +322,7 @@ class Enumerator:
 
         Returns
         -------
-        EnumeratedDELCompound
+        Mol
             the enumerated compound with the provided building blocks
 
         Raises

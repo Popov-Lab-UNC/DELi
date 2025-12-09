@@ -461,7 +461,7 @@ class BarcodeSchema(abc.ABC):
 
         Returns
         -------
-        BarcodeSchema
+        Self
         """
         return cls(_parse_sections_from_dict(data))
 

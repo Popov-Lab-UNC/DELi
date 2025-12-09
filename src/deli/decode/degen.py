@@ -2,743 +2,18 @@
 
 import abc
 import dataclasses
+import os
 from collections import defaultdict
-from typing import Generic, TypeVar
+from typing import Generic, TypeVar, Any, Optional, overload
 
 from typing_extensions import Self
 
+from deli.dels.compound import Compound
+from deli.dels.library import Library
+from deli.selection import Selection
+
 from .decoder import DecodedDELCompound, DecodedCompound, DecodedToolCompound
 from .umi import UMI
-
-
-# class DELCounter(abc.ABC):
-#     """Base class for all decoded DEL counters"""
-#
-#     @abc.abstractmethod
-#     def get_degen_count(self) -> int:
-#         """Return the degen count"""
-#         raise NotImplementedError()
-#
-#     @abc.abstractmethod
-#     def get_raw_count(self) -> int:
-#         """Return the raw count for the degenerator"""
-#         raise NotImplementedError()
-#
-#     @abc.abstractmethod
-#     def to_dict(self) -> dict:
-#         """Convert the counter to a dictionary representation"""
-#         raise NotImplementedError()
-#
-#
-# class DELIdCounter(DELCounter):
-#     """
-#     Basic DEL ID counter; mainly for compatibility
-#
-#     Attributes
-#     ----------
-#     count: int
-#         the current count for this DEL ID
-#         will be both the degen and raw count
-#     """
-#
-#     def __init__(self):
-#         """Initialize the DEL ID counter"""
-#         self.count: int = 0
-#
-#     def __add__(self, other):
-#         """
-#         Add two DELIdCounters together by summing the counts
-#
-#         Parameters
-#         ----------
-#         other: DELIdCounter
-#             the other counter to add
-#
-#         Returns
-#         -------
-#         DELIdCounter
-#         """
-#         if isinstance(other, DELIdCounter):
-#             new_counter = DELIdCounter()
-#             new_counter.count = self.count + other.count
-#             return new_counter
-#         raise TypeError(f"unsupported operand type(s) for +: '{type(self)}' and '{type(other)}'")
-#
-#     def add_id(self):
-#         """Increment the ID counter by 1"""
-#         self.count += 1
-#
-#     def get_degen_count(self) -> int:
-#         """
-#         Return the degen count
-#
-#         Notes
-#         -----
-#         For DELIdCounters, the degen count is the same as the
-#         raw count.
-#
-#         Returns
-#         -------
-#         int
-#             the degen count
-#         """
-#         return self.count
-#
-#     def get_raw_count(self) -> int:
-#         """
-#         Return the raw count for the degen counter
-#
-#         Returns
-#         -------
-#         int
-#             the raw count
-#         """
-#         return self.count
-#
-#     def to_dict(self) -> dict:
-#         """Covert the counter to a JSON compatible dictionary representation"""
-#         return {"raw_count": self.count}
-#
-#
-# class UMIDegenerate(abc.ABC):
-#     """Base class for UMI Degenerators"""
-#
-#     @abc.abstractmethod
-#     def add_umi(self, umi: UMI) -> bool:
-#         """
-#         Given a UMI, add it to the set and track its count
-#
-#         Will return a bool indicating if the UMI was added
-#
-#         Parameters
-#         ----------
-#         umi: UMI
-#             the UMI to add
-#
-#         Returns
-#         -------
-#         bool
-#             True if UMI is added (was novel)
-#             False if it is not added (not novel)
-#         """
-#         raise NotImplementedError()
-#
-#
-# class UMICounter(UMIDegenerate, DELCounter):
-#     """
-#     Counts the number of unique UMI occurrences
-#
-#     Attributes
-#     ----------
-#     umis: set[str]
-#         the set of UMI already observed
-#     """
-#
-#     def __init__(self):
-#         """Initialize a UMI Counter"""
-#         self.umis: set[str] = set()
-#         self._raw_count = 0
-#
-#     def __add__(self, other):
-#         """
-#         Add two UMICounters together by merging the UMI set and summing raw counts
-#
-#         Parameters
-#         ----------
-#         other: UMICounter
-#             the other counter to add
-#
-#         Returns
-#         -------
-#         UMICounter
-#         """
-#         if isinstance(other, UMICounter):
-#             new_counter = UMICounter()
-#             new_counter.umis = self.umis.union(other.umis)
-#             new_counter._raw_count = self._raw_count + other._raw_count
-#             return new_counter
-#         raise TypeError(f"unsupported operand type(s) for +: '{type(self)}' and '{type(other)}'")
-#
-#     def add_umi(self, umi: UMI) -> bool:
-#         """
-#         Given a UMI, add it to the set and track its count
-#
-#         Will return a bool indicating if the UMI was added
-#
-#         Parameters
-#         ----------
-#         umi: UMI
-#             the UMI to add
-#
-#         Returns
-#         -------
-#         bool
-#             True if UMI is added (was novel)
-#             False if it is not added (not novel)
-#         """
-#         self._raw_count += 1
-#         _found_match: bool = False
-#         umi_ascii_code = "Null"  # for the IDE checker
-#         for umi_ascii_code in umi.to_ascii_code():
-#             if umi_ascii_code in self.umis:
-#                 _found_match = True
-#                 break
-#         if not _found_match:
-#             # add the last umi_ascii_code generated
-#             self.umis.add(umi_ascii_code)
-#             return True
-#         return False
-#
-#     def get_degen_count(self) -> int:
-#         """
-#         Return the degen count
-#
-#         Returns
-#         -------
-#         int
-#             the degen count
-#         """
-#         return len(self.umis)
-#
-#     def get_raw_count(self) -> int:
-#         """
-#         Return the raw count for the degen counter
-#
-#         Returns
-#         -------
-#         int
-#             the raw count
-#         """
-#         return self._raw_count
-#
-#     def to_dict(self) -> dict:
-#         """
-#         Convert the counter to a dictionary representation
-#
-#         Returns
-#         -------
-#         dict
-#             the dictionary representation of the counter
-#         """
-#         return {"raw_count": self._raw_count, "umis": list(self.umis)}
-
-
-# TODO: build a better UMI clustering algorithm
-# class UMICluster(UMIDegenerate, DELCounter):
-#     """
-#     Count UMI occurrences with clustering
-#
-#     Essentially, this will treat all UMIs
-#     within some minimum distance to each other
-#     as the same (in a greedy fashion).
-#     Useful if you have a high error rate in sequencing
-#     """
-#
-#     def __init__(self, min_dist: int = 2):
-#         """
-#         Initialize a UMICluster
-#
-#         Parameters
-#         ----------
-#         min_dist: int, default = 2
-#             the minimum levenshtein distance between two UMIs
-#             to be considered unique
-#         """
-#         self.min_dist = min_dist
-#         self.umis: list[UMI] = list()
-#         self._raw_count = 0
-#
-#     def __add__(self, other):
-#         """
-#         Add two UMIClusters together by merging the UMI clusters and summing raw counts
-#
-#         Parameters
-#         ----------
-#         other: UMICluster
-#             the other counter to add
-#
-#         Returns
-#         -------
-#         UMICluster
-#         """
-#         if isinstance(other, UMICluster):
-#             if self.min_dist != other.min_dist:
-#                 raise ValueError(
-#                     f"cannot add UMIClusters with different min_dist values: "
-#                     f"{self.min_dist} and {other.min_dist}"
-#                 )
-#             new_counter = UMICluster(min_dist=self.min_dist)
-#             _all_umis = self.umis + other.umis
-#             for _umi in _all_umis:
-#                 new_counter.add_umi(_umi)
-#             new_counter._raw_count = self._raw_count + other._raw_count
-#             return new_counter
-#         raise TypeError(f"unsupported operand type(s) for +: '{type(self)}' and '{type(other)}'")
-#
-#     def add_umi(self, umi: UMI) -> bool:
-#         """
-#         Given a UMI, add it to the set and track its count
-#
-#         Will return a bool indicating if the UMI was added
-#
-#         Parameters
-#         ----------
-#         umi: UMI
-#             the UMI to add
-#
-#         Returns
-#         -------
-#         bool
-#             True if UMI is added (was novel)
-#             False if it is not added (not novel)
-#         """
-#         self._raw_count += 1
-#         for existing_umi in self.umis:
-#             # if too close, fail to add new UMI
-#             if levenshtein_distance(existing_umi.umi_tag, umi.umi_tag) < self.min_dist:
-#                 return False
-#         self.umis.append(umi)
-#         return True
-#
-#     def get_degen_count(self) -> int:
-#         """
-#         Return the degen count
-#
-#         Returns
-#         -------
-#         int
-#             the degen count
-#         """
-#         return len(self.umis)
-#
-#     def get_raw_count(self) -> int:
-#         """
-#         Return the raw count for the degen counter
-#
-#         Returns
-#         -------
-#         int
-#             the raw count
-#         """
-#         return self._raw_count
-#
-#     def to_dict(self) -> dict:
-#         """
-#         Convert the counter to a dictionary representation
-#
-#         Returns
-#         -------
-#         dict
-#             the dictionary representation of the counter
-#         """
-#         return {"raw_count": self._raw_count, "umis": list(self.umis)}
-
-
-# class DELIdUmiCounter(DELCounter):
-#     """
-#     Count the number of unique UMI reads for a single DEL ID
-#
-#     Supports both a UMI clustering mode and basic mode.
-#     Clustering mode will consider any two UMIs within a given
-#     minimum distance of each other as the same.
-#     If you have high error rates in your sequencing
-#     use the clustering mode. Otherwise, use the basic mode.
-#
-#     Notes
-#     -----
-#     UMI stands for "unique molecular identifier"
-#     UMI degen is crucial for effective noise reduction
-#     of the PCR amplification step in DEL as it removes
-#     uneven amplification of a single read, since now
-#     we know that each unique read has a unique UMI
-#     """
-#
-#     def __init__(self):
-#         """
-#         Initialize DELIdUmiCounter
-#         """
-#         self.umis = UMICounter()
-#
-#     def __add__(self, other):
-#         """
-#         Add two DELIdUmiCounters together by merging the UMI clusters and summing raw counts
-#
-#         Parameters
-#         ----------
-#         other: DELIdUmiCounter
-#             the other counter to add
-#
-#         Returns
-#         -------
-#         DELIdUmiCounter
-#         """
-#         if isinstance(other, DELIdUmiCounter):
-#             new_counter = DELIdUmiCounter()
-#             new_counter.umis = self.umis + other.umis
-#             return new_counter
-#         raise TypeError(f"unsupported operand type(s) for +: '{type(self)}' and '{type(other)}'")
-#
-#     def add_umi(self, umi: UMI) -> bool:
-#         """
-#         Add a UMI to the umi counter
-#
-#         Will automatically handle the UMI already existing
-#
-#         Parameters
-#         ----------
-#         umi: UMI
-#             the UMI to add
-#
-#         Returns
-#         -------
-#         bool
-#             `True` if UMI is added has not been seen yet, else `False`
-#         """
-#         return self.umis.add_umi(umi)
-#
-#     def get_degen_count(self) -> int:
-#         """
-#         Return the degen count
-#
-#         Returns
-#         -------
-#         int
-#             the degen count
-#         """
-#         return self.umis.get_degen_count()
-#
-#     def get_raw_count(self) -> int:
-#         """
-#         Return the raw count for the degen counter
-#
-#         Returns
-#         -------
-#         int
-#             the raw count
-#         """
-#         return self.umis.get_raw_count()
-#
-#     def to_dict(self) -> dict:
-#         """
-#         Convert the counter to a dictionary representation
-#
-#         Returns
-#         -------
-#         dict
-#             the dictionary representation of the counter
-#         """
-#         return self.umis.to_dict()
-#
-#
-# # to help with type hinting
-# DEL_COUNTER_TYPE = TypeVar("DEL_COUNTER_TYPE", bound=DELCounter)
-#
-#
-# class DELCollectionCounter(abc.ABC, Generic[DEL_COUNTER_TYPE]):
-#     """Base class for all DELibraryCollection degen counters"""
-#
-#     del_counter: dict[str, defaultdict[DecodedDELCompound, DEL_COUNTER_TYPE]]
-#
-#     def __len__(self):
-#         """Get total number of unique DELs in the counter"""
-#         return sum([len(barcodes) for barcodes in self.del_counter.values()])
-#
-#     @abc.abstractmethod
-#     def __add__(self, other):
-#         """
-#         Add two DELCollectionCounter together by merging their counters
-#
-#         Parameters
-#         ----------
-#         other: DELCollectionCounter
-#             the other counter to add
-#
-#         Returns
-#         -------
-#         DELCollectionCounter
-#         """
-#         raise NotImplementedError()
-#
-#     @abc.abstractmethod
-#     def count_barcode(self, barcode: DecodedDELCompound) -> bool:
-#         """
-#         Given a barcode, add it to the current degen count
-#
-#         Will handle separating based on DEL ID and UMI
-#         correction (if UMI is used)
-#
-#         Parameters
-#         ----------
-#         barcode: DecodedDELCompound
-#             the barcode to add to the counter
-#
-#         Returns
-#         -------
-#         bool
-#             `True` is added barcode is new (not degenerate), else `False`
-#         """
-#         raise NotImplementedError()
-#
-#     @abc.abstractmethod
-#     def to_json(self, path: str | Path, compress: bool = False):
-#         """
-#         Convert the counter to a JSON serializable dict
-#
-#         Returns
-#         -------
-#         dict
-#             the JSON serializable dict representation of the counter
-#         """
-#         raise NotImplementedError()
-#
-#
-# class DELCollectionIdUmiCounter(DELCollectionCounter):
-#     """
-#     Degen counter for library collections that have UMI tags
-#
-#     Handles Degen by DEL ID and UMI.
-#     Each observed DEL compound will have a count based
-#     on its degen reads and a count based on how many
-#     raw reads of the given compound there were
-#     """
-#
-#     def __init__(self):
-#         """
-#         Initialize DELIdUmiCounter
-#         """
-#         # god forgive me for this one
-#         self.del_counter: dict[str, defaultdict[DecodedDELCompound, DELIdUmiCounter]] = defaultdict(
-#             lambda: defaultdict(partial(DELIdUmiCounter))
-#         )
-#
-#     def __getstate__(self):
-#         """
-#         Covert state to generic dict with no partial functions when requesting state
-#         """
-#         state = self.__dict__.copy()
-#         state["del_counter"] = {k: dict(v) for k, v in self.del_counter.items()}
-#         return state
-#
-#     def __setstate__(self, state):
-#         """
-#         Set state for del_counter back to nested defaultdict when reloading state from getstate
-#         """
-#         self.__dict__.update(state)
-#         self.del_counter = defaultdict(
-#             lambda: defaultdict(partial(DELIdUmiCounter)),
-#             {k: defaultdict(DELIdUmiCounter, v) for k, v in state["del_counter"].items()},
-#         )
-#
-#     def __add__(self, other):
-#         """
-#         Add two DELCollectionIdUmiCounter objects together
-#
-#         Notes
-#         -----
-#         Adding two counters loaded from a pickle could cause
-#         memory to grow unexpectedly
-#
-#         Parameters
-#         ----------
-#         other: DELCollectionIdUmiCounter
-#             the other counter to add
-#
-#         Returns
-#         -------
-#         DELCollectionIdUmiCounter
-#             the new counter with the sum of the two
-#         """
-#         if isinstance(other, DELCollectionIdUmiCounter):
-#             new_counter = deepcopy(self)
-#             for library_id in other.del_counter.keys():
-#                 for compound in other.del_counter[library_id].keys():
-#                     if compound in new_counter.del_counter[library_id]:
-#                         new_counter.del_counter[library_id][compound] += other.del_counter[library_id][compound]
-#                     else:
-#                         new_counter.del_counter[library_id][compound] = deepcopy(
-#                             other.del_counter[library_id][compound]
-#                         )
-#             return new_counter
-#         raise TypeError(f"unsupported operand type(s) for +: '{type(self)}' and '{type(other)}'")
-#
-#     def count_barcode(self, barcode: DecodedDELCompound) -> bool:
-#         """
-#         Given a barcode, add it to the current degen count
-#
-#         Will handle separating based on DEL ID and UMI
-#         correction
-#
-#         Parameters
-#         ----------
-#         barcode: DecodedDELCompound
-#             the barcode to add to the counter
-#
-#         Returns
-#         -------
-#         bool
-#             `True` is added barcode is new (not degenerate), else `False`
-#
-#         Raises
-#         ------
-#         RuntimeError
-#             if the decoded barcode is missing a UMI
-#         """
-#         if barcode.umi is None:
-#             raise RuntimeError("cannot UMI degen on read missing UMI")
-#         else:
-#             return self.del_counter[barcode.library.library_id][barcode].add_umi(barcode.umi)
-#
-#     def to_json(self, path: str | Path, compress: bool = False):
-#         """
-#         Convert the counter to a JSON serializable dict
-#
-#         Parameters
-#         ----------
-#         path: str | Path
-#             path to save the JSON file to
-#         compress: bool, default = False
-#             if True, will compress the JSON file using gzip
-#             will be encoded with utf-8
-#
-#         Returns
-#         -------
-#         dict
-#             the JSON serializable dict representation of the counter
-#         """
-#         import json
-#
-#         # collect data
-#         _data: dict[str, dict[str, object]] = {}
-#         for lib_ids, dels in self.del_counter.items():
-#             _data[lib_ids] = {}
-#             for compound, counter in dels.items():
-#                 _id = compound.compound_id
-#                 _info = {
-#                     "lib_id": compound.library.library_id,
-#                     "bb_ids": [bb.bb_id for bb in compound.building_blocks],
-#                     "raw_count": counter.umis.get_raw_count(),
-#                     "umis": list(counter.umis.umis),
-#                 }
-#                 _data[lib_ids][_id] = _info
-#
-#         if compress:
-#             with gzip.open(path, "wt", encoding="utf-8") as zipfile:
-#                 json.dump(_data, zipfile)
-#         else:
-#             json.dump(_data, open(path, "w"))
-#
-#
-# class DELCollectionIdCounter(DELCollectionCounter):
-#     """
-#     Degen counter for library collectionss without UMI tags
-#
-#     Handles Degen by DEL ID
-#     Each observed DEL compound will have a count based
-#     on its degen reads and a count based on how many
-#     raw reads of the given compound there were
-#     """
-#
-#     def __init__(self):
-#         self.del_counter: defaultdict[str, defaultdict[DecodedDELCompound, DELIdCounter]] = defaultdict(
-#             lambda: defaultdict(DELIdCounter)
-#         )
-#
-#     def __getstate__(self):
-#         """
-#         Covert state to generic dict with no partial functions when requesting state
-#         """
-#         state = self.__dict__.copy()
-#         state["del_counter"] = {k: dict(v) for k, v in self.del_counter.items()}
-#         return state
-#
-#     def __setstate__(self, state):
-#         """
-#         Set state for del_counter back to nested defaultdict when reloading state from getstate
-#         """
-#         self.__dict__.update(state)
-#         self.del_counter = defaultdict(
-#             lambda: defaultdict(DELIdCounter),
-#             {k: defaultdict(DELIdUmiCounter, v) for k, v in state["del_counter"].items()},
-#         )
-#
-#     def __add__(self, other):
-#         """
-#         Add two DELCollectionIdCounter together by merging the counters
-#
-#         Parameters
-#         ----------
-#         other: DELCollectionIdCounter
-#             the other counter to add
-#
-#         Returns
-#         -------
-#         DELCollectionIdCounter
-#         """
-#         if isinstance(other, DELCollectionIdCounter):
-#             new_counter = DELCollectionIdCounter()
-#             for lib_id in self.del_counter.keys() | other.del_counter.keys():
-#                 for barcode in self.del_counter[lib_id].keys() | other.del_counter[lib_id].keys():
-#                     new_counter.del_counter[lib_id][barcode] = (
-#                         self.del_counter[lib_id][barcode] + other.del_counter[lib_id][barcode]
-#                     )
-#             return new_counter
-#         raise TypeError(f"unsupported operand type(s) for +: '{type(self)}' and '{type(other)}'")
-#
-#     def count_barcode(self, barcode: DecodedDELCompound) -> bool:
-#         """
-#         Given a barcode, add it to the current degen count
-#
-#         Will handle separating based on DEL ID
-#
-#         Parameters
-#         ----------
-#         barcode: DecodedDELCompound
-#             the barcode to add to the counter
-#
-#         Returns
-#         -------
-#         bool
-#             `True` is added barcode is new (not degenerate), else `False`
-#         """
-#         self.del_counter[barcode.library.library_id][barcode].add_id()
-#         return True  # always not degenerate with this counter
-#
-#     def to_json(self, path: str | Path, compress: bool = False):
-#         """
-#         Convert the counter to a JSON serializable dict
-#
-#         Parameters
-#         ----------
-#         path: str | Path
-#             path to save the JSON file to
-#         compress: bool, default = False
-#             if True, will compress the JSON file using gzip
-#
-#         Returns
-#         -------
-#         dict
-#             the JSON serializable dict representation of the counter
-#         """
-#         import json
-#
-#         # collect data
-#         _data: dict[str, dict[str, object]] = {}
-#         for lib_ids, dels in self.del_counter.items():
-#             _data[lib_ids] = {}
-#             for compound, counter in dels.items():
-#                 _id = compound.compound_id
-#                 _info = {
-#                     "lib_id": compound.library.library_id,
-#                     "bb_ids": [bb.bb_id for bb in compound.building_blocks],
-#                     "raw_count": counter.get_raw_count(),
-#                 }
-#                 _data[lib_ids][_id] = _info
-#
-#         if compress:
-#             with gzip.open(path, "wt", encoding="utf-8") as zipfile:
-#                 json.dump(_data, zipfile)
-#         else:
-#             json.dump(_data, open(path, "w"))
 
 
 class CompoundUMICounter:
@@ -801,6 +76,17 @@ class CompoundUMICounter:
         """
         self.counter[str(umi)] += 1
 
+    def to_json_dict(self) -> dict:
+        """
+        Convert the compound UMI counter to a JSON serializable dict
+
+        Returns
+        -------
+        dict
+        """
+        return {key: val for key, val in self.counter.items() if val > 0}
+
+
 C = TypeVar("C", bound=DecodedCompound)
 class DegenCounter(abc.ABC, Generic[C]):
     """Base class for all degeneration counters"""
@@ -842,6 +128,17 @@ class DegenCounter(abc.ABC, Generic[C]):
         raise NotImplementedError()
 
     @abc.abstractmethod
+    def to_json_dict(self, *args, **kwargs) -> dict:
+        """
+        Convert the degenerator to a JSON serializable dict
+
+        Returns
+        -------
+        dict
+        """
+        raise NotImplementedError()
+
+    @abc.abstractmethod
     def __add__(self, other: Self) -> Self:
         """
         Add two DegenCounters together by merging their counters
@@ -858,7 +155,7 @@ class DegenCounter(abc.ABC, Generic[C]):
         raise NotImplementedError()
 
 
-class CompoundDegenCounter(DegenCounter[DecodedCompound]):
+class CompoundDegenCounter(DegenCounter[DecodedCompound | Compound]):
     """
     Counts degenerate compounds for any decoded compound
 
@@ -881,7 +178,7 @@ class CompoundDegenCounter(DegenCounter[DecodedCompound]):
         the counter for the compounds
     """
     def __init__(self):
-        self.counter: defaultdict[DecodedCompound, CompoundUMICounter] = defaultdict(CompoundUMICounter)
+        self.counter: defaultdict[DecodedCompound | Compound, CompoundUMICounter] = defaultdict(CompoundUMICounter)
 
     def __add__(self, other):
         """Add two CompoundDegenCounters together by merging their counters"""
@@ -905,6 +202,69 @@ class CompoundDegenCounter(DegenCounter[DecodedCompound]):
     def get_total_degen_count(self) -> int:
         """Get the total degenerate count for the library"""
         return sum(compound_counter.degen_count for compound_counter in self.counter.values())
+
+    def to_json_dict(self, include_bb_smi: bool = False, enumerate_smi: bool = False, *args, **kwargs) -> dict:
+        """
+        Convert the degenerator to a JSON serializable dict
+
+        Parameters
+        ----------
+        include_bb_smi: bool, false
+            if True, will include building block SMILES in the JSON
+        enumerate_smi: bool, false
+            if True, will attempt to enumerate SMILES for compounds and include in the output
+
+        Returns
+        -------
+        dict
+        """
+
+        data = {}
+        for compound, compound_counter in self.counter.items():
+
+            compound_data: dict[str, Any] = {"umi_counts": compound_counter.to_json_dict()}
+            if enumerate_smi:
+                compound_data["smi"] = compound.get_smiles()
+
+            if isinstance(compound, DecodedToolCompound):
+                _id = compound.tool_compound.compound_id
+            elif isinstance(compound, DecodedDELCompound):
+                _id = tuple(compound.building_block_ids)
+                if include_bb_smi:
+                    compound_data["bb_smis"] = [bb.smi for bb in compound.building_blocks]
+            else:
+                _id = compound.get_library_id()
+
+            data[_id] = compound_data
+        return data
+
+    @classmethod
+    def from_json_dict(cls, data: dict, library: Library) -> Self:
+        """
+        Load the degenerator from a JSON serializable dict *and* reconstruct the compound objects
+
+        Parameters
+        ----------
+        data: dict
+            the JSON serializable dict
+        library: Library
+            the library to use for reconstructing DEL compounds
+
+        Returns
+        -------
+        CompoundDegenCounter
+        """
+        new_counter = cls()
+        for compound_key, compound_info in data.items():
+            try:
+                compound = library.get_compound(compound_key)
+            except Exception as e:
+                raise KeyError(
+                    f"Cannot find compound with id {compound_key} in library {library.library_id}"
+                ) from e
+
+            new_counter.counter[compound].counter.update(compound_info["umi_counts"])
+        return new_counter
 
 
 class DELDegenCounter(DegenCounter[DecodedDELCompound]):
@@ -964,6 +324,45 @@ class DELDegenCounter(DegenCounter[DecodedDELCompound]):
         """Get the total degenerate count for the library"""
         return sum(compound_counter.degen_count for compound_counter in self.counter.values())
 
+    def to_json_dict(self, *args, **kwargs) -> dict:
+        """
+        Convert the degenerator to a JSON serializable dict
+
+        Returns
+        -------
+        dict
+        """
+
+        data = {}
+        for compound, compound_counter in self.counter.items():
+            data[compound] = {"umi_counts": compound_counter.to_json_dict()}
+        return data
+
+    @classmethod
+    def from_json_dict(cls, data: dict) -> "DELDegenCounter":
+        """
+        Load the degenerator from a JSON serializable dict
+
+        Notes
+        -----
+        Will ignore any non-count information in the JSON file.
+        This means any info about SMILES will be lost when
+        loaded and cannot be rewritten later
+
+        Parameters
+        ----------
+        data: dict
+            the JSON serializable dict
+
+        Returns
+        -------
+        DELDegenCounter
+        """
+        new_counter = cls()
+        for compound_key, compound_info in data.items():
+            new_counter.counter[compound_key].counter.update(compound_info["umi_counts"])
+        return new_counter
+
 
 class ToolDegenCounter(DegenCounter[DecodedToolCompound]):
     """
@@ -982,13 +381,16 @@ class ToolDegenCounter(DegenCounter[DecodedToolCompound]):
     counter: CompoundUMICounter
         the counter for the tool compound
     """
-    def __init__(self):
+    def __init__(self, tool_compound_id: str):
         self.counter = CompoundUMICounter()
+        self.tool_compound_id = tool_compound_id
 
     def __add__(self, other):
         """Add two ToolDegenCounters together by merging their counters"""
         if isinstance(other, ToolDegenCounter):
-            new_counter = ToolDegenCounter()
+            if self.tool_compound_id != other.tool_compound_id:
+                raise ValueError("Cannot add ToolDegenCounters for different tool compounds")
+            new_counter = ToolDegenCounter(self.tool_compound_id)
             new_counter.counter = self.counter + other.counter
             return new_counter
         raise TypeError(f"unsupported operand type(s) for +: '{type(self)}' and '{type(other)}'")
@@ -1019,6 +421,44 @@ class ToolDegenCounter(DegenCounter[DecodedToolCompound]):
         """Get the total degenerate count for the tool compound"""
         return self.counter.degen_count
 
+    def to_json_dict(self, *args, **kwargs) -> dict:
+        """
+        Convert the degenerator to a JSON serializable dict
+
+        Returns
+        -------
+        dict
+        """
+        return {
+            self.tool_compound_id: {
+                "umi_counts": self.counter.to_json_dict()
+            }
+        }
+
+    @classmethod
+    def from_json_dict(cls, data: dict) -> "ToolDegenCounter":
+        """
+        Load the degenerator from a JSON serializable dict
+
+        Notes
+        -----
+        Will ignore any non-count information in the JSON file.
+        This means any info about SMILES will be lost when
+        loaded and cannot be rewritten later
+
+        Parameters
+        ----------
+        data: dict
+            the JSON serializable dict
+
+        Returns
+        -------
+        ToolDegenCounter
+        """
+        tool_compound_id, compound_info = next(iter(data.items()))
+        new_counter = cls(tool_compound_id)
+        new_counter.counter.counter.update(compound_info["umi_counts"])
+        return new_counter
 
 @dataclasses.dataclass(frozen=True)
 class DegenSettings:
@@ -1039,6 +479,8 @@ class DegenSettings:
     """
 
     umi_clustering: bool = False
+    ignore_missing_umi: bool = False
+
     def to_file(self, path: str):
         """
         Save settings to a YAML file
@@ -1090,6 +532,8 @@ class DegenSettings:
 
 class Degenerator(abc.ABC):
     """Base class for all degeneration runners"""
+    counter: dict[str, DegenCounter]
+    settings: DegenSettings
 
     @abc.abstractmethod
     def degen_decoded_compound(self, compound: DecodedCompound):
@@ -1120,6 +564,32 @@ class Degenerator(abc.ABC):
         """Add two degenerators together by combining their counters"""
         return self.combine_degenerator(other)
 
+    def write_json(self, path: os.PathLike, include_bb_smi: bool = False, enumerate_smi: bool = False):
+        """
+        Write the degenerator to a JSON file
+
+        Parameters
+        ----------
+        path: os.PathLike
+            the path to write the JSON file to
+            will overwrite if file exists
+        include_bb_smi: bool, false
+            if True, will include building block SMILES in the JSON
+            Ignored for tool compounds.
+        enumerate_smi: bool, false
+            if True, will attempt to enumerate SMILES for decoded compounds
+            and include in the output
+        """
+        import json
+
+        data = {"settings": dataclasses.asdict(self.settings), "counts": {}}
+        for lib_id, counter in self.counter.items():
+            data["counts"][lib_id] = {
+                "type": str(counter.__class__.__name__),
+                "count_info": counter.to_json_dict(include_bb_smi=include_bb_smi, enumerate_smi=enumerate_smi)
+            }
+        with open(path, "w") as f:
+            json.dump(data, f, indent=4)
 
 
 class CompoundSelectionDegenerator(Degenerator):
@@ -1155,8 +625,10 @@ class CompoundSelectionDegenerator(Degenerator):
 
     Attributes
     ----------
-    counter: defaultdict[str, CompoundDegenCounter]
+    counter: dict[str, CompoundDegenCounter]
         the counter for each library ID
+        this is a default dict, defaulting to CompoundDegenCounter
+        you should not add keys directly, use `degen_decoded_compound` instead
     """
     def __init__(self, degen_settings: DegenSettings):
         self.settings = degen_settings
@@ -1254,7 +726,9 @@ class SelectionDegenerator(Degenerator):
     counter: dict[str, DELDegenCounter | ToolDegenCounter]
         the counter for each library ID
         will be either a DELDegenCounter or ToolDegenCounter
-        based on the compound type
+        based on the compound type.
+        This is a default dict, defaulting to CompoundDegenCounter.
+        You should not add keys directly, use `degen_decoded_compound` instead.
     """
     def __init__(self, degen_settings: DegenSettings):
         self.settings = degen_settings
@@ -1268,7 +742,7 @@ class SelectionDegenerator(Degenerator):
                 if isinstance(compound, DecodedDELCompound):
                     self.counter[lib_id] = DELDegenCounter()
                 elif isinstance(compound, DecodedToolCompound):
-                    self.counter[lib_id] = ToolDegenCounter()
+                    self.counter[lib_id] = ToolDegenCounter(lib_id)
                 else:
                     raise RuntimeError(f"This error should be unreachable, please report a bug!")
             self.counter[lib_id].add_compound(compound)
@@ -1277,7 +751,7 @@ class SelectionDegenerator(Degenerator):
             compound_id, umi = compound
             if len(compound_id) == 1:  # assume tool compound
                 if compound_id[0] not in self.counter:
-                    self.counter[compound_id[0]] = ToolDegenCounter()
+                    self.counter[compound_id[0]] = ToolDegenCounter(compound_id[0])
                 self.counter[compound_id[0]].add_compound(umi)
             else:
                 lib_id = compound_id[0]
@@ -1318,3 +792,77 @@ class SelectionDegenerator(Degenerator):
                 self.counter[lib_id] = self.counter[lib_id] + counter
             else:
                 self.counter[lib_id] = counter
+
+
+@overload
+def load_degenerator_from_json(path: os.PathLike, selection: Selection) -> CompoundSelectionDegenerator:
+    ...
+
+@overload
+def load_degenerator_from_json(path: os.PathLike) -> SelectionDegenerator:
+    ...
+
+@overload
+def load_degenerator_from_json(path: os.PathLike, selection: Optional[Selection] = None) -> Degenerator:
+    ...
+
+def load_degenerator_from_json(path: os.PathLike, selection: Optional[Selection] = None) -> Degenerator:
+    """
+    Load a SelectionDegenerator from a JSON file
+
+    Because of the way the JSON is structured,
+
+    Notes
+    -----
+    Will ignore non-count information in the JSON file.
+
+    If selection is provided, will load a CompoundSelectionDegenerator
+    that reconstructs the Compound objects as associates them
+    with their library information (like SMILES).
+    This can be expensive if there are many compounds to reconstruct.
+    If you are only loading to merge and then write new degenerators,
+    it is probably better to not provide a selection to avoid this overhead.
+
+    Parameters
+    ----------
+    path: os.PathLike
+        the path to read the JSON file from
+    selection: Selection, optional
+        the selection used to decode the compounds.
+        If provided, will load a CompoundSelectionDegenerator
+        that reconstructs the Compound objects as associates them
+        with their library information (like SMILES).
+        Otherwise, will load a SelectionDegenerator that only
+        contains info on the compounds ids.
+    """
+    import json
+
+    with open(path, "r") as f:
+        data = json.load(f)
+
+    settings = DegenSettings(**data["settings"])
+    count_data = data["counts"]
+
+    if selection is not None:
+        loaded_counters: defaultdict[str, CompoundDegenCounter] = defaultdict(CompoundDegenCounter)
+        for lib_id, lib_counter_info in count_data.items():
+            lib_counter = CompoundDegenCounter()
+            library = selection.library_collection.get_library(lib_id)
+            loaded_counters[lib_id] = lib_counter.from_json_dict(lib_counter_info["count_info"], library)
+        degenerator = CompoundSelectionDegenerator(degen_settings=settings)
+        degenerator.counter = loaded_counters
+        return degenerator
+
+    else:
+        loaded_counters: dict[str, DELDegenCounter | ToolDegenCounter] = dict()
+        for lib_id, lib_counter_info in count_data.items():
+            counter_type = lib_counter_info["type"]
+            if counter_type == "DELDegenCounter":
+                loaded_counters[lib_id] = DELDegenCounter.from_json_dict(lib_counter_info["count_info"])
+            elif counter_type == "ToolDegenCounter":
+                loaded_counters[lib_id] = ToolDegenCounter.from_json_dict(lib_counter_info["count_info"])
+            else:
+                raise RuntimeError(f"Unknown counter type {counter_type} in degenerator JSON file")
+        degenerator = SelectionDegenerator(degen_settings=settings)
+        degenerator.counter = loaded_counters
+        return degenerator

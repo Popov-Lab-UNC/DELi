@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from deli.dels import tool_compounds as tc_mod
-from deli.dels.tool_compounds import (
+from deli.dels import tool_compound as tc_mod
+from deli.dels.tool_compound import (
     DopedToolCompound,
     TaggedToolCompound,
     TaggedToolCompoundLibrary,
