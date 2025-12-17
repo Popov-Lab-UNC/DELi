@@ -1,15 +1,17 @@
 """Hold base level classes for DEL compounds"""
+
 import abc
-from typing import TYPE_CHECKING, Generic, TypeVar, Sequence, Iterator
+from typing import Generic, Iterator, Sequence, TypeVar
 
-
-if TYPE_CHECKING:
-    from deli.dels.compound import Compound
+from deli.dels.compound import Compound
 
 
 C = TypeVar("C", bound=Compound)
+
+
 class Library(Generic[C], abc.ABC):
     """Base class for all libraries"""
+
     library_size: int
 
     def __init__(self, library_id: str):
@@ -56,11 +58,12 @@ class Library(Generic[C], abc.ABC):
         KeyError
             If the compound ID is not found in the library.
         """
-
         raise NotImplementedError()
 
 
 LibType = TypeVar("LibType", bound=Library)
+
+
 class LibraryCollection(Generic[LibType]):
     """
     base class for any class that holds a group of DEL libraries

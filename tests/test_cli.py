@@ -1,5 +1,6 @@
 """Test cases for the Deli CLI commands."""
 
+import logging
 import os
 from pathlib import Path
 
@@ -12,7 +13,7 @@ from deli.cli import (
     click_set_deli_data_dir,
     click_which_deli_data_dir,
 )
-from deli.configure import _DeliConfig, set_deli_data_dir, validate_deli_data_dir
+from deli.configure import _DeliConfig, get_deli_config, set_deli_data_dir, validate_deli_data_dir
 
 
 @pytest.fixture()
@@ -81,30 +82,26 @@ def test_deli_data_init(tmpdir, runner):
 
     # check that broken data dir can be fixes
     os.makedirs(tmpdir_path / "broken")
-    result = runner.invoke(
-        click_init_deli_data_dir, ["--fix-missing", str(tmpdir_path / "broken")]
-    )
+    result = runner.invoke(click_init_deli_data_dir, ["--fix-missing", str(tmpdir_path / "broken")])
     assert result.exit_code == 0
     validate_deli_data_dir(tmpdir_path / "broken")
 
     # check that trying to fix a file, not directory fails
     open(tmpdir_path / "broken_file.txt", "w").close()
-    result = runner.invoke(
-        click_init_deli_data_dir, ["--fix-missing", str(tmpdir_path / "broken_file.txt")]
-    )
+    result = runner.invoke(click_init_deli_data_dir, ["--fix-missing", str(tmpdir_path / "broken_file.txt")])
     assert result.exit_code == 1
 
 
 @pytest.mark.functional
 def test_deli_data_which(runner):
     """Test the CLI command `deli data which`"""
-    result = runner.invoke(click_which_deli_data_dir)
+    result = runner.invoke(click_which_deli_data_dir, obj={"deli_config": get_deli_config()})
     assert result.exit_code == 0
     assert "test_deli_data_dir" in result.output
 
     set_deli_data_dir(None)
 
-    result = runner.invoke(click_which_deli_data_dir)
+    result = runner.invoke(click_which_deli_data_dir, obj={"deli_config": get_deli_config()})
     assert result.exit_code == 1
 
 
@@ -137,7 +134,11 @@ def test_deli_data_set(monkeypatch, tmpdir, runner):
     runner.invoke(click_init_deli_config)
 
     # test if data dir is updated in config
-    result = runner.invoke(click_set_deli_data_dir, ["--update-config", "deli_data"])
+    result = runner.invoke(
+        click_set_deli_data_dir,
+        ["--update-config", "./deli_data"],
+        obj={"deli_config": _DeliConfig.load_config(Path.home() / ".deli"), "logger": logging.getLogger()},
+    )
     assert result.exit_code == 0
     _config = _DeliConfig.load_config(temp_home_path / ".deli")
 

@@ -1,5 +1,7 @@
 """umi functions and classes"""
+
 from typing import Iterator
+
 
 nuc_to_binary = {"A": "00", "T": "01", "G": "10", "C": "11"}
 
@@ -25,7 +27,7 @@ class UMI:
 
     def __str__(self):
         """Return the DNA barcodes of the UMIs as a string separated by ';'"""
-        return ";".join(self.umi_tags)
+        return self.umi_tags[-1]
 
     def __len__(self):
         """Return the number of possible UMI tags"""
@@ -46,7 +48,7 @@ class UMI:
         '0's to make it a multiple of 3.
 
         Yields
-        -------
+        ------
         str
             the printable ASCII string representation of the UMI tag
         """

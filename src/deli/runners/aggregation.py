@@ -1,1 +1,0 @@
-"""Runner for aggregating multiple selection cubes into one."""

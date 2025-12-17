@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Optional, Sequence
 
 import yaml
+from typing_extensions import Self
 
 from deli.dels.combinatorial import CombinatorialLibrary, DELibrary, DELibraryCollection
 from deli.dels.library import LibraryCollection
@@ -147,7 +148,7 @@ class Selection:
         )
 
     @classmethod
-    def from_yaml(cls, path: str | os.PathLike) -> "Selection":
+    def from_yaml(cls, path: str | os.PathLike) -> Self:
         """
         Create a Selection object from a YAML file
 
@@ -158,7 +159,7 @@ class Selection:
 
         Returns
         -------
-        Selection
+        Self
         """
         data = yaml.safe_load(open(path, "r"))
         return cls.from_dict(data)
@@ -348,7 +349,7 @@ class SequencedSelection(DELSelection):
         """
         lib_collection = DELibraryCollection([DELibrary.load(lib) for lib in data["libraries"]])
         tool_compounds = [TaggedToolCompoundLibrary.load(tc) for tc in data.get("tool_compounds", [])]
-        sequence_reader = get_reader(data.get("sequence_files", []))
+        sequence_reader = get_reader(data["sequence_files"])
 
         return cls(
             library_collection=lib_collection,

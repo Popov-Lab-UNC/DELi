@@ -6,25 +6,25 @@ import json
 import os
 from collections import defaultdict
 from dataclasses import asdict
-from typing import Any, Generic, Iterator, Optional, TypeVar, Literal
+from typing import Any, Generic, Iterator, Literal, Optional, TypeVar
 
 from dnaio import SequenceRecord
 from tqdm import tqdm
 
 from deli.dels.barcode import BarcodeSection
-from deli.dels.library import Library
 from deli.dels.building_block import TaggedBuildingBlock
 from deli.dels.combinatorial import DELibrary
 from deli.dels.compound import DELCompound
+from deli.dels.library import Library
 from deli.dels.tool_compound import DopedToolCompound, TaggedToolCompound, TaggedToolCompoundLibrary, ToolCompound
 from deli.enumeration.enumerator import EnumerationRunError
 from deli.selection import DELSelection
 
-from .base import FailedDecodeAttempt
 from .barcode_calling import AmbiguousBarcodeCall, BarcodeCaller, FailedBarcodeLookup, ValidCall, get_barcode_caller
+from .base import FailedDecodeAttempt
 from .library_demultiplex import AlignedSeq, FailedStaticAlignment, LibraryDemultiplexer, get_library_demultiplexer_type
 from .umi import UMI
-from ..dna import SequenceReader
+
 
 MAX_RETRIES = 50  # number of alignments to attempt before giving up
 
@@ -115,7 +115,7 @@ class DecodeStatistics:
         """Number of sequences decoded successfully in total"""
         return sum(self.num_seqs_decoded_per_lib.values())
 
-    def to_file(self, out_path: str | os.PathLike, include_read_lengths: bool = False):
+    def to_file(self, out_path: str | os.PathLike):
         """
         Write the statistics to a file
 
@@ -127,15 +127,9 @@ class DecodeStatistics:
         ----------
         out_path: str or os.PathLike
             path to write the statistics to
-        include_read_lengths: bool, default = False
-            if True, will include the read lengths in the file
         """
-        if include_read_lengths:
-            json.dump(self.__dict__, open(out_path, "w"))
-        else:
-            _dict = self.__dict__.copy()
-            del _dict["seq_lengths"]
-            json.dump(_dict, open(out_path, "w"))
+        with open(out_path, "w") as out_file:
+            json.dump(self.__dict__, out_file, indent=4)
 
     @classmethod
     def from_file(cls, path: str | os.PathLike) -> "DecodeStatistics":
@@ -182,6 +176,13 @@ class DecodedCompound(abc.ABC):
     def has_umi(self) -> bool:
         """Check if the decoded compound has a UMI"""
         return self.umi is not None
+
+    def umi_str(self) -> str:
+        """Get the UMI string, or 'null' if no UMI is present"""
+        if self.has_umi():
+            return str(self.umi)
+        else:
+            return "null"
 
     @abc.abstractmethod
     def to_cube_row_dict(self) -> dict[str, str]:
@@ -234,6 +235,17 @@ class DecodedCompound(abc.ABC):
         -------
         str
             the library ID
+        """
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def get_score(self) -> float:
+        """
+        Get the decode score of the decoded compound
+
+        Returns
+        -------
+        float
         """
         raise NotImplementedError()
 
@@ -355,6 +367,16 @@ class DecodedDELCompound(DELCompound, DecodedCompound):
         """
         return self.library.library_id
 
+    def get_score(self) -> float:
+        """
+        Get the decode score of the decoded compound
+
+        Returns
+        -------
+        float
+        """
+        return self.library_call.score + sum(bb_call.score for bb_call in self.building_block_calls)
+
 
 class DecodedToolCompound(DecodedCompound):
     """
@@ -437,6 +459,16 @@ class DecodedToolCompound(DecodedCompound):
             the library ID
         """
         return self.tool_compound.compound_id
+
+    def get_score(self) -> float:
+        """
+        Get the decode score of the decoded compound
+
+        Returns
+        -------
+        float
+        """
+        return self.tool_library_call.score + self.tool_compound_call.score
 
 
 class ReadTooShort(FailedDecodeAttempt):
@@ -1135,18 +1167,18 @@ class DecodingSettings:
         See the documentation for more details on the format of this string.
     """
 
-    ignore_tool_compounds: bool = False,
-    demultiplexer_algorithm: Literal["cutadapt", "regex", "full"] = "regex",
-    demultiplexer_mode: Literal["library", "single", "flanking"] = "single",
-    realign: bool = False,
-    library_error_tolerance: int = 1,
-    library_error_correction_mode_str: str = "levenshtein_dist:2,asymmetrical",
-    min_library_overlap: int = 8,
-    revcomp: bool = False,
-    wiggle: bool = False,
-    max_read_length: Optional[int] = None,
-    min_read_length: Optional[int] = None,
-    default_error_correction_mode_str: str = "levenshtein_dist:1,asymmetrical",
+    ignore_tool_compounds: bool = False
+    demultiplexer_algorithm: Literal["cutadapt", "regex", "full"] = "regex"
+    demultiplexer_mode: Literal["library", "single", "flanking"] = "single"
+    realign: bool = False
+    library_error_tolerance: int = 1
+    library_error_correction_mode_str: str = "levenshtein_dist:2,asymmetrical"
+    min_library_overlap: int = 8
+    revcomp: bool = False
+    wiggle: bool = False
+    max_read_length: Optional[int] = None
+    min_read_length: Optional[int] = None
+    default_error_correction_mode_str: str = "levenshtein_dist:1,asymmetrical"
 
     def to_file(self, path: str):
         """
@@ -1158,6 +1190,7 @@ class DecodingSettings:
             path to save settings to
         """
         import yaml
+
         yaml.dump(asdict(self), open(path, "w"))
 
     @classmethod
@@ -1184,6 +1217,7 @@ class DecodingSettings:
             if valid decode settings cannot be loaded from the passed YAML file
         """
         import yaml
+
         _data = yaml.safe_load(open(path, "r"))
         if "decode_settings" not in _data:
             try:
@@ -1221,9 +1255,9 @@ class SelectionDecoder:
     """
 
     def __init__(
-            self,
-            selection: DELSelection,
-            decode_settings: DecodingSettings | None = None,
+        self,
+        selection: DELSelection,
+        decode_settings: DecodingSettings | None = None,
     ):
         self.selection: DELSelection = selection
         self.decode_settings: DecodingSettings = decode_settings if decode_settings is not None else DecodingSettings()
@@ -1233,14 +1267,12 @@ class SelectionDecoder:
         demultiplex_algorithm = self.decode_settings.demultiplexer_algorithm
         demultiplex_mode = self.decode_settings.demultiplexer_mode
 
-        demultiplexer: LibraryDemultiplexer = (get_library_demultiplexer_type(
-            demultiplex_mode=demultiplex_mode,
-            demultiplex_algorithm=demultiplex_algorithm)
-            (
-                libraries=self.selection.library_collection,
-                tool_compounds=list(self.selection.tool_compounds),
-                **asdict(self.decode_settings)
-            )
+        demultiplexer: LibraryDemultiplexer = get_library_demultiplexer_type(
+            demultiplex_mode=demultiplex_mode, demultiplex_algorithm=demultiplex_algorithm
+        )(
+            libraries=self.selection.library_collection,
+            tool_compounds=list(self.selection.tool_compounds),
+            **asdict(self.decode_settings),
         )
 
         # initialize all the decoding object required
@@ -1259,7 +1291,7 @@ class SelectionDecoder:
 
         Parameters
         ----------
-        read: SequenceReader
+        read: SequenceRecord
             the read to decode
 
         Returns
@@ -1274,7 +1306,9 @@ class SelectionDecoder:
             self.decode_stats.num_seqs_decoded_per_lib[decoded_compound.get_library_id()] += 1
         return decoded_compound
 
-    def decode_file(self, fastq_file: os.PathLike, use_tqdm: bool = True) -> Iterator[DecodedCompound | FailedDecodeAttempt]:
+    def decode_file(
+        self, fastq_file: os.PathLike, use_tqdm: bool = True
+    ) -> Iterator[DecodedCompound | FailedDecodeAttempt]:
         """
         Decode all reads from a fastq file
 

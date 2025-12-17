@@ -3,11 +3,12 @@
 import importlib.resources as resources
 import os
 from datetime import datetime
+from typing import Optional
 
 import jinja2
 import plotly.graph_objects as go
 
-from deli.selection import Selection
+from deli.selection import DELSelection, Selection, SequencedSelection
 
 from .decoder import DecodeStatistics
 
@@ -77,98 +78,17 @@ def _generate_calling_pie_chart(
     return fig.to_html(full_html=False, include_plotlyjs=False)
 
 
-def _generate_seq_length_hist(decode_stats: DecodeStatistics):
-    """Generate the HTML for the seq length histogram"""
-    x_vals = list(range(min(decode_stats.seq_lengths.keys()), max(decode_stats.seq_lengths.keys()) + 1))
-    y_vals = [decode_stats.seq_lengths.get(key, 0) for key in x_vals]
-    fig = go.Figure(data=[go.Bar(x=x_vals, y=y_vals)])
-    fig.update_layout(
-        xaxis_title="Sequence Read Length",
-        yaxis_title="Count",
-        margin=dict(t=0, b=0, l=0, r=0),
-        autosize=False,
-        showlegend=False,
-        width=1000,
-        height=300,
-    )
-    fig.update_xaxes(range=[0, 1000])
-    return fig.to_html(full_html=False, include_plotlyjs=False)
-
-
-def _generate_lib_decode_pie_chart(decode_stats: DecodeStatistics):
-    """Generate the html for a lib decode pie chart"""
-    _labels = []
-    _values = []
-    for idx, count in decode_stats.num_seqs_decoded_per_lib.items():
-        if count == 0:
-            continue
-        _labels.append(idx)
-        _values.append(count)
-
-    fig = go.Figure(
-        data=[
-            go.Pie(
-                labels=_labels,
-                values=_values,
-                hole=0.3,
-                hoverinfo="skip",
-                textinfo="percent+value+label",
-                textfont_size=18,
-                marker=dict(line=dict(color="#000000", width=2)),
-            )
-        ]
-    )
-
-    fig.update_layout(
-        margin=dict(t=0, b=0, l=0, r=0),
-        autosize=False,
-        showlegend=False,
-        width=500,
-        height=400,
-    )
-
-    return fig.to_html(full_html=False, include_plotlyjs=False)
-
-
-def _generate_lib_degen_pie_chart(decode_stats: DecodeStatistics):
-    """Generate the html for a lib degen pie chart"""
-    _labels = []
-    _values = []
-    for idx, count in decode_stats.num_seqs_degen_per_lib.items():
-        if count == 0:
-            continue
-        _labels.append(idx)
-        _values.append(count)
-
-    fig = go.Figure(
-        data=[
-            go.Pie(
-                labels=_labels,
-                values=_values,
-                hole=0.3,
-                hoverinfo="skip",
-                textinfo="percent+value+label",
-                textfont_size=18,
-                marker=dict(line=dict(color="#000000", width=2)),
-            )
-        ]
-    )
-
-    fig.update_layout(
-        margin=dict(t=0, b=0, l=0, r=0),
-        autosize=False,
-        showlegend=False,
-        width=500,
-        height=400,
-    )
-
-    return fig.to_html(full_html=False, include_plotlyjs=False)
+def _default_to_NA(value: Optional[str]) -> str:
+    """Convert None or empty strings to 'NA'"""
+    if value is None or value.strip() == "":
+        return "NA"
+    return value
 
 
 def build_decoding_report(
-    selection: Selection,
     stats: DecodeStatistics,
-    out_path: str | os.PathLike,
+    out_path: Optional[os.PathLike] = None,
+    selection: Optional[Selection] = None,
 ):
     """
     Generates a deli decoding HTML report from report stats
@@ -181,52 +101,63 @@ def build_decoding_report(
 
     Parameters
     ----------
-    selection: SequencedSelection
-        the selection to build the report for
     stats: DecodeStatistics
         the decode run statistics to build the report for
-    out_path: Union[str, os.PathLike]
+    out_path: os.PathLike
         the path to save the report to
+    selection: DELSelection or SequencedSelection, optional
+        the selection to build the report for
+        if DEL selection provided will include selection and library info.
+        if sequenced selection is provided, will also include sequence file info.
+        if no selection is provided, some fields will be marked as "NA"
+        and some libraries info will be missing (like size of the library)
     """
+    from pathlib import Path
+
+    if out_path is None:
+        _out_path = Path("./decode_report.html")
+    else:
+        _out_path = Path(out_path)
+
+    if isinstance(selection, DELSelection):
+        libraries_ = [(lib.library_id, str(lib.library_size)) for lib in selection.library_collection.libraries]
+    else:
+        libraries_ = [(library_id, "NA") for library_id in stats.num_seqs_decoded_per_lib.keys()]
+
     _seq_count_data: dict = {
         **{
-            "Total": (
-                "{:,}".format(selection.library_collection.collection_size),
-                "{:,}".format(stats.num_seqs_decoded),
-                "{:,}".format(stats.num_seqs_degen),
+            library_id: (
+                "{:,}".format(library_size) if isinstance(library_size, int) else library_size,
+                "{:,}".format(stats.num_seqs_decoded_per_lib.get(library_id, 0)),
             )
-        },
-        **{
-            lib.library_id: (
-                "{:,}".format(lib.library_size),
-                "{:,}".format(stats.num_seqs_decoded_per_lib.get(lib.library_id, 0)),
-                "{:,}".format(stats.num_seqs_degen_per_lib.get(lib.library_id, 0)),
-            )
-            for lib in selection.library_collection.libraries
+            for (library_id, library_size) in libraries_
         },
     }
 
     jinja_data = {
+        "selection": "NA",
+        "run_date": "NA",
+        "target": "NA",
+        "sequence_files": "NA",
         "timestamp": datetime.now().strftime("%b %d, %Y %H:%M"),
-        "selection": selection.selection_id,
-        "run_date": selection.get_run_date_as_str(),
-        "target": selection.selection_condition.target_id if selection.selection_condition.target_id else "NA",
-        "selection_cond": selection.selection_condition.selection_condition
-        if selection.selection_condition.selection_condition
-        else "NA",
-        "additional_info": selection.selection_condition.additional_info
-        if selection.selection_condition.additional_info
-        else "NA",
-        "libs": ", ".join(sorted([lib.library_id for lib in selection.library_collection.libraries])),
+        "libs": ", ".join(sorted(l[0] for l in libraries_)),
+        "tool_compounds": [],
         "num_reads": stats.num_seqs_read,
         "num_decoded": stats.num_seqs_decoded,
-        "num_degen": stats.num_seqs_degen,
         "seq_counts": _seq_count_data,
-        "read_hist": _generate_seq_length_hist(stats),
         "decoding_pie": _generate_calling_pie_chart(stats),
-        "decode_pie": _generate_lib_decode_pie_chart(stats),
-        "degen_pie": _generate_lib_degen_pie_chart(stats),
     }
+
+    if selection is not None:
+        jinja_data["selection"] = selection.selection_id
+        jinja_data["run_date"] = selection.get_run_date_as_str()
+        jinja_data["target"] = _default_to_NA(selection.selection_condition.target_id)
+        if isinstance(selection, SequencedSelection):
+            jinja_data["sequence_files"] = "- " + "<br>- ".join([str(f) for f in selection.sequence_files])
+
+        if len(selection.tool_compounds) > 0:
+            tool_compound_ids = [comp.compound_id for comps in selection.tool_compounds for comp in comps.compounds]
+            jinja_data["tool_compounds"] = "- " + "<br>- ".join(tool_compound_ids)
 
     # write the report as a rendered jinja2 template
     # the template is stored as a resource in the package under templates
@@ -234,5 +165,5 @@ def build_decoding_report(
     with resources.as_file(resources.files("deli.templates") / "decode_report.html") as template_path:
         template = jinja2.Template(open(template_path).read())
         rendered_content = template.render(jinja_data)
-        with open(out_path, "w", encoding="utf-8") as f:
+        with open(_out_path, "w", encoding="utf-8") as f:
             f.write(rendered_content)

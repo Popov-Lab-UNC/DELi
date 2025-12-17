@@ -6,7 +6,7 @@ from collections.abc import Iterator
 from functools import reduce
 from operator import mul
 from pathlib import Path
-from typing import Any, Literal, Optional, Sequence, TypeVar, overload
+from typing import Any, Literal, Optional, Sequence, overload
 
 from deli.configure import DeliDataLoadable, accept_deli_data_name
 from deli.enumeration.enumerator import EnumeratedDELCompound, Enumerator
@@ -14,9 +14,9 @@ from deli.enumeration.reaction import ReactionTree
 from deli.utils import to_smi
 
 from .barcode import BarcodedMixin, BuildingBlockBarcodeSection, DELBarcodeSchema
-from .library import Library, LibraryCollection
 from .building_block import BuildingBlock, BuildingBlockSet, TaggedBuildingBlockSet
 from .compound import DELCompound
+from .library import Library, LibraryCollection
 from .tool_compound import DopedToolCompound, ToolCompound
 
 
@@ -562,13 +562,10 @@ class CombinatorialLibrary(Library[DELCompound], DeliDataLoadable):
             If the compound ID is not found in the library.
         """
         if len(bb_ids) != self.num_cycles:
-            raise KeyError(
-                f"library has {self.num_cycles} cycles; got {len(bb_ids)} building block ids"
-            )
+            raise KeyError(f"library has {self.num_cycles} cycles; got {len(bb_ids)} building block ids")
 
         bbs = [
-            bb_set.get_bb_by_id(bb_id, fail_on_missing=True)
-            for bb_set, bb_id in zip(self.bb_sets, bb_ids, strict=True)
+            bb_set.get_bb_by_id(bb_id, fail_on_missing=True) for bb_set, bb_id in zip(self.bb_sets, bb_ids, strict=True)
         ]
 
         return DELCompound(
@@ -736,20 +733,10 @@ class DELibrary(CombinatorialLibrary, BarcodedMixin[DELBarcodeSchema]):
             yield bb_section, bb_set
 
 
-class CombinatorialLibraryCollection(LibraryCollection[CombinatorialLibrary]):
-    """base class for any class that holds a group of combinatorial libraries"""
+class CombinatorialLibraryCollectionMixin:
+    """mixin for any class that holds a group of combinatorial libraries"""
 
-    def __init__(self, libraries: Sequence[CombinatorialLibrary]):
-        """
-        Initialize a DELibrarySchemaGroup object
-
-        Parameters
-        ----------
-        libraries: List[CombinatorialLibrary]
-            libraries to include in the library schema group
-        """
-        super().__init__(libraries)
-        self.libraries: Sequence[CombinatorialLibrary] = libraries  # for type checker
+    libraries: Sequence[CombinatorialLibrary]
 
     def all_libs_can_enumerate(self) -> bool:
         """
@@ -783,7 +770,23 @@ class CombinatorialLibraryCollection(LibraryCollection[CombinatorialLibrary]):
         return max([lib.num_cycles for lib in self.libraries])
 
 
-class DELibraryCollection(LibraryCollection[DELibrary], CombinatorialLibraryCollection):
+class CombinatorialLibraryCollection(LibraryCollection[CombinatorialLibrary], CombinatorialLibraryCollectionMixin):
+    """base class for any class that holds a group of combinatorial libraries"""
+
+    def __init__(self, libraries: Sequence[CombinatorialLibrary]):
+        """
+        Initialize a DELibrarySchemaGroup object
+
+        Parameters
+        ----------
+        libraries: List[CombinatorialLibrary]
+            libraries to include in the library schema group
+        """
+        super().__init__(libraries)
+        self.libraries: Sequence[CombinatorialLibrary] = libraries  # for type checker
+
+
+class DELibraryCollection(LibraryCollection[DELibrary], CombinatorialLibraryCollectionMixin):
     """base class for any class that holds a group of DEL libraries"""
 
     def __init__(self, libraries: Sequence[DELibrary]):

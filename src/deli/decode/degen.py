@@ -4,15 +4,14 @@ import abc
 import dataclasses
 import os
 from collections import defaultdict
-from typing import Generic, TypeVar, Any, Optional, overload
+from typing import Any, Generic, Optional, TypeVar, overload
 
 from typing_extensions import Self
 
-from deli.dels.compound import Compound
 from deli.dels.library import Library
 from deli.selection import Selection
 
-from .decoder import DecodedDELCompound, DecodedCompound, DecodedToolCompound
+from .decoder import DecodedCompound, DecodedDELCompound, DecodedToolCompound
 from .umi import UMI
 
 
@@ -36,7 +35,7 @@ class CompoundUMICounter:
         self.counter: dict[str, int] = {"null": 0, "None": 0}
 
     def __add__(self, other):
-        """add two CompoundUMICounters together by merging their counters"""
+        """Add two CompoundUMICounters together by merging their counters"""
         if isinstance(other, CompoundUMICounter):
             new_counter = CompoundUMICounter()
             # merge counters
@@ -88,6 +87,8 @@ class CompoundUMICounter:
 
 
 C = TypeVar("C", bound=DecodedCompound)
+
+
 class DegenCounter(abc.ABC, Generic[C]):
     """Base class for all degeneration counters"""
 
@@ -155,7 +156,7 @@ class DegenCounter(abc.ABC, Generic[C]):
         raise NotImplementedError()
 
 
-class CompoundDegenCounter(DegenCounter[DecodedCompound | Compound]):
+class CompoundDegenCounter(DegenCounter[DecodedCompound]):
     """
     Counts degenerate compounds for any decoded compound
 
@@ -177,8 +178,9 @@ class CompoundDegenCounter(DegenCounter[DecodedCompound | Compound]):
     counter: defaultdict[DecodedCompound, CompoundUMICounter]
         the counter for the compounds
     """
+
     def __init__(self):
-        self.counter: defaultdict[DecodedCompound | Compound, CompoundUMICounter] = defaultdict(CompoundUMICounter)
+        self.counter: defaultdict[DecodedCompound, CompoundUMICounter] = defaultdict(CompoundUMICounter)
 
     def __add__(self, other):
         """Add two CompoundDegenCounters together by merging their counters"""
@@ -186,13 +188,26 @@ class CompoundDegenCounter(DegenCounter[DecodedCompound | Compound]):
             new_counter = CompoundDegenCounter()
             # merge counters
             for compound, compound_counter in self.counter.items():
-                new_counter.counter[compound] = new_counter.counter.get(compound, CompoundUMICounter()) + compound_counter
+                new_counter.counter[compound] = (
+                    new_counter.counter.get(compound, CompoundUMICounter()) + compound_counter
+                )
             for compound, compound_counter in other.counter.items():
-                new_counter.counter[compound] = new_counter.counter.get(compound, CompoundUMICounter()) + compound_counter
+                new_counter.counter[compound] = (
+                    new_counter.counter.get(compound, CompoundUMICounter()) + compound_counter
+                )
             return new_counter
         raise TypeError(f"unsupported operand type(s) for +: '{type(self)}' and '{type(other)}'")
 
     def add_compound(self, compound: DecodedCompound):
+        """
+        Add a decoded compound to the degenerator
+
+        Will adjust the counts based on the compound's UMI
+
+        Parameters
+        ----------
+        compound: DecodedCompound
+        """
         self.counter[compound].add_umi(compound.umi)
 
     def get_total_raw_count(self) -> int:
@@ -218,10 +233,8 @@ class CompoundDegenCounter(DegenCounter[DecodedCompound | Compound]):
         -------
         dict
         """
-
         data = {}
         for compound, compound_counter in self.counter.items():
-
             compound_data: dict[str, Any] = {"umi_counts": compound_counter.to_json_dict()}
             if enumerate_smi:
                 compound_data["smi"] = compound.get_smiles()
@@ -259,9 +272,7 @@ class CompoundDegenCounter(DegenCounter[DecodedCompound | Compound]):
             try:
                 compound = library.get_compound(compound_key)
             except Exception as e:
-                raise KeyError(
-                    f"Cannot find compound with id {compound_key} in library {library.library_id}"
-                ) from e
+                raise KeyError(f"Cannot find compound with id {compound_key} in library {library.library_id}") from e
 
             new_counter.counter[compound].counter.update(compound_info["umi_counts"])
         return new_counter
@@ -283,6 +294,7 @@ class DELDegenCounter(DegenCounter[DecodedDELCompound]):
         the counter for the compounds
         the key is a tuple of building block IDs
     """
+
     def __init__(self):
         self.counter: defaultdict[tuple[str, ...], CompoundUMICounter] = defaultdict(CompoundUMICounter)
 
@@ -292,9 +304,13 @@ class DELDegenCounter(DegenCounter[DecodedDELCompound]):
             new_counter = DELDegenCounter()
             # merge counters
             for bb_id_tuple, compound_counter in self.counter.items():
-                new_counter.counter[bb_id_tuple] = new_counter.counter.get(bb_id_tuple, CompoundUMICounter()) + compound_counter
+                new_counter.counter[bb_id_tuple] = (
+                    new_counter.counter.get(bb_id_tuple, CompoundUMICounter()) + compound_counter
+                )
             for bb_id_tuple, compound_counter in other.counter.items():
-                new_counter.counter[bb_id_tuple] = new_counter.counter.get(bb_id_tuple, CompoundUMICounter()) + compound_counter
+                new_counter.counter[bb_id_tuple] = (
+                    new_counter.counter.get(bb_id_tuple, CompoundUMICounter()) + compound_counter
+                )
             return new_counter
         raise TypeError(f"unsupported operand type(s) for +: '{type(self)}' and '{type(other)}'")
 
@@ -332,7 +348,6 @@ class DELDegenCounter(DegenCounter[DecodedDELCompound]):
         -------
         dict
         """
-
         data = {}
         for compound, compound_counter in self.counter.items():
             data[compound] = {"umi_counts": compound_counter.to_json_dict()}
@@ -381,6 +396,7 @@ class ToolDegenCounter(DegenCounter[DecodedToolCompound]):
     counter: CompoundUMICounter
         the counter for the tool compound
     """
+
     def __init__(self, tool_compound_id: str):
         self.counter = CompoundUMICounter()
         self.tool_compound_id = tool_compound_id
@@ -429,11 +445,7 @@ class ToolDegenCounter(DegenCounter[DecodedToolCompound]):
         -------
         dict
         """
-        return {
-            self.tool_compound_id: {
-                "umi_counts": self.counter.to_json_dict()
-            }
-        }
+        return {self.tool_compound_id: {"umi_counts": self.counter.to_json_dict()}}
 
     @classmethod
     def from_json_dict(cls, data: dict) -> "ToolDegenCounter":
@@ -459,6 +471,7 @@ class ToolDegenCounter(DegenCounter[DecodedToolCompound]):
         new_counter = cls(tool_compound_id)
         new_counter.counter.counter.update(compound_info["umi_counts"])
         return new_counter
+
 
 @dataclasses.dataclass(frozen=True)
 class DegenSettings:
@@ -491,6 +504,7 @@ class DegenSettings:
             path to save settings to
         """
         import yaml
+
         yaml.dump(dataclasses.asdict(self), open(path, "w"))
 
     @classmethod
@@ -517,6 +531,7 @@ class DegenSettings:
             if valid decode settings cannot be loaded from the passed YAML file
         """
         import yaml
+
         _data = yaml.safe_load(open(path, "r"))
         if "degen_settings" not in _data:
             try:
@@ -527,11 +542,12 @@ class DegenSettings:
             try:
                 return cls(**_data["degen_settings"])
             except Exception as e:
-                raise RuntimeError(f"Failed to load degen settings from {path}") from e
+                raise KeyError(f"missing degen_settings key in {path}") from e
 
 
 class Degenerator(abc.ABC):
     """Base class for all degeneration runners"""
+
     counter: dict[str, DegenCounter]
     settings: DegenSettings
 
@@ -559,12 +575,13 @@ class Degenerator(abc.ABC):
         """
         raise NotImplementedError()
 
-
     def __add__(self, other: Self) -> Self:
         """Add two degenerators together by combining their counters"""
         return self.combine_degenerator(other)
 
-    def write_json(self, path: os.PathLike, include_bb_smi: bool = False, enumerate_smi: bool = False):
+    def write_json(
+        self, path: os.PathLike, exclude_umi: bool = False, include_bb_smi: bool = False, enumerate_smi: bool = False
+    ):
         """
         Write the degenerator to a JSON file
 
@@ -586,7 +603,7 @@ class Degenerator(abc.ABC):
         for lib_id, counter in self.counter.items():
             data["counts"][lib_id] = {
                 "type": str(counter.__class__.__name__),
-                "count_info": counter.to_json_dict(include_bb_smi=include_bb_smi, enumerate_smi=enumerate_smi)
+                "count_info": counter.to_json_dict(include_bb_smi=include_bb_smi, enumerate_smi=enumerate_smi),
             }
         with open(path, "w") as f:
             json.dump(data, f, indent=4)
@@ -630,8 +647,9 @@ class CompoundSelectionDegenerator(Degenerator):
         this is a default dict, defaulting to CompoundDegenCounter
         you should not add keys directly, use `degen_decoded_compound` instead
     """
-    def __init__(self, degen_settings: DegenSettings):
-        self.settings = degen_settings
+
+    def __init__(self, degen_settings: Optional[DegenSettings]):
+        self.settings = degen_settings if degen_settings is not None else DegenSettings()
         self.counter: defaultdict[str, CompoundDegenCounter] = defaultdict(CompoundDegenCounter)
 
     def degen_decoded_compound(self, compound: DecodedCompound):
@@ -730,11 +748,21 @@ class SelectionDegenerator(Degenerator):
         This is a default dict, defaulting to CompoundDegenCounter.
         You should not add keys directly, use `degen_decoded_compound` instead.
     """
-    def __init__(self, degen_settings: DegenSettings):
-        self.settings = degen_settings
+
+    def __init__(self, degen_settings: Optional[DegenSettings] = None):
+        self.settings = degen_settings if degen_settings is not None else DegenSettings()
         self.counter: dict[str, DELDegenCounter | ToolDegenCounter] = {}
 
     def degen_decoded_compound(self, compound: DecodedDELCompound | DecodedToolCompound | tuple[tuple[str, ...], str]):
+        """
+        Degenerate a decoded compound
+
+        Given any decoded compound, will determine its type
+
+        Parameters
+        ----------
+        compound
+        """
         # handle decoded compound object input
         if not isinstance(compound, tuple):
             lib_id = compound.get_library_id()
@@ -744,7 +772,7 @@ class SelectionDegenerator(Degenerator):
                 elif isinstance(compound, DecodedToolCompound):
                     self.counter[lib_id] = ToolDegenCounter(lib_id)
                 else:
-                    raise RuntimeError(f"This error should be unreachable, please report a bug!")
+                    raise RuntimeError("This error should be unreachable, please report a bug!")
             self.counter[lib_id].add_compound(compound)
         # handle string based input
         else:
@@ -795,16 +823,16 @@ class SelectionDegenerator(Degenerator):
 
 
 @overload
-def load_degenerator_from_json(path: os.PathLike, selection: Selection) -> CompoundSelectionDegenerator:
-    ...
+def load_degenerator_from_json(path: os.PathLike, selection: Selection) -> CompoundSelectionDegenerator: ...
+
 
 @overload
-def load_degenerator_from_json(path: os.PathLike) -> SelectionDegenerator:
-    ...
+def load_degenerator_from_json(path: os.PathLike) -> SelectionDegenerator: ...
+
 
 @overload
-def load_degenerator_from_json(path: os.PathLike, selection: Optional[Selection] = None) -> Degenerator:
-    ...
+def load_degenerator_from_json(path: os.PathLike, selection: Optional[Selection] = None) -> Degenerator: ...
+
 
 def load_degenerator_from_json(path: os.PathLike, selection: Optional[Selection] = None) -> Degenerator:
     """
