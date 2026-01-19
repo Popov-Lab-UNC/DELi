@@ -128,7 +128,46 @@ class VariableBarcodeSection(BarcodeSection):
             )
 
 
-class BuildingBlockBarcodeSection(VariableBarcodeSection):
+class DecodeableBarcodeSection(VariableBarcodeSection):
+    """
+    Base class for all variable barcode sections that can be decoded.
+
+    These sections are for tag regions that are meant to be decoded, for example
+    into a building block ID. The possible tags for these sections are known ahead of time,
+    though for any given read, the exact tag is not known until decoding.
+
+    You can specify an error correction mode for the section, and DELi
+    will attempt to correct for errors during decoding. Not all variable sections can
+    be error corrected, only those with a known small finite set of possible tags from
+    their possible tag pool.
+
+    Parameters
+    ----------
+    section_name: str
+        barcode section name
+    section_tag: str
+        barcode section DNA tag
+        use "N" for variable or regions
+    section_overhang: str, default = None
+        DNA of overhang directly after section tag
+        leave as `None` if no overhang
+    error_correction_mode: str, default="disable"
+        the error correction mode for the building block tags in this section
+        the default is no error correction
+    """
+
+    def __init__(
+        self,
+        section_name: str,
+        section_tag: str,
+        section_overhang: Optional[str] = None,
+        error_correction_mode: str = "disable",
+    ):
+        super().__init__(section_name=section_name, section_tag=section_tag, section_overhang=section_overhang)
+        self.error_correction_mode: str = error_correction_mode
+
+
+class BuildingBlockBarcodeSection(DecodeableBarcodeSection):
     """Base class for all barcode sections encoding building block regions"""
 
     def __init__(
@@ -152,48 +191,23 @@ class BuildingBlockBarcodeSection(VariableBarcodeSection):
         section_tag: str
             barcode section DNA tag
             use "N" for variable or regions
-        section_overhang: Optional[str], default=None
+        section_overhang: str, optional
             DNA of overhang directly after section tag
             leave as `None` if no overhang
         error_correction_mode: str, default="disable"
             the error correction mode for the building block tags in this section
             the default is no error correction
         """
-        super().__init__(section_name, section_tag, section_overhang)
+        super().__init__(
+            section_name=section_name,
+            section_tag=section_tag,
+            section_overhang=section_overhang,
+            error_correction_mode=error_correction_mode,
+        )
         self.cycle_number = cycle_number
-        self.error_correction_mode = error_correction_mode
 
 
-class ToolCompoundBarcodeSection(VariableBarcodeSection):
-    """
-    Class for tool compound barcode sections
-
-    Parameters
-    ----------
-    section_name: str
-        barcode section name
-    section_tag: str
-        barcode section DNA tag
-        use "N" for variable or regions
-    section_overhang: Optional[str], default=None
-        DNA of overhang directly after section tag
-        leave as `None` if no overhang
-    error_correction_mode: str, default="disable"
-        the error correction mode for the building block tags in this section
-        the default is no error correction
-    """
-
-    def __init__(
-        self,
-        section_name: str,
-        section_tag: str,
-        section_overhang: Optional[str] = None,
-        error_correction_mode: str = "disable",
-    ):
-        super().__init__(section_name=section_name, section_tag=section_tag, section_overhang=section_overhang)
-        self.error_correction_mode = error_correction_mode
-
-
+# TODO make this a "random" barcode section subclass instead
 class UMIBarcodeSection(VariableBarcodeSection):
     """Class for UMI barcode sections"""
 
@@ -225,15 +239,29 @@ class LibraryBarcodeSection(StaticBarcodeSection):
     pass
 
 
+class ToolCompoundRefBarcodeSection(StaticBarcodeSection):
+    """Class for tool compound reference barcode sections"""
+
+    pass
+
+
 class MixedBarcodeSection(BarcodeSection):
     """Mixed barcode sections can have both static and variable regions"""
 
 
 def _parse_sections_from_dict(data: dict) -> list[BarcodeSection]:
     """
-    Load barcode sections from a dict of barcode section defintions
+    Load barcode sections from a dict of barcode section definitions
 
     You can read more about the definition format in the defining docs
+
+    Notes
+    -----
+    Sections with the key/name of 'library' *and* 'tool' are both
+    treated as LibraryBarcodeSection sections. They will not be renamed
+    however, so you can still access them by their original names.
+    This is to allow for the loading of tagged tool compounds for decoding.
+    Read the docs for more information.
 
     Parameters
     ----------
@@ -251,7 +279,7 @@ def _parse_sections_from_dict(data: dict) -> list[BarcodeSection]:
     _sections: list[BarcodeSection] = list()
 
     for section_name, section_info in data.items():
-        if re.match(r"^library$", section_name):
+        if re.match(r"^library$", section_name) or re.match(r"^tool$", section_name):
             _sections.append(
                 LibraryBarcodeSection(
                     section_name=section_name,
@@ -278,18 +306,17 @@ def _parse_sections_from_dict(data: dict) -> list[BarcodeSection]:
                     error_correction_mode=section_info.get("error_correction", "disable"),
                 )
             )
-        elif re.match(r"^compound_tag$", section_name):
-            _sections.append(
-                ToolCompoundBarcodeSection(
-                    section_name=section_name,
-                    section_tag=section_info["tag"],
-                    section_overhang=section_info.get("overhang", None),
-                    error_correction_mode=section_info.get("error_correction", "disable"),
-                )
-            )
         elif re.match(r"^umi$", section_name):
             _sections.append(
                 UMIBarcodeSection(
+                    section_name=section_name,
+                    section_tag=section_info["tag"],
+                    section_overhang=section_info.get("overhang"),
+                )
+            )
+        elif re.match(r"^tool_compound_ref$", section_name):
+            _sections.append(
+                ToolCompoundRefBarcodeSection(
                     section_name=section_name,
                     section_tag=section_info["tag"],
                     section_overhang=section_info.get("overhang"),
@@ -392,13 +419,15 @@ class BarcodeSchema(abc.ABC):
             self._library_section_idx = _library_sections[0][0]
 
         # check for umi section (optional)
-        self.umi_section: Optional[UMIBarcodeSection] = None
+        self.umi_section: UMIBarcodeSection
         self._umi_section_idx: int = -1
         _umi_section = [
             (i, section) for i, section in enumerate(self.barcode_sections) if isinstance(section, UMIBarcodeSection)
         ]
-        if len(_umi_section) > 1:
-            raise BarcodeSchemaError("barcode schemas can contain at most one umi barcode section")
+        if len(_umi_section) == 0:
+            raise BarcodeSchemaError("barcode schemas must contain a umi barcode section")
+        elif len(_umi_section) > 1:
+            raise BarcodeSchemaError("barcode schemas can contain only one umi barcode section")
         else:
             if _umi_section:
                 self.umi_section = _umi_section[0][1]
@@ -407,11 +436,16 @@ class BarcodeSchema(abc.ABC):
         # located other static sections that aren't library
         self.static_sections: list[StaticBarcodeSection] = list()
         self._static_sections_idxs: list[int] = list()
-
         for i, section in enumerate(self.barcode_sections):
             if isinstance(section, StaticBarcodeSection) and not isinstance(section, LibraryBarcodeSection):
                 self.static_sections.append(section)
                 self._static_sections_idxs.append(i)
+
+        # locate all the decode-able sections
+        self.decodeable_sections: list[DecodeableBarcodeSection] = list()
+        for section in self.barcode_sections:
+            if isinstance(section, DecodeableBarcodeSection):
+                self.decodeable_sections.append(section)
 
         # get the minimum length needed to extract info from a barcode match
         self.min_length: int
@@ -665,7 +699,7 @@ class BarcodeSchema(abc.ABC):
         )
         return slice(len_before, len_before + len_section)
 
-    def get_required_span(self, include_sections: Optional[list[str]]) -> tuple[int, int]:
+    def get_required_span(self, include_sections: Optional[list[str]] = None) -> tuple[int, int]:
         """
         Get the start and end span of the barcode that has all required sections
 
@@ -677,7 +711,7 @@ class BarcodeSchema(abc.ABC):
 
         Parameters
         ----------
-        include_sections: Optional[list[str]]
+        include_sections: list[str], optional
             list of barcode sections names to include in the span calculation
             that should also be included alongside the default required sections.
 
@@ -971,47 +1005,34 @@ class ToolCompoundBarcodeSchema(BarcodeSchema):
     """
     Barcode schema class for tool compounds
 
-    Tool compound barcode schemas hold an ordered list of BarcodeSections that make up
-    the full barcode definition.
-    Only LibraryBarcodeSection and ToolCompoundBarcodeSection are required.
-    While not required, only up to one (1) UMIBarcodeSection
-    However, not including these sections could limit what actions DELi
-    can carry out.
+    In a somewhat confusing nature, DELi treats tool compounds as libraries
+    when it comes to barcodes and decoding. In a sense they are a library containing
+    a single compound. A side effect of this is that tool compound barcode schemas
+    must contain a `LibraryBarcodeSection` section. Further confusing this is that
+    in the Tool compound barcode schema JSON files, this section is called 'tool' rather
+    than 'library'. Under the hood, DELi will treat 'tool' and 'library' sections the same.
+    The name difference is just for user clarity.
 
-    ALl other sections are "custom" (not special to DELi) and are optional and
-    allowed in any number. The only limitation is that all BarcodeSections have
-    unique section names.
+    You can read more about this in the docs.
 
-    Parameters
-    ----------
-    barcode_sections: list[BarcodeSection]
-        list of barcode sections *in order* for the barcode schema
-
-    Attributes
-    ----------
-    library_section: LibraryBarcodeSection
-        the library barcode section
-    tool_compound_section: ToolCompoundBarcodeSection
-        the tool compound barcode section
-    umi_section: Optional[UMIBarcodeSection]
-        the UMI barcode section if there is one, otherwise `None`
-    static_sections: List[StaticBarcodeSection]
-        list of all static barcode sections (excluding library section)
     """
 
     def __init__(self, barcode_sections: list[BarcodeSection]):
-        # check for tool compound section
-        _tool_compound_sections = [
-            (i, section)
-            for i, section in enumerate(barcode_sections)
-            if isinstance(section, ToolCompoundBarcodeSection)
+        self.tool_compound_ref_section: ToolCompoundRefBarcodeSection
+        _tool_compound_ref_sections = [
+            section for section in barcode_sections if isinstance(section, ToolCompoundRefBarcodeSection)
         ]
-        if len(_tool_compound_sections) == 0:
-            raise BarcodeSchemaError("barcode schemas must contain a tool compound barcode section")
-        elif len(_tool_compound_sections) > 1:
-            raise BarcodeSchemaError("barcode schemas must contain only one tool compound barcode section")
+        if len(_tool_compound_ref_sections) == 0:
+            raise BarcodeSchemaError(
+                "tool compound barcode schemas must contain a tool compound reference barcode section"
+            )
+        elif len(_tool_compound_ref_sections) > 1:
+            raise BarcodeSchemaError(
+                "tool compound barcode schemas can contain at most one tool compound reference barcode section"
+            )
         else:
-            self.tool_compound_section = _tool_compound_sections[0][1]
+            self.tool_compound_ref_section = _tool_compound_ref_sections[0]
+
         super().__init__(barcode_sections=barcode_sections)
 
     def get_required_section_names(self) -> list[str]:
@@ -1026,7 +1047,7 @@ class ToolCompoundBarcodeSchema(BarcodeSchema):
         list[str]
             list of required barcode section names
         """
-        required_sections: list[str] = [self.library_section.section_name, self.tool_compound_section.section_name]
+        required_sections: list[str] = [self.library_section.section_name, self.tool_compound_ref_section.section_name]
         if self.umi_section:
             required_sections.append(self.umi_section.section_name)
         return required_sections

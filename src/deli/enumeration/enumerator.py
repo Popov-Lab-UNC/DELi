@@ -12,7 +12,6 @@ from deli.dels.building_block import (
     BuildingBlockSet,
 )
 from deli.dels.compound import DELCompound, DELCompoundRaw
-from deli.utils import SmilesMixin
 
 from ..utils.mol_utils import ChemicalObjectError
 from .reaction import ReactionError, ReactionTree, ReactionVial
@@ -28,7 +27,7 @@ class EnumerationRunError(Exception):
     pass
 
 
-class EnumeratedDELCompoundRaw(DELCompoundRaw, SmilesMixin):
+class EnumeratedDELCompoundRaw(DELCompoundRaw):
     """
     Low memory DEL enumerated compound class
 
@@ -71,7 +70,7 @@ class EnumeratedDELCompoundRaw(DELCompoundRaw, SmilesMixin):
         self._mol = mol
 
 
-class EnumeratedDELCompound(DELCompound, SmilesMixin):
+class EnumeratedDELCompound(DELCompound):
     """
     DEL enumerated compound class
 

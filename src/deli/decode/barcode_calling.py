@@ -603,60 +603,62 @@ class HammingDistBarcodeCaller(HashMapBarcodeCaller[T]):
         return neighbors
 
 
-def get_barcode_caller(tag_map: dict[str, T], error_correction_mode_str: str) -> BarcodeCaller[T]:
+def get_barcode_caller(tag_map: dict[str, T], error_correction_mode_str: str | None = None) -> BarcodeCaller[T]:
     """
     Parse the error correction mode string and return a BarcodeCaller with those settings
-
-    Notes
-    -----
-    There are currently 4 error correction strings that can be parsed:
-    - "hamming_dist:<distance>" for Hamming distance based error correction
-    - "levenshtein_dist:<distance>" for Levenshtein distance based error correction
-    - "hamming_code:<name>" for a QuaternaryHammingBarcodeCaller that has been loaded.
-      Note: this is deprecated and will be removed in a future release
-    - "disable" to disable error correction
-
-    '<distance>' for the hamming_dist and levenshtein_dist modes refers to
-    the maximum distance cutoff for neighbors.
-
-    "hamming_dist_<distance>" and "levenshtein_dist_<distance>" also have an
-    asymmetric mode that can be triggered by adding "asymmetric" after the
-    distance separated by a ','. For example "hamming_dist:1,asymmetric".
 
     Parameters
     ----------
     tag_map: dict[str, Object]
         a dictionary mapping each valid tag to its associated object
-    error_correction_mode_str: str
-        the error correction mode string to parse
+    error_correction_mode_str: str | None
+        The error correction mode string to parse.
+        There are currently 4 error correction strings that can be parsed:
+        - "hamming_dist:<distance>" for Hamming distance based error correction
+        - "levenshtein_dist:<distance>" for Levenshtein distance based error correction
+        - "hamming_code:<name>" for a QuaternaryHammingBarcodeCaller that has been loaded.
+          Note: this is deprecated and will be removed in a future release
+        - "disable" to disable error correction; `None` is equivalent to "disable"
+
+        '<distance>' for the hamming_dist and levenshtein_dist modes refers to
+        the maximum distance cutoff for neighbors.
+
+        "hamming_dist_<distance>" and "levenshtein_dist_<distance>" also have an
+        asymmetric mode that can be triggered by adding "asymmetric" after the
+        distance separated by a ','. For example "hamming_dist:1,asymmetric".
 
     Returns
     -------
     BarcodeCaller[Object]
         the appropriate BarcodeCaller for the given error correction mode string
     """
-    # parse out the type and info from the error correction mode
+    # handle None input
+    if error_correction_mode_str is None:
+        _error_correction_mode_str = "disable"
+    else:
+        _error_correction_mode_str = error_correction_mode_str
+
     if len(tag_map) == 1:
         # if only one item, no need for error correction
         return SingleItemBarcodeCaller(list(tag_map.values())[0])
 
-    if error_correction_mode_str == "disable":
+    if _error_correction_mode_str == "disable":
         return GenericBarcodeCaller(tag_map=tag_map)
 
     try:
-        _correction_type, _correction_info = error_correction_mode_str.split(":")
+        _correction_type, _correction_info = _error_correction_mode_str.split(":")
     except ValueError as e:
-        if ":" not in error_correction_mode_str:
+        if ":" not in _error_correction_mode_str:
             raise BarcodeCallerError(
                 f"error correction mode "
-                f"{error_correction_mode_str} "
+                f"{_error_correction_mode_str} "
                 f"does not have a valid format; "
                 f"missing ':', should be '<type>:<info>'"
             ) from e
         else:
             raise BarcodeCallerError(
                 f"error correction mode "
-                f"{error_correction_mode_str} "
+                f"{_error_correction_mode_str} "
                 f"has too many reserved ':' characters; "
                 f" should be '<type>:<info>'"
             ) from e
@@ -671,7 +673,7 @@ def get_barcode_caller(tag_map: dict[str, T], error_correction_mode_str: str) ->
             _asymmetrical = True
         else:
             raise BarcodeCallerError(
-                f"error correction mode {error_correction_mode_str} has unrecognized information: {_splits[2:]}"
+                f"error correction mode {_error_correction_mode_str} has unrecognized information: {_splits[2:]}"
             )
         # check for valid integer
         try:
@@ -679,7 +681,7 @@ def get_barcode_caller(tag_map: dict[str, T], error_correction_mode_str: str) ->
         except ValueError as e:
             raise BarcodeCallerError(
                 f"error correction mode "
-                f"{error_correction_mode_str} "
+                f"{_error_correction_mode_str} "
                 f"does not have a valid <distance> for {_correction_info}; "
                 f"should be an integer"
             ) from e
@@ -705,12 +707,12 @@ def get_barcode_caller(tag_map: dict[str, T], error_correction_mode_str: str) ->
             return QuaternaryHammingBarcodeCaller.load(name=_correction_info, tag_map=tag_map)
         except DELiConfigError as e:
             raise BarcodeCallerError(
-                f"cannot find an QuaternaryHamming error corrector that matched the mode {error_correction_mode_str}"
+                f"cannot find an QuaternaryHamming error corrector that matched the mode {_error_correction_mode_str}"
             ) from e
     else:
         raise BarcodeCallerError(
             f"error correction mode "
-            f"{error_correction_mode_str} "
+            f"{_error_correction_mode_str} "
             f"has unrecognized error correction type '{_correction_type}'; "
             f"see docs for valid error correction types"
         )

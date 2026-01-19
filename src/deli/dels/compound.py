@@ -3,6 +3,8 @@
 import abc
 from typing import TYPE_CHECKING
 
+from deli.utils import SmilesMixin
+
 
 # for mypy to recognize the library type hints
 if TYPE_CHECKING:
@@ -40,7 +42,7 @@ class DELCompoundException(Exception):
     pass
 
 
-class Compound(abc.ABC):
+class Compound(abc.ABC, SmilesMixin):
     """
     Abstract base class compounds
 

@@ -10,7 +10,7 @@ from typing_extensions import Self
 
 from deli.dels.combinatorial import CombinatorialLibrary, DELibrary, DELibraryCollection
 from deli.dels.library import LibraryCollection
-from deli.dels.tool_compound import TaggedToolCompoundLibrary, ToolCompoundLibrary
+from deli.dels.tool_compound import TaggedToolCompound, ToolCompound
 from deli.dna.io import SequenceReader, get_reader
 
 
@@ -81,7 +81,7 @@ class Selection:
     def __init__(
         self,
         library_collection: LibraryCollection,
-        tool_compounds: Optional[Sequence[ToolCompoundLibrary]] = None,
+        tool_compounds: Optional[Sequence[ToolCompound]] = None,
         date_ran: datetime | None = None,
         target_id: str | None = None,
         selection_condition: str | None = None,
@@ -95,7 +95,7 @@ class Selection:
         ----------
         library_collection: LibraryCollection
             the library collection used in the selection
-        tool_compounds: Sequence[ToolCompoundLibrary] | None
+        tool_compounds: Sequence[ToolCompound] | None
             the tool compound libraries used in the selection, defaults to None if not provided
         date_ran: datetime | None
             the date the selection was run, defaults to now if None
@@ -109,7 +109,7 @@ class Selection:
             any additional information about the selection, defaults to None if not provided
         """
         self.library_collection: LibraryCollection = library_collection
-        self.tool_compounds: Sequence[ToolCompoundLibrary] = tool_compounds if tool_compounds else []
+        self.tool_compounds: Sequence[ToolCompound] = tool_compounds if tool_compounds else []
         self.selection_id = selection_id if selection_id else "Unknown"
         self.date_ran = date_ran
 
@@ -135,7 +135,7 @@ class Selection:
             the Selection object created from the dictionary
         """
         lib_collection = LibraryCollection([CombinatorialLibrary.load(lib) for lib in data["libraries"]])
-        tool_compounds = [ToolCompoundLibrary.load(tc) for tc in data.get("tool_compounds", [])]
+        tool_compounds = [ToolCompound.load(tc) for tc in data.get("tool_compounds", [])]
 
         return cls(
             library_collection=lib_collection,
@@ -179,7 +179,7 @@ class Selection:
             "selection_id": self.selection_id,
             "additional_info": self.selection_condition.additional_info,
             "libraries": [lib.library_id for lib in self.library_collection.libraries],
-            "tool_compounds": [tc.library_id for tc in self.tool_compounds],
+            "tool_compounds": [tc.compound_id for tc in self.tool_compounds],
         }
         return _data
 
@@ -201,7 +201,7 @@ class DELSelection(Selection):
     def __init__(
         self,
         library_collection: DELibraryCollection,
-        tool_compounds: Optional[Sequence[TaggedToolCompoundLibrary]] = None,
+        tool_compounds: Optional[Sequence[TaggedToolCompound]] = None,
         date_ran: Optional[datetime] = None,
         target_id: Optional[str] = None,
         selection_condition: Optional[str] = None,
@@ -215,7 +215,7 @@ class DELSelection(Selection):
         ----------
         library_collection: DELibraryCollection
             the library collection used in the selection
-        tool_compounds: Sequence[TaggedToolCompoundLibrary] | None
+        tool_compounds: Sequence[TaggedToolCompound] | None
             the tool compound libraries used in the selection, defaults to None if not provided
         date_ran: datetime | None
             the date the selection was run, defaults to now if None
@@ -238,7 +238,7 @@ class DELSelection(Selection):
             additional_info=additional_info,
         )
         self.library_collection: DELibraryCollection = library_collection  # for type checking
-        self.tool_compounds: Sequence[TaggedToolCompoundLibrary] = tool_compounds if tool_compounds else []
+        self.tool_compounds: Sequence[TaggedToolCompound] = tool_compounds if tool_compounds else []
 
     @classmethod
     def from_dict(cls, data: dict) -> "DELSelection":
@@ -256,7 +256,7 @@ class DELSelection(Selection):
             the Selection object created from the dictionary
         """
         lib_collection = DELibraryCollection([DELibrary.load(lib) for lib in data["libraries"]])
-        tool_compounds = [TaggedToolCompoundLibrary.load(tc) for tc in data.get("tool_compounds", [])]
+        tool_compounds = [TaggedToolCompound.load(tc) for tc in data.get("tool_compounds", [])]
 
         return cls(
             library_collection=lib_collection,
@@ -287,7 +287,7 @@ class SequencedSelection(DELSelection):
         self,
         library_collection: DELibraryCollection,
         sequence_reader: SequenceReader,
-        tool_compounds: Optional[Sequence[TaggedToolCompoundLibrary]] = None,
+        tool_compounds: Optional[Sequence[TaggedToolCompound]] = None,
         date_ran: Optional[datetime] = None,
         target_id: Optional[str] = None,
         selection_condition: Optional[str] = None,
@@ -348,7 +348,7 @@ class SequencedSelection(DELSelection):
             the Selection object created from the dictionary
         """
         lib_collection = DELibraryCollection([DELibrary.load(lib) for lib in data["libraries"]])
-        tool_compounds = [TaggedToolCompoundLibrary.load(tc) for tc in data.get("tool_compounds", [])]
+        tool_compounds = [TaggedToolCompound.load(tc) for tc in data.get("tool_compounds", [])]
         sequence_reader = get_reader(data["sequence_files"])
 
         return cls(

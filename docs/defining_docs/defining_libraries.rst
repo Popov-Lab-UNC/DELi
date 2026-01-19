@@ -251,8 +251,9 @@ It will also assert that the compound_id is unique from other doped compounds.
 .. warning::
     DELi **will not** check that doped compound ids are unique from any given compound
     id in the library. DEL compound ids are generated on the fly, and running an exhaustive check is
-    a waste of time. Make sure your ids will not conflict. You this is easy to do if you make sure the
-    DEL library id does not show up in the doped compound id.
+    a waste of time. Make sure your ids will not conflict. This is easy to do if you make sure the
+    DEL library id does not show up in the doped compound id, as all the DEL compounds will contain the
+    library ID.
 
 .. _reaction-sec-ref:
 
