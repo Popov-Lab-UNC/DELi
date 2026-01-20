@@ -207,7 +207,6 @@ class BuildingBlockBarcodeSection(DecodeableBarcodeSection):
         self.cycle_number = cycle_number
 
 
-# TODO make this a "random" barcode section subclass instead
 class UMIBarcodeSection(VariableBarcodeSection):
     """Class for UMI barcode sections"""
 
