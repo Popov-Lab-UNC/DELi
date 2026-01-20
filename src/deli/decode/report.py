@@ -140,7 +140,7 @@ def build_decoding_report(
         "target": "NA",
         "sequence_files": "NA",
         "timestamp": datetime.now().strftime("%b %d, %Y %H:%M"),
-        "libs": ", ".join(sorted(l[0] for l in libraries_)),
+        "libs": ", ".join(sorted(lib[0] for lib in libraries_)),
         "tool_compounds": [],
         "num_reads": stats.num_seqs_read,
         "num_decoded": stats.num_seqs_decoded,
@@ -156,7 +156,7 @@ def build_decoding_report(
             jinja_data["sequence_files"] = "- " + "<br>- ".join([str(f) for f in selection.sequence_files])
 
         if len(selection.tool_compounds) > 0:
-            tool_compound_ids = [comp.compound_id for comps in selection.tool_compounds for comp in comps.compounds]
+            tool_compound_ids = [comp.compound_id for comp in selection.tool_compounds]
             jinja_data["tool_compounds"] = "- " + "<br>- ".join(tool_compound_ids)
 
     # write the report as a rendered jinja2 template

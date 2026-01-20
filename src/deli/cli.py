@@ -1,6 +1,8 @@
 """command line functions for deli"""
 
+import ast
 import configparser
+import csv
 import datetime
 import logging
 import os
@@ -52,7 +54,7 @@ def _load_any_selection(selection: os.PathLike) -> Selection:
         try:
             return SequencedSelection.from_yaml(selection)
         except KeyError as e_:
-            if "sequence_files" in e_ or "libraries" in e_:
+            if ("sequence_files" in str(e_)) or ("libraries" in str(e_)):
                 logger.debug("selection file lacks sequencing info")
             else:
                 raise e_
@@ -61,7 +63,7 @@ def _load_any_selection(selection: os.PathLike) -> Selection:
         except (DeliDataNotFound, FileNotFoundError):
             logger.debug(f"failed to load libraries from selection file '{selection}'")
         except KeyError as e_:
-            if "libraries" not in e_:
+            if "libraries" not in str(e_):
                 raise e_
             logger.debug("selection file lacks DEL info")
         return Selection.from_yaml(selection)
@@ -347,6 +349,7 @@ def decode_group(ctx):
 @click.option("--save-fastq-info", "-q", is_flag=True, help="Save fastq file info to output")
 @click.option("--save-failed", "-f", is_flag=True, help="Save failed decoding results to a separate file")
 @click.option("--split-by-lib", "-s", is_flag=True, help="Save decoded results split by library")
+@click.option("--exclude-score", is_flag=True, help="Exclude scores from decoding results")
 @click.option("--skip-report", is_flag=True, help="Skip generating the decoding report at the end")
 @click.pass_context
 def run_decode(
@@ -358,18 +361,22 @@ def run_decode(
     save_fastq_info,
     save_failed,
     split_by_lib,
+    exclude_score,
     skip_report,
 ):
     """
     Decode DNA sequences from a DEL selection
 
-    DECODE is the path to a YAML file describing the decoding run settings.
+    DECODE-FILE is the path to a YAML configure file describing the DEL selection,
+    sequences, and decoding settings.
+
+    Some outputs are generated on the fly, stopping a job mid run can result
+    in partial output files.
 
     See the docs for a detailed description of output files generated.
-
     """
     from deli.decode.base import FailedDecodeAttempt
-    from deli.decode.decoder import DecodedDELCompound, DecodedToolCompound, DecodingSettings, SelectionDecoder
+    from deli.decode.decoder import DecodingSettings, SelectionDecoder
     from deli.dna.io import get_reader
     from deli.selection import SequencedSelection
 
@@ -402,27 +409,43 @@ def run_decode(
         prefix = selection.selection_id
     logger.debug(f"using output file prefix: '{prefix}'")
 
+    # determine output file fields
+    header: list[str] = []
+    if save_fastq_info:
+        header.extend(["fastq_file", "read_name"])
+    header.append("library_id")
+    if not exclude_score:
+        header.append("library_score")
+    header.append("bb_ids")
+    if not exclude_score:
+        header.append("bb_scores")
+    header.append("umi")
+    if not exclude_score:
+        header.append("overall_score")
+
     # handle output file locations
     if split_by_lib:
         decode_out_dir = out_dir_path / "decodes_by_library"
         decode_out_dir.mkdir(parents=False, exist_ok=False)
-        decoded_out_paths = {
-            library.library_id: open(decode_out_dir / f"{prefix}_{library.library_id}.tsv", "w")
-            for library in selection.library_collection.libraries
-        }
-        logger.info("saving decoded sequences per library to 'decode_out_dir'")
+        decoded_out_writers = dict()
+        for library in selection.library_collection.libraries:
+            writer = csv.DictWriter(
+                open(decode_out_dir / f"{prefix}_{library.library_id}.tsv", "w", newline=""),
+                fieldnames=header,
+                delimiter="\t",
+                extrasaction="ignore",
+            )
+            writer.writeheader()
+            decoded_out_writers[library.library_id] = writer
+        logger.info(f"saving decoded sequences per library to '{decode_out_dir}'")
     else:
         decoded_out_path = out_dir_path / f"{prefix}_decoded.tsv"
-        decoded_out_paths = {"all": open(decoded_out_path, "w")}
+        writer = csv.DictWriter(
+            open(decoded_out_path, "w", newline=""), fieldnames=header, delimiter="\t", extrasaction="ignore"
+        )
+        writer.writeheader()
+        decoded_out_writers = {"all": writer}
         logger.info(f"writing decoded sequences to: '{decoded_out_path}'")
-
-    # write headers
-    for file in decoded_out_paths.values():
-        header = ""
-        if save_fastq_info:
-            header += "fastq_file\tread_name\t"
-        header += "library_id\tbb_ids\tumi\tscore"
-        file.write(f"{header}\n")
 
     # handle failed decoding output file
     failed_out_file = None
@@ -465,27 +488,22 @@ def run_decode(
 
         else:  # write the decoded compound
             if split_by_lib:
-                out_file = decoded_out_paths[decoded_read.get_library_id()]
+                writer = decoded_out_writers[decoded_read.get_library_id()]
             else:
-                out_file = decoded_out_paths["all"]
+                writer = decoded_out_writers["all"]
 
-            line = ""
+            output_dict = decoded_read.to_decode_res_row_dict()
             if save_fastq_info:
-                line += f"{sequence_file}\t{sequence_record.name}\t"
-            if isinstance(decoded_read, DecodedDELCompound):
-                line += f"{decoded_read.get_library_id()}\t{','.join(decoded_read.building_block_ids)}\t"
-            elif isinstance(decoded_read, DecodedToolCompound):
-                line += f"{decoded_read.tool_compound.compound_id}\tnull\t"
-            line += f"{decoded_read.umi_str()}\t{decoded_read.get_score()}"
+                output_dict["fastq_file"] = str(sequence_file)
+                output_dict["read_name"] = sequence_record.name
+            writer.writerow(output_dict)
 
-            out_file.write(f"{line}\n")
-
-        if (i + 1) % 100000 == 0:
-            logger.debug(f"decoded {i + 1} sequences...")
+        if (i + 1) % 500000 == 0:
+            logger.debug(f"decoded {i + 1:,} sequences...")
 
     logger.info(f"finished decoding for selection '{selection.selection_id}'")
 
-    for file in decoded_out_paths.values():
+    for file in decoded_out_writers.values():
         file.close()
         logger.debug(f"closed file '{file}'")
 
@@ -505,6 +523,87 @@ def run_decode(
         report_file = out_dir_path / f"{prefix}_decode_report.html"
         build_decoding_report(stats=decoder.decode_stats, selection=selection, out_path=report_file)
         logger.info(f"wrote decoding report to: '{report_file}'")
+
+
+@decode_group.command(name="aggregate")
+@click.argument("decoded-reads", type=click.Path(exists=True), nargs=-1, required=True)
+@click.option(
+    "--score-threshold",
+    "-s",
+    type=click.INT,
+    required=False,
+    default=100,
+    help="Reject decoded compounds above this score",
+)
+@click.option(
+    "--count-threshold",
+    "-c",
+    type=click.INT,
+    required=False,
+    default=1,
+    help="Minimum count threshold for including compounds in output",
+)
+@click.option(
+    "--out-loc",
+    "-o",
+    type=click.Path(),
+    required=False,
+    default="./aggregated_decodes.json",
+    help="Output location to save aggregated decodes to; will add .json suffix if missing",
+)
+@click.option("--compress", "-z", is_flag=True, help="Compress output JSON with gzip")
+@click.pass_context
+def aggregate_decodes(ctx, decoded_reads, score_threshold, count_threshold, out_loc, compress):
+    """
+    Aggregate decoded reads from decoded TSV file(s) into a JSON count format
+
+    Aggregation is used to determine how many times each compound was decoded
+    and the unique UMIs (and their counts) associated with each compound.
+    """
+    import polars as pl
+
+    logger = ctx.obj["logger"]
+
+    # validate output directory
+    out_path = Path(out_loc).absolute()
+    if out_path.exists() and out_path.is_dir():
+        print(f"output location '{out_path}' is a directory; please provide a file path")
+        sys.exit(1)
+    if compress:
+        if out_path.suffixes[-2:] != [".json", ".gz"]:
+            if out_path.suffixes[-1] != ".json":
+                out_path = out_path.with_suffix(".json.gz")
+            else:
+                out_path = out_path.with_suffix(".gz")
+    else:
+        if out_path.suffix != ".json":
+            out_path = out_path.with_suffix(".json")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    logger.debug(f"writing aggregated decoded sequences to: '{out_path}'")
+
+    aggregated_decodes = (
+        pl.scan_csv(decoded_reads, has_header=True, separator="\t", ignore_errors=True)
+        .select(["library_id", "bb_ids", "umi", "overall_score"])
+        .filter(pl.col("overall_score") <= score_threshold)
+        .groupby(["library_id", "bb_ids"])
+        .agg(pl.col("umi"))
+        .filter(pl.col("umi").list.len() >= count_threshold)
+        .with_columns(
+            umi_counts=pl.col("umi").list.eval(pl.element().value_counts().struct.rename_fields(["k", "c"])),
+        )
+        .collect()
+    )
+    logger.info(f"found {len(aggregated_decodes)} compounds in decoded reads after filtering")
+
+    if compress:
+        import gzip
+
+        logger.debug("compressing output JSON with gzip")
+        with gzip.open(out_path, "wt") as out_file:
+            out_file.write(aggregated_decodes.write_ndjson())
+    else:
+        aggregated_decodes.write_ndjson(str(out_path))
+    logger.info(f"wrote aggregated decoded sequences to: '{out_path}'")
 
 
 @decode_group.command(name="report")
@@ -589,256 +688,100 @@ def degen_group(ctx):
 
 
 @degen_group.command(name="run")
-@click.argument("decode_files", type=click.Path(exists=True), nargs=-1, required=True)
-@click.option("--out-loc", "-o", type=click.Path(), required=False, default="./", help="Location to save results to")
-@click.option("--use-tqdm", "-t", is_flag=True, help="Show tqdm progress")
-@click.option("--counts", "-c", is_flag=True, help="Return counts only, no UMI information (CSV output)")
-@click.option("--raw-counts", "-r", is_flag=True, help="Include raw counts in output (only valid with --counts flag)")
+@click.argument("aggregated-compounds", type=click.Path(exists=True), required=True)
 @click.option(
-    "--skip-missing-umi", "-m", is_flag=True, help="Skip sequences without/missing UMIs rather than counting them"
-)
-@click.option(
-    "--score-threshold",
-    "-q",
-    type=click.INT,
-    required=False,
-    default=100,
-    help="Minimum score threshold for including decoded sequences in degeneration",
-)
-@click.pass_context
-def run_degen(ctx, decode_files, out_loc, use_tqdm, counts, raw_counts, skip_missing_umi, score_threshold):
-    """
-    Degenerate decoded sequences into compound counts based on UMIs
-
-    DECODE_FILES are the paths to the decoded TSV files to degenerate.
-
-    If --counts flag is used, the output will be a TSV file with compound counts only.
-    Otherwise, the output will be a JSON file with full UMI count information.
-
-    Note: Degeneration outputs must be in the UMI JSON format to be merged, using the
-    count CSV format will prevent future merging of degeneration outputs.
-
-    See the docs for a detailed description of output files generated.
-
-    """
-    from deli.decode.degen import DegenSettings, SelectionDegenerator
-
-    logger = ctx.obj["logger"]
-
-    suffix = ".csv" if counts else ".json"
-
-    # validate output directory
-    out_dir_path = Path(out_loc).absolute()
-    if out_dir_path.suffix == "":
-        out_dir_path = out_dir_path / f"degen_results{suffix}"
-    elif out_dir_path.suffix != suffix:
-        out_dir_path = out_dir_path.with_suffix(suffix)
-    out_dir_path.mkdir(parents=True, exist_ok=True)
-    logger.debug(f"writing degenerate sequences to '{out_dir_path}'")
-
-    settings = DegenSettings(ignore_missing_umi=skip_missing_umi)
-    degenerator = SelectionDegenerator(settings)
-
-    pg = tqdm(desc="degenerating decoded sequences", total=len(decode_files), disable=not use_tqdm)
-    _ticker = 0
-    for decode_file in decode_files:
-        logger.info(f"processing '{decode_file}'")
-        with open(decode_file, "r") as in_file:
-            header = in_file.readline().strip().split("\t")
-            bb_ids_index = header.index("bb_ids")
-            umi_index = header.index("umi")
-            lib_id_index = header.index("lib_id")
-            score_index = header.index("score")
-
-            for i, decode_line in enumerate(in_file):
-                splits = decode_line.strip().split("\t")
-
-                score = int(splits[score_index])
-                if score > score_threshold:
-                    logger.debug(f"skipping decoded sequence with score {score} below threshold {score_threshold}")
-                    continue
-
-                umi = splits[umi_index]
-                if skip_missing_umi and ((umi == "null") or (umi == "")):
-                    logger.debug("skipping decoded sequence with missing UMI")
-                    continue
-
-                lib_id = splits[lib_id_index]
-                bb_ids = splits[bb_ids_index].split(",") if splits[bb_ids_index] != "null" else []
-                del_id = tuple([lib_id] + bb_ids)
-
-                degenerator.degen_decoded_compound((del_id, umi))
-                pg.update(1)
-                _ticker += 1
-
-                if (i + 1) % 100000 == 0:
-                    logger.debug(f"processed {i + 1} decoded sequences from file '{decode_file}'")
-    pg.close()
-    logger.info(f"degeneration completed for {_ticker} decoded sequences from {len(decode_files)} files")
-
-    if counts:
-        logger.debug("writing output in counts TSV format")
-
-        with open(out_dir_path) as out_file:
-            header = "library_id\tbb_ids\tcount"
-            if raw_counts:
-                header += "\traw_count"
-            out_file.write(f"{header}\n")
-
-            for lib_id, lib_counter in degenerator.counter.items():
-                for bb_id_tuple, counter in lib_counter.counter.items():
-                    line = f"{lib_id}\t{','.join(bb_id_tuple)}\t{counter.degen_count}"
-                    if raw_counts:
-                        line += f"\t{counter.raw_count}"
-                    out_file.write(f"{line}\n")
-    else:
-        logger.debug("writing output in full UMI JSON format")
-        degenerator.write_json(out_dir_path)
-
-    logger.info(f"wrote degenerate sequences to '{out_dir_path}'")
-
-
-@degen_group.command(name="merge")
-@click.argument("degen_files", type=click.Path(exists=True), nargs=-1, required=True)
-@click.option(
-    "--out_loc",
+    "--out-loc",
     "-o",
     type=click.Path(),
     required=False,
-    default="./",
-    help="Location to save merged degeneration file to",
+    default="./degenerated_compounds.tsv",
+    help="Location to save results to",
 )
-@click.option("--counts", "-c", is_flag=True, help="Output merged file in counts TSV format instead of UMI JSON format")
-@click.option("--raw-counts", "-r", is_flag=True, help="Include raw counts in output (only valid with --counts flag)")
+@click.option("--raw-counts", "-r", is_flag=True, help="Include raw counts in output")
+@click.option("--cpd-ids", "-d", is_flag=True, help="Include full DEL compound IDs in output")
+@click.option(
+    "--count-threshold",
+    "-q",
+    type=click.INT,
+    required=False,
+    default=0,
+    help="Minimum score threshold for including decoded sequences in degeneration",
+)
+@click.option("--use-tqdm", "-t", is_flag=True, help="Show tqdm progress bar")
 @click.pass_context
-def merge_degen(ctx, degen_files, out_loc, counts, raw_counts):
+def run_degen(ctx, aggregated_compounds, out_loc, raw_counts, cpd_ids, count_threshold, use_tqdm):
     """
-    Merge multiple degeneration output files into a single file
+    Degenerate decoded sequences into compound counts based on UMIs
 
-    DEGEN_FILES are the paths to the degeneration output files to merge.
+    AGGREGATED_COMPOUNDS is the path to the aggregated decoded JSON file to degenerate.
 
-    All input files must be in the UMI JSON format to be merged.
+    Output will be a TSV file mapping compounds to their degenerated counts in a
+    See the Docs for more information on degeneration and the meaning of certain count values.
 
-    The merged output will be saved to 'merged_degen_<timestamp>.json' in the current working directory.
-
+    Note: Degeneration assumes that all decoded sequences have already been aggregated into unique
+    compound + UMI pairs with counts. Use the `deli decode aggregate` command to generate
+    the required aggregated decoded file from decoded TSV files.
     """
-    from deli.decode.degen import SelectionDegenerator, load_degenerator_from_json
+    from deli.dels.compound import generate_del_compound_id
 
     logger = ctx.obj["logger"]
 
-    suffix = ".csv" if counts else ".json"
-
-    # validate output directory
     out_loc_path = Path(out_loc).absolute()
-    if out_loc_path.suffix == "":
-        out_loc_path = out_loc_path / f"degen_results{suffix}"
-    elif out_loc_path.suffix != suffix:
-        out_loc_path = out_loc_path.with_suffix(suffix)
-    out_loc_path.mkdir(parents=True, exist_ok=True)
-    logger.debug(f"writing degenerate sequences to '{out_loc_path}'")
+    if out_loc_path.exists() and out_loc_path.is_dir():
+        print(f"output location '{out_loc_path}' is a directory; please provide a file path")
+        sys.exit(1)
+    if out_loc_path.suffix != ".tsv":
+        out_loc_path = out_loc_path.with_suffix(".tsv")
+    out_loc_path.parent.mkdir(parents=True, exist_ok=True)
+    logger.debug(f"writing degenerate sequences to: '{out_loc_path}'")
 
-    merged_degen = SelectionDegenerator()
+    compounds_json_path = Path(aggregated_compounds)
+    logger.info(f"loading aggregated decoded compounds from '{compounds_json_path}'")
+    if Path.suffix == ".gz":
+        import gzip
 
-    logger.info(f"merging {len(degen_files)} degeneration files")
-    for degen_file in degen_files:
-        logger.debug(f"loading degeneration file '{degen_file}'")
-        try:
-            degenerator = load_degenerator_from_json(degen_file)
-        except FileNotFoundError:
-            logger.error(f"degeneration file '{degen_file}' not found; skipping")
-            click.echo("cannot find degeneration file '{degen_file}'; skipped")
-            continue
-        except MemoryError:
-            logger.exception(f"ran out of memory loading degeneration file '{degen_file}'; dumping and aborting merge")
-            click.echo(
-                f"ran out of memory loading degeneration file '{degen_file}' "
-                f"dumping current merge and aborting the rest...\ntry running with more memory resources"
-            )
-            merged_degen.write_json(out_loc_path)
-            logger.info(f"wrote partial merged degeneration data to '{out_loc_path}'")
-            sys.exit(1)
-        except Exception as e:
-            logger.exception(f"failed to load degeneration file '{degen_file}': {e}'")
-            click.echo(
-                f"failed to parse degeneration file {degen_file}; is this a valid DELi degeneration output file?"
-            )
-            sys.exit(1)
-        merged_degen = merged_degen.merge_degenerator(degenerator)
-        logger.debug(f"merged degeneration data from '{degen_file}'")
-
-    logger.info(f"merged degeneration data from {len(degen_files)} files")
-
-    if counts:
-        logger.debug("writing merged output in counts TSV format")
-
-        with open(out_loc_path, "w") as out_file:
-            header = "library_id\tbb_ids\tcount"
-            if raw_counts:
-                header += "\traw_count"
-            out_file.write(f"{header}\n")
-
-            for lib_id, lib_counter in merged_degen.counter.items():
-                for bb_id_tuple, counter in lib_counter.counter.items():
-                    line = f"{lib_id}\t{','.join(bb_id_tuple)}\t{counter.degen_count}"
-                    if raw_counts:
-                        line += f"\t{counter.raw_count}"
-                    out_file.write(f"{line}\n")
+        logger.debug("decompressing file with gzip")
+        file = gzip.open(compounds_json_path, "rt")
     else:
-        logger.debug("writing merged output in full UMI JSON format")
-        merged_degen.write_json(out_loc_path)
-    logger.info(f"wrote merged degeneration data to '{out_loc_path}'")
+        file = open(compounds_json_path, "r")
 
+    header = ["lib_id", "bb_ids", "count"]
+    if raw_counts:
+        header.append("raw_count")
+    if cpd_ids:
+        header = ["compound_id"] + header
 
-@degen_group.command(name="count")
-@click.argument("degen_file", type=click.Path(exists=True, dir_okay=False), required=True)
-@click.option("--raw-counts", "-r", type=click.STRING, required=True, help="Include raw counts in output")
-@click.pass_context
-def count_degen(ctx, degen_file, raw_counts):
-    """
-    Count the total number of unique compounds in a degeneration output file
+    out_file = csv.DictWriter(
+        open(out_loc_path, "w", newline=""), fieldnames=header, delimiter="\t", extrasaction="ignore"
+    )
 
-    DEGEN_FILE is the path to the degeneration output file to count unique compounds from.
-
-    """
-    from deli.decode.degen import load_degenerator_from_json
-
-    logger = ctx.obj["logger"]
-
-    logger.debug(f"loading degeneration file '{degen_file}'")
-    try:
-        degenerator = load_degenerator_from_json(degen_file)
-    except MemoryError:
-        logger.exception(f"ran out of memory loading degeneration file '{degen_file}'")
-        click.echo(
-            f"ran out of memory loading degeneration file '{degen_file}'; try running with more memory resources"
-        )
-        sys.exit(1)
-    except Exception as e:
-        logger.exception(f"failed to load degeneration file '{degen_file}': {e}'")
-        click.echo(f"failed to parse degeneration file {degen_file}; is this a valid DELi degeneration output file?")
-        sys.exit(1)
-
-    cur_degen_path = Path(degen_file)
-    out_loc_path = (cur_degen_path.parent / cur_degen_path.stem).with_suffix(".tsv")
-    logger.debug(f"writing output to '{out_loc_path}'")
-
-    with open(out_loc_path, "w") as out_file:
-        header = "library_id\tbb_ids\tcount"
+    skipped = 0
+    passed = 0
+    for i, line in tqdm(enumerate(file), desc="degenerating compounds", disable=not use_tqdm):
+        cpd_info = ast.literal_eval(line)
+        # calculate degen counts
+        if cpd_ids:
+            cpd_info["compound_id"] = generate_del_compound_id(cpd_info["library_id"], cpd_info["bb_ids"].split(","))
         if raw_counts:
-            header += "\traw_count"
-        out_file.write(f"{header}\n")
+            cpd_info["raw_count"] = sum([count_struct["c"] for count_struct in cpd_info["umi_counts"]])
+        cpd_info["count"] = len(cpd_info["umi_counts"])
+        # check for count threshold
+        if cpd_info["count"] > count_threshold:
+            out_file.writerow(cpd_info)
+            passed += 1
+        else:
+            skipped += 1
 
-        _ticker = 0
-        for lib_id, lib_counter in degenerator.counter.items():
-            for bb_id_tuple, counter in lib_counter.counter.items():
-                line = f"{lib_id}\t{','.join(bb_id_tuple)}\t{counter.degen_count}"
-                if raw_counts:
-                    line += f"\t{counter.raw_count}"
-                out_file.write(f"{line}\n")
-                _ticker += 1
+        if ((i + 1) % 10000) == 0:
+            logger.debug(f"degenerated {i + 1:,} compounds...")
 
-    logger.info(f"counted {_ticker} unique compounds in degeneration file '{degen_file}'")
-    logger.info(f"wrote compound counts to '{out_loc_path}'")
+    logger.info(f"degenerated {passed} compounds")
+    if skipped > 0:
+        logger.info(
+            f"skipped {skipped} out of {skipped + passed} ({round((skipped / (skipped + passed)) * 100, 2)}%) "
+            f"compounds below count threshold of {count_threshold}"
+        )
+    logger.info(f"wrote degenerated compounds to '{out_loc_path}'")
 
 
 @cli.command(name="enumerate")
