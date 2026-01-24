@@ -46,6 +46,10 @@ class BarcodeSection:
             if len(set(self.section_overhang) - {"A", "C", "G", "T"}) != 0:
                 raise BarcodeSchemaError(f"barcode section {self.section_name} overhang contains invalid nucleotides")
 
+        # check that length of tag is at least 1
+        if len(self.section_tag) < 1:
+            raise BarcodeSchemaError(f"barcode section {self.section_name} must have a tag length of at least 1")
+
         # check for valid nucleotides in section tag (A,G,C,T,N)
         if len(set(self.section_tag) - {"A", "C", "G", "T", "N"}) != 0:
             raise BarcodeSchemaError(
@@ -198,13 +202,24 @@ class BuildingBlockBarcodeSection(DecodeableBarcodeSection):
             the error correction mode for the building block tags in this section
             the default is no error correction
         """
+        self.cycle_number = cycle_number
         super().__init__(
             section_name=section_name,
             section_tag=section_tag,
             section_overhang=section_overhang,
             error_correction_mode=error_correction_mode,
         )
-        self.cycle_number = cycle_number
+
+    def _validate(self):
+        """Validate that all nucleotides are variable 'N'"""
+        super()._validate()
+        try:
+            self.cycle_number = int(self.cycle_number)
+        except TypeError as e:
+            raise BarcodeSchemaError("cycle number for building block barcode section must be an integer") from e
+
+        if self.cycle_number < 1:
+            raise BarcodeSchemaError("cycle number for building block barcode section must be >= 1")
 
 
 class UMIBarcodeSection(VariableBarcodeSection):
@@ -219,8 +234,8 @@ class StaticBarcodeSection(BarcodeSection):
     def _validate(self):
         """Validate that all nucleotides are known and valid"""
         super()._validate()
-        if isinstance(self.section_overhang, str):
-            if len(set(self.section_overhang) - {"A", "C", "G", "T"}) != 0:
+        if isinstance(self.section_tag, str):
+            if len(set(self.section_tag) - {"A", "C", "G", "T"}) != 0:
                 raise BarcodeSchemaError(
                     f"barcode section {self.section_name} contains invalid nucleotides: {self.section_tag}"
                 )
@@ -246,6 +261,8 @@ class ToolCompoundRefBarcodeSection(StaticBarcodeSection):
 
 class MixedBarcodeSection(BarcodeSection):
     """Mixed barcode sections can have both static and variable regions"""
+
+    pass
 
 
 def _parse_sections_from_dict(data: dict) -> list[BarcodeSection]:
@@ -731,7 +748,7 @@ class BarcodeSchema(abc.ABC):
         for section in self._barcode_section_map.keys():
             if section in required_sections:
                 section_start = self.get_length_before_section(section)
-                section_end = section_start + len(section)
+                section_end = section_start + len(self[section])
                 if section_start < min_start:
                     min_start = section_start
                 if section_end > max_end:
