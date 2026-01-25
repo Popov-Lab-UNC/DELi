@@ -264,6 +264,17 @@ class BuildingBlock(BaseBuildingBlock, SmilesMixin):
         """
         return False
 
+    @staticmethod
+    def is_real() -> bool:
+        """
+        Check if building block is a real (non-fake) building block
+
+        Returns
+        -------
+        bool
+        """
+        return True
+
 
 class NullBuildingBlock(BuildingBlock):
     """
@@ -416,6 +427,44 @@ class TaggedNullBuildingBlock(TaggedBuildingBlock):
         return True
 
 
+class TaggedFakeBuildingBlock(TaggedNullBuildingBlock):
+    """
+    Define a fake tagged building block
+
+    Fake tagged building blocks are a special type of Null building block, one that is
+    artificially created for decoding purposes only. Like Null blocks, they are not used
+    for enumeration, but unlike Null blocks, they are not used during synthesis.
+
+    This is useful for representing compounds within a DEL that follow the same barcode tag
+    design, but actually map to compounds that were not synthesized within the DEL and added in
+    after. For example, spiked-in controls or known binders added to the pool after synthesis.
+
+    These only exist in a tagged form, since they are not part of the chemical synthesis.
+    Thus using them outside a DNA decoding context is meaningless.
+
+    Parameters
+    ----------
+    bb_id: str
+        building block id
+    tag: str | list[str]
+        the dna tag associated with this building block
+    """
+
+    def __init__(self, bb_id: str, tag: str | list[str]):
+        super().__init__(bb_id=bb_id, tag=tag)
+
+    @staticmethod
+    def is_real() -> bool:
+        """
+        Check if building block is a real (non-fake) building block
+
+        Returns
+        -------
+        bool
+        """
+        return False
+
+
 class BuildingBlockSet(DeliDataLoadable):
     """
     Holds a set of building blocks
@@ -450,6 +499,8 @@ class BuildingBlockSet(DeliDataLoadable):
             )
 
         self.building_blocks = building_blocks
+        self.num_building_blocks = len([bb for bb in self.building_blocks if bb.is_real()])
+
         self._validate_bb_set()
 
         self._bb_lookup_table = {bb.bb_id: i for i, bb in enumerate(self.building_blocks)}
@@ -617,8 +668,8 @@ class BuildingBlockSet(DeliDataLoadable):
         return cls(_set_id, _building_blocks)
 
     def __len__(self):
-        """Get the number of building blocks in the set"""
-        return len(self.building_blocks)
+        """Get the number of *real* building blocks in the set"""
+        return self.num_building_blocks
 
     def __iter__(self):
         """Iterate over the building blocks"""
@@ -908,9 +959,23 @@ class TaggedBuildingBlockSet(BuildingBlockSet):
                     )
                 _tag_set.add(tag)
 
+    @property
+    def tag_map(self) -> dict[str, TaggedBuildingBlock]:
+        """
+        Get a mapping from tag to building block
+
+        Returns
+        -------
+        dict[str, TaggedBuildingBlock]
+            mapping from tag to building block
+        """
+        return {tag: self.building_blocks[i] for tag, i in self._dna_lookup_table.items()}
+
     @classmethod
     @accept_deli_data_name(sub_dir="building_blocks", extension="csv")
-    def load(cls, path: str, check_for_smiles: bool = False) -> "TaggedBuildingBlockSet":
+    def load(
+        cls, path: str, check_for_smiles: bool = False, include_fake_tags: Optional[dict[str, str | list[str]]] = None
+    ) -> "TaggedBuildingBlockSet":
         """
         Load a tagged building block set from the DELi data directory
 
@@ -928,6 +993,11 @@ class TaggedBuildingBlockSet(BuildingBlockSet):
         check_for_smiles: bool, default = False
             if `True` will check that the building block file has a SMILES column
             *will not* check that all SMILES are valid or present for all compounds
+        include_fake_tags: Optional[dict[str, str | list[str]]], default = None
+            If provided, will include fake tagged building blocks in the set.
+            These are provided as a dictionary mapping from bb_id to tag(s).
+            This is meant to support spiked-in controls (`DopedToolCompounds`)
+            that are part of the building block set only from a decoding perspective.
 
         Returns
         -------
@@ -939,7 +1009,11 @@ class TaggedBuildingBlockSet(BuildingBlockSet):
 
     @classmethod
     def load_from_csv(
-        cls, path: str, set_id: Optional[str] = None, check_for_smiles: bool = False
+        cls,
+        path: str,
+        set_id: Optional[str] = None,
+        check_for_smiles: bool = False,
+        include_fake_tags: Optional[dict[str, str | list[str]]] = None,
     ) -> "TaggedBuildingBlockSet":
         """
         Read a tagged building block set from a csv file
@@ -961,6 +1035,11 @@ class TaggedBuildingBlockSet(BuildingBlockSet):
         check_for_smiles: bool, default = False
             if `True` will check that the building block file has a SMILES column
             *will not* check that all SMILES are valid or present for all compounds
+        include_fake_tags: Optional[dict[str, str | list[str]]], default = None
+            If provided, will include fake tagged building blocks in the set.
+            These are provided as a dictionary mapping from bb_id to tag(s).
+            This is meant to support spiked-in controls (`DopedToolCompounds`)
+            that are part of the building block set only from a decoding perspective.
 
         Returns
         -------
@@ -1026,6 +1105,12 @@ class TaggedBuildingBlockSet(BuildingBlockSet):
                             TaggedBuildingBlock(bb_id=_id, smiles=_smiles, tag=_tag, subset_id=_subset)
                         )
                     _building_block_map[_id] = _building_blocks[-1]
+
+        # include any fake tagged building blocks
+        if include_fake_tags is not None:
+            for bb_id, tags in include_fake_tags.items():
+                _building_blocks.append(TaggedFakeBuildingBlock(bb_id=bb_id, tag=tags))
+
         return cls(_set_id, _building_blocks)
 
     @overload

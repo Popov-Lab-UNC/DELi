@@ -130,6 +130,8 @@ class _DeliConfig:
         else:
             self.hamming_codes = {}
 
+        self.location = Path.home() / ".deli"
+
     @property
     def deli_data_dir(self) -> Path:
         if self._deli_data_dir is None:
@@ -324,12 +326,14 @@ class _DeliConfig:
                     )
                 _codes[name] = (_true_order_nums, _real_order_nums)
 
-        return cls(
+        _config = cls(
             deli_data_dir=_deli_data_dir_path,
             bb_mask=_bb_mask,
             nuc_2_int=_nuc_2_int,
             hamming_codes=_codes,
         )
+        _config.location = Path(path).resolve().absolute()
+        return _config
 
     def get_hamming_code(self, name: str) -> tuple[list[int], list[int]]:
         """
@@ -429,12 +433,12 @@ def init_deli_config(
     fail_on_exist: bool = True,
 ):
     """
-    Create a default Deli config directory
+    Create a default Deli config file
 
     Parameters
     ----------
     path: Optional[Path], default = None
-        path to create deli config dir at
+        path to create deli config file at
         will be at $USER/.deli if left as None
     fail_on_exist: bool, default = True
         if True, will raise an exception if the directory path already exists

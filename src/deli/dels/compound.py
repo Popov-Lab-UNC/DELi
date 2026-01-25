@@ -3,13 +3,18 @@
 import abc
 from typing import TYPE_CHECKING
 
+from deli.utils import SmilesMixin
+
 
 # for mypy to recognize the library type hints
 if TYPE_CHECKING:
     from deli.enumeration.enumerator import EnumeratedDELCompound
 
     from .building_block import BuildingBlock
-    from .combinatorial import CombinatorialLibrary, LibraryCollection
+    from .combinatorial import CombinatorialLibrary
+    from .library import LibraryCollection
+
+COMPOUND_ID_SEPARATOR = "-"
 
 
 def generate_del_compound_id(library_id: str, building_blocks: list[str]) -> str:
@@ -28,7 +33,7 @@ def generate_del_compound_id(library_id: str, building_blocks: list[str]) -> str
     str
         The generated compound ID.
     """
-    return f"{library_id}-" + "-".join(building_blocks)
+    return f"{library_id}{COMPOUND_ID_SEPARATOR}" + COMPOUND_ID_SEPARATOR.join(building_blocks)
 
 
 class DELCompoundException(Exception):
@@ -37,7 +42,7 @@ class DELCompoundException(Exception):
     pass
 
 
-class Compound(abc.ABC):
+class Compound(abc.ABC, SmilesMixin):
     """
     Abstract base class compounds
 

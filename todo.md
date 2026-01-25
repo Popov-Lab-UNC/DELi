@@ -10,7 +10,7 @@ Below is a *rough* outline of which features we hope to add and when we think th
 - [ ] UMI clustering
 - [ ] Improved logging and configuration for decoding module
 - [*] Support for tool compounds
-- [ ] Support for Null building blocks
+- [*] Support for Null building blocks
 
 2026 Q1
 - [ ] Overhaul of analysis module, specifically the code class to be more generalizable to all file inputs (will result in a major version bump)

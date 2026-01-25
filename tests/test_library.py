@@ -88,7 +88,7 @@ def test_iter_bb_barcode_sections_and_sets(del_library1: DELibrary):
 @pytest.mark.unit
 def test_create_library_pool(del_library1, del_library2):
     """Test creating a DELibraryCollection from multiple DELibraries"""
-    with pytest.raises(LibraryBuildError, match="multiple libraries share identical `library_id`"):
+    with pytest.raises(KeyError, match="multiple libraries share identical `library_id`"):
         DELibraryCollection([del_library1, del_library1])
 
     pool = DELibraryCollection([del_library1, del_library2])
