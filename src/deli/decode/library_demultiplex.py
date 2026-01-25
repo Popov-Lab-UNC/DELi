@@ -668,7 +668,9 @@ class _RegexQuery(_Query["_RegexMatch"]):
             if i < len(self._sec_name2seq) - 1:  # flanked by other sections
                 key = (section_names[i], section_names[i + 1])
                 min_dist, max_dist = self._dist_between_section[key]
-                self.pattern += f".{{{min_dist - 5},{max_dist + 5}}}"
+                # the max(min_dist - 5, 0) ensures we don't have negative lower bounds, which results in a silent
+                # regex failure
+                self.pattern += f".{{{max(min_dist - 5, 0)},{max_dist + 5}}}"  # 5 bp buffer for INDELs
         self.compiled_pattern: Pattern = compile(self.pattern, BESTMATCH)
 
     def __hash__(self):
@@ -1349,16 +1351,10 @@ class LibraryTagRegexLibraryDemultiplexer(LibraryTagLibraryDemultiplexer[_RegexQ
         """
         queries: list[_RegexQuery] = list()
         for library in self.all_libraries:
-            before_lib_section_names = [
-                sec.section_name for sec in library.barcode_schema.get_static_sections_before_library()
-            ]
-            after_lib_section_names = [
-                sec.section_name for sec in library.barcode_schema.get_static_sections_after_library()
-            ]
             queries.append(
                 _RegexQuery(
                     libraries=[library],
-                    section_names=tuple(before_lib_section_names + ["library"] + after_lib_section_names),
+                    section_names=("library",),
                     error_tolerance=self.library_error_tolerance,
                 )
             )
@@ -1950,7 +1946,7 @@ class FullSeqAlignmentLibraryDemultiplexer(LibraryDemultiplexer):
         super().__init__(libraries=libraries, tool_compounds=tool_compounds, revcomp=revcomp, **kwargs)
 
         self.aligners = [
-            BarcodeAligner(library.barcode_schema, include_library_section=False) for library in self.libraries
+            BarcodeAligner(library.barcode_schema, include_library_section=False) for library in self.all_libraries
         ]
 
     def demultiplex(
@@ -1959,7 +1955,7 @@ class FullSeqAlignmentLibraryDemultiplexer(LibraryDemultiplexer):
         """See :meth:`~deli.decode.library_demultiplexer.LibraryDemultiplexer.demultiplex`."""
         best_alignments: tuple[ValidLibraryCall, Iterator[tuple[AlignedSeq, float]]] | None = None
         best_score = 0.0
-        for library, aligner in zip(self.libraries, self.aligners, strict=False):
+        for library, aligner in zip(self.all_libraries, self.aligners, strict=False):
             alignments = aligner.align_sequence(sequence)
             alignment, score = alignments.__next__()
             if score > best_score:

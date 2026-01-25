@@ -180,7 +180,8 @@ C = TypeVar("C", bound="Compound")
 class DecodedCompound(abc.ABC, Generic[C]):
     """Base class for compounds that were decoded from a DNA read"""
 
-    umi: UMI
+    def __init__(self, umi: UMI):
+        self.umi: UMI = umi
 
     @abc.abstractmethod
     def to_compound(self) -> C:
@@ -215,9 +216,9 @@ class DecodedCompound(abc.ABC, Generic[C]):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def to_decode_res_row_dict(self) -> dict[str, str]:
+    def get_decode_res_info(self) -> dict[str, str]:
         """
-        Convert the decoded compound to a dictionary of values for writing to a decode results file
+        Collect the info needed for writing to a decode results file
 
         Dictionary keys will be:
         - "bb_ids":
@@ -308,7 +309,7 @@ class DecodedDELCompound(DecodedCompound[DELCompound]):
     ):
         self.library = library
         self.building_block_calls = building_block_calls
-        self.umi = umi
+        super().__init__(umi=umi)
 
     def to_compound(self) -> DELCompound:
         """
@@ -367,9 +368,9 @@ class DecodedDELCompound(DecodedCompound[DELCompound]):
             row_dict[f"bb{idx}_smiles"] = bb.smi if bb.has_smiles() else "null"
         return row_dict
 
-    def to_decode_res_row_dict(self) -> dict[str, str]:
+    def get_decode_res_info(self) -> dict[str, str]:
         """
-        Convert the decoded DEL compound to a dictionary of values for writing to a decode results file
+        Collect the info needed for writing to a decode results file
 
         Dictionary keys will be:
         - "bb_ids":
@@ -449,9 +450,11 @@ class DecodedToolCompound(DecodedCompound[ToolCompound]):
         self,
         tool_compound: ToolCompound,
         alignment_score: float,
+        umi: UMI,
     ):
         self.alignment_score = alignment_score
         self.tool_compound: ToolCompound = tool_compound
+        super().__init__(umi=umi)
 
     def to_compound(self) -> ToolCompound:
         """
@@ -491,9 +494,9 @@ class DecodedToolCompound(DecodedCompound[ToolCompound]):
                 "compound_id": self.tool_compound.compound_id,
             }
 
-    def to_decode_res_row_dict(self) -> dict[str, str]:
+    def get_decode_res_info(self) -> dict[str, str]:
         """
-        Convert the decoded tool compound to a dictionary of values for writing to a decode results file
+        Collect the info needed for writing to a decode results file
 
         Since Tool compounds have no decodable sections, only will have the UMI key
 
@@ -518,13 +521,13 @@ class DecodedToolCompound(DecodedCompound[ToolCompound]):
 
         Raises
         ------
-        ValueError
+        RuntimeError
             if the tool compound has no SMILES
         """
         if self.tool_compound.has_smiles():
             return self.tool_compound.smi
         else:
-            raise ValueError(f"Single compound {self.tool_compound.compound_id} has no SMILES")
+            raise RuntimeError(f"Single compound {self.tool_compound.compound_id} has no SMILES")
 
     def get_library_id(self) -> str:
         """
@@ -659,7 +662,7 @@ def _decode_section_first_greedy(
     for scan_length in (true_length, true_length - 1, true_length + 1):  # sub, del, insert
         scan_start = 0
         scan_stop = scan_length
-        while scan_stop < len(codon):
+        while scan_stop <= len(codon):
             scan_codon = codon[scan_start:scan_stop]
             call = caller.decode_barcode(scan_codon)
             if not isinstance(call, FailedBarcodeLookup):
@@ -717,11 +720,11 @@ def _decode_section_best_greedy(
     for scan_length in (true_length, true_length - 1, true_length + 1):  # sub, insert, del
         scan_start = 0
         scan_stop = scan_length
-        while scan_stop < len(codon):
+        while scan_stop <= len(codon):
             scan_codon = codon[scan_start:scan_stop]
             call = caller.decode_barcode(scan_codon)
             if not isinstance(call, FailedBarcodeLookup):
-                if best_score == 0:  # perfect match found; can stop searching
+                if call.score == 0:  # perfect match found; can stop searching
                     return call, scan_start, scan_stop
 
                 if fail_on_conflict and (best_score == call.score):
@@ -784,7 +787,7 @@ def _decode_section_return_all(
     for scan_length in (true_length, true_length - 1, true_length + 1):  # sub, insert, del
         scan_start = 0
         scan_stop = scan_length
-        while scan_stop < len(codon):
+        while scan_stop <= len(codon):
             scan_codon = codon[scan_start:scan_stop]
             call = caller.decode_barcode(scan_codon)
             if not isinstance(call, FailedBarcodeLookup):
@@ -940,7 +943,8 @@ class DELibraryDecoder(_SequenceDecoder):
 
             # update current position and global adj
             cur_position = start + call_stop
-            global_adj += (call_stop - call_start) - (stop - start)
+            # account for wiggle that added 1 by subbing it of the stop again
+            global_adj += (call_stop - call_start) - (stop - start - self.wiggle)
 
         # call the UMI
         umi_call: UMI
@@ -993,6 +997,7 @@ class DELibraryDecoder(_SequenceDecoder):
             return DecodedToolCompound(
                 tool_compound=self.library.get_tool_compound(tool_ids[0]),
                 alignment_score=sum(bb_call.score for bb_call in called_secs.values()),
+                umi=umi_call,
             )
 
 
@@ -1048,6 +1053,13 @@ class ToolCompoundDecoder(_SequenceDecoder):
             return DecodedToolCompound(
                 tool_compound=self.tagged_tool_compound,
                 alignment_score=float(distance),
+                umi=UMI(
+                    aligned_sequence.sequence.sequence[
+                        aligned_sequence.section_spans["umi"][0] : len(
+                            self.tagged_tool_compound.barcode_schema.umi_section.section_tag
+                        )
+                    ]
+                ),
             )
 
 
@@ -1092,7 +1104,7 @@ class DecodedCollectionCompound:
             "library_score": str(self.library_call.score),
             "overall_score": str(self.get_overall_score()),
         }
-        row_dict.update(self.decoded_compound.to_decode_res_row_dict())
+        row_dict.update(self.decoded_compound.get_decode_res_info())
         return row_dict
 
     def get_library_id(self) -> str:
@@ -1117,6 +1129,11 @@ class DELCollectionDecoder:
         the library demultiplexer to use for calling libraries
     wiggle: bool, default = False
         If true, allow for wiggling the tag to find the best match
+    global_adjustment: bool, default = False
+        If true, adjust the positions of later sections based on indels found in earlier sections
+        when decoding a read.
+        Note: Should only be used when the alignment method is not flanking, since flanking alignments
+        already account for indels in the barcode region.
     max_read_length: int or None, default = None
         maximum length of a read to be considered for decoding
         if above the max, decoding will fail
@@ -1143,6 +1160,7 @@ class DELCollectionDecoder:
         self,
         library_demultiplexer: LibraryDemultiplexer,
         wiggle: bool = False,
+        global_adjustment: bool = False,
         max_read_length: Optional[int] = None,
         min_read_length: Optional[int] = None,
         default_error_correction_mode_str: str = "levenshtein_dist:1,asymmetrical",
@@ -1158,7 +1176,10 @@ class DELCollectionDecoder:
         for library in self.library_demultiplexer.all_libraries:
             if isinstance(library, DELibrary):
                 self.library_decoders[library] = DELibraryDecoder(
-                    library=library, wiggle=wiggle, default_error_correction_mode_str=default_error_correction_mode_str
+                    library=library,
+                    wiggle=wiggle,
+                    default_error_correction_mode_str=default_error_correction_mode_str,
+                    global_adjustment=global_adjustment,
                 )
             elif isinstance(library, ToolCompoundLibrary_):
                 self.library_decoders[library] = ToolCompoundDecoder(
@@ -1434,6 +1455,8 @@ class SelectionDecoder:
             library_demultiplexer=demultiplexer,
             decode_statistics=self.decode_stats,
             wiggle=self.decode_settings.wiggle,
+            global_adjustment=self.decode_settings.demultiplexer_mode == "single"
+            and (not self.decode_settings.realign),
             max_read_length=self.decode_settings.max_read_length,
             min_read_length=self.decode_settings.min_read_length,
             default_error_correction_mode_str=self.decode_settings.default_error_correction_mode_str,

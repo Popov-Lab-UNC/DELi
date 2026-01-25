@@ -281,7 +281,28 @@ class DELSelection(Selection):
 
 
 class SequencedSelection(DELSelection):
-    """Represents a selection made with a DEL collection that has been sequenced"""
+    """
+    Represents a selection made with a DEL collection that has been sequenced
+
+    Parameters
+    ----------
+    library_collection: DELibraryCollection
+        the library collection used in the selection
+    sequence_reader: SequenceReader
+        the list of barcode files for the selection
+    tool_compounds: Sequence[TaggedToolCompoundLibrary] | None
+        the tool compound libraries used in the selection, defaults to None if not provided
+    date_ran: datetime | None
+        the date the selection was run, defaults to now if None
+    target_id: str | None
+        the target id for the selection, defaults to None if not provided
+    selection_condition: str | None
+        the selection condition, defaults to None if not provided
+    selection_id: str | None
+        the unique id for this selection, defaults to None if not provided
+    additional_info: str | None
+        any additional information about the selection, defaults to None if not provided
+    """
 
     def __init__(
         self,
@@ -294,28 +315,7 @@ class SequencedSelection(DELSelection):
         selection_id: Optional[str] = None,
         additional_info: Optional[str] = None,
     ):
-        """
-        Initialize a Selection object.
-
-        Parameters
-        ----------
-        library_collection: DELibraryCollection
-            the library collection used in the selection
-        sequence_reader: SequenceReader
-            the list of barcode files for the selection
-        tool_compounds: Sequence[TaggedToolCompoundLibrary] | None
-            the tool compound libraries used in the selection, defaults to None if not provided
-        date_ran: datetime | None
-            the date the selection was run, defaults to now if None
-        target_id: str | None
-            the target id for the selection, defaults to None if not provided
-        selection_condition: str | None
-            the selection condition, defaults to None if not provided
-        selection_id: str | None
-            the unique id for this selection, defaults to None if not provided
-        additional_info: str | None
-            any additional information about the selection, defaults to None if not provided
-        """
+        """Initialize a Selection object."""
         super().__init__(
             library_collection=library_collection,
             tool_compounds=tool_compounds,

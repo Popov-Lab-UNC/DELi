@@ -504,7 +504,6 @@ def run_decode(
     logger.info(f"finished decoding for selection '{selection.selection_id}'")
 
     for file in decoded_out_writers.values():
-        file.close()
         logger.debug(f"closed file '{file}'")
 
     if failed_out_file is not None:
@@ -512,7 +511,7 @@ def run_decode(
         logger.debug(f"closed file '{failed_out_file}'")
 
     # handle writing statistics and report file
-    statistics_file = out_dir_path / "decode_statistics.json"
+    statistics_file = out_dir_path / f"{prefix}_decode_statistics.json"
     decoder.decode_stats.to_file(statistics_file)
     logger.info(f"wrote decoding statistics to: '{statistics_file}'")
 

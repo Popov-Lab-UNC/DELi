@@ -85,7 +85,7 @@
         <p>Target: {{ target }}</p>
         <p>Read sequence files:<br> {{ sequence_files }} </p>
         <p>Searched for libraries: {{ libs }}</p>
-        {% if len(tool_compounds) > 1 %}
+        {% if tool_compounds and tool_compounds|length > 1 %}
             <p>Searched for tool compounds: {{ tool_compounds }}</p>
         {% endif %}
         <h5>Total sequences: {{ num_reads }}</h5>
