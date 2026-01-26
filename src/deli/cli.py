@@ -294,7 +294,6 @@ def click_set_deli_data_dir(ctx, path, update_config):
 
     # update the config with the new data directory if requested
     if update_config:
-        logger = ctx.obj["logger"]
         _config_path = ctx.obj["deli_config"].location
         if _config_path.exists():
             _config = configparser.RawConfigParser()
@@ -302,11 +301,12 @@ def click_set_deli_data_dir(ctx, path, update_config):
                 _config.read(os.path.normpath(_config_path))
                 _config["deli.data"]["deli_data_dir"] = str(_path.resolve())
             except Exception as e:
-                logger.error(e)
-                click.echo(f"Failed to parse DELi config file at '{_config_path}'\nIs this a valid DELi config file?")
+                click.echo(
+                    f"Failed to parse DELi config file at '{_config_path}'\nIs this a valid DELi config file?"
+                    f"\nError details: {e}"
+                )
                 sys.exit(1)
             _config.write(open(_config_path, "w"), True)
-            logger.debug(f"updated DELi config with deli data directory at '{_path}'")
             click.echo(f"DELi config file at {_config_path} updated")
             sys.exit(0)
         else:
@@ -556,6 +556,16 @@ def aggregate_decodes(ctx, decoded_reads, score_threshold, count_threshold, out_
     """
     Aggregate decoded reads from decoded TSV file(s) into a JSON count format
 
+    JSON will be new line delimited (NDJSON), with each line representing a unique compound
+    as a dictionary with the following fields:
+    - library_id: str
+        The library ID the compound belongs to
+    - bb_ids: str
+        The building block IDs of the compound, joined by commas
+    - umi_counts: list[dict]
+        A list of dictionaries, each with keys 'k' and 'c' representing the unique
+        UMIs ('k') and their counts ('c') associated with this compound
+
     Aggregation is used to determine how many times each compound was decoded
     and the unique UMIs (and their counts) associated with each compound.
     """
@@ -566,7 +576,9 @@ def aggregate_decodes(ctx, decoded_reads, score_threshold, count_threshold, out_
     # validate output directory
     out_path = Path(out_loc).absolute()
     if out_path.exists() and out_path.is_dir():
-        print(f"output location '{out_path}' is a directory; please provide a file path")
+        msg = f"output location '{out_path}' is a directory; please provide a file path"
+        logger.error(msg)
+        click.echo(msg)
         sys.exit(1)
     if compress:
         if out_path.suffixes[-2:] != [".json", ".gz"]:
@@ -580,7 +592,21 @@ def aggregate_decodes(ctx, decoded_reads, score_threshold, count_threshold, out_
     out_path.parent.mkdir(parents=True, exist_ok=True)
     logger.debug(f"writing aggregated decoded sequences to: '{out_path}'")
 
-    aggregated_decodes = (
+    # validate input files
+    for f in decoded_reads:
+        f_path = Path(f).absolute()
+        if not f_path.exists() or not f_path.is_file():
+            msg = f"decoded reads file '{f_path}' does not exist or is not a file"
+            logger.error(msg)
+            click.echo(msg)
+            sys.exit(1)
+    logger.debug(f"aggregating decoded reads from {len(decoded_reads)} input files")
+
+    if compress:
+        logger.debug("using gzip compression for output JSON")
+
+    # stream in all the decodes and aggregate
+    (
         pl.scan_csv(decoded_reads, has_header=True, separator="\t", ignore_errors=True)
         .select(["library_id", "bb_ids", "umi", "overall_score"])
         .filter(pl.col("overall_score") <= score_threshold)
@@ -590,19 +616,9 @@ def aggregate_decodes(ctx, decoded_reads, score_threshold, count_threshold, out_
         .with_columns(
             umi_counts=pl.col("umi").list.eval(pl.element().value_counts().struct.rename_fields(["k", "c"])),
         )
-        .collect()
+        .sink_ndjson(out_path, compression="gzip" if compress else "uncompressed")
     )
-    logger.info(f"found {len(aggregated_decodes)} compounds in decoded reads after filtering")
-
-    if compress:
-        import gzip
-
-        logger.debug("compressing output JSON with gzip")
-        with gzip.open(out_path, "wt") as out_file:
-            out_file.write(aggregated_decodes.write_ndjson())
-    else:
-        aggregated_decodes.write_ndjson(str(out_path))
-    logger.info(f"wrote aggregated decoded sequences to: '{out_path}'")
+    logger.info(f"aggregated decoded sequences from {len(decoded_reads)} input files to {out_path}")
 
 
 @decode_group.command(name="report")
@@ -727,7 +743,9 @@ def run_degen(ctx, aggregated_compounds, out_loc, raw_counts, cpd_ids, count_thr
 
     out_loc_path = Path(out_loc).absolute()
     if out_loc_path.exists() and out_loc_path.is_dir():
-        print(f"output location '{out_loc_path}' is a directory; please provide a file path")
+        msg = f"output location '{out_loc_path}' is a directory; please provide a file path"
+        logger.error(msg)
+        click.echo(msg)
         sys.exit(1)
     if out_loc_path.suffix != ".tsv":
         out_loc_path = out_loc_path.with_suffix(".tsv")
