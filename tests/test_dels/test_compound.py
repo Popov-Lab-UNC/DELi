@@ -4,8 +4,8 @@ import pytest
 
 from deli.dels.building_block import BuildingBlock, BuildingBlockSet
 from deli.dels.combinatorial import CombinatorialLibrary
-from deli.dels.library import LibraryCollection
 from deli.dels.compound import DELCompound, DELCompoundRaw
+from deli.dels.library import LibraryCollection
 
 
 @pytest.fixture

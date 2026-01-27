@@ -28,13 +28,13 @@ def runner():
 @pytest.fixture()
 def selection_file_path():
     """Path to the example selection file"""
-    return Path(__file__).parent / "test_data" / "example_decode.yaml"
+    return Path(__file__).parent / "data" / "example_decode.yaml"
 
 
 @pytest.fixture()
 def fastq_file_path():
     """Path to the example fastq file"""
-    return Path(__file__).parent / "test_data" / "example.fastq"
+    return Path(__file__).parent / "data" / "example.fastq"
 
 
 @pytest.mark.functional
@@ -130,7 +130,7 @@ def test_deli_data_set(monkeypatch, tmpdir, runner):
     runner.invoke(
         click_init_deli_data_dir,
         obj={
-            "deli_config": _DeliConfig.load_config(Path(__file__).parent / "test_data" / ".deli"),
+            "deli_config": _DeliConfig.load_config(Path(__file__).parent / "data" / ".deli"),
             "logger": logging.getLogger(),
         },
     )
@@ -140,7 +140,7 @@ def test_deli_data_set(monkeypatch, tmpdir, runner):
         click_set_deli_data_dir,
         ["deli_data"],
         obj={
-            "deli_config": _DeliConfig.load_config(Path(__file__).parent / "test_data" / ".deli"),
+            "deli_config": _DeliConfig.load_config(Path(__file__).parent / "data" / ".deli"),
             "logger": logging.getLogger(),
         },
     )
@@ -153,7 +153,7 @@ def test_deli_data_set(monkeypatch, tmpdir, runner):
         click_set_deli_data_dir,
         ["broken"],
         obj={
-            "deli_config": _DeliConfig.load_config(Path(__file__).parent / "test_data" / ".deli"),
+            "deli_config": _DeliConfig.load_config(Path(__file__).parent / "data" / ".deli"),
             "logger": logging.getLogger(),
         },
     )
@@ -165,14 +165,14 @@ def test_deli_data_set(monkeypatch, tmpdir, runner):
         click_set_deli_data_dir,
         ["broken_file.txt"],
         obj={
-            "deli_config": _DeliConfig.load_config(Path(__file__).parent / "test_data" / ".deli"),
+            "deli_config": _DeliConfig.load_config(Path(__file__).parent / "data" / ".deli"),
             "logger": logging.getLogger(),
         },
     )
     assert result.exit_code == 1
 
     # make a config file
-    shutil.copy2(Path(__file__).parent / "test_data" / ".deli", temp_home_path / ".deli")
+    shutil.copy2(Path(__file__).parent / "data" / ".deli", temp_home_path / ".deli")
 
     # test if data dir is updated in config
     result = runner.invoke(
@@ -213,7 +213,7 @@ def test_decode_run(tmpdir, runner, selection_file_path, fastq_file_path):
             "--save-failed",
         ],
         obj={
-            "deli_config": _DeliConfig.load_config(Path(__file__).parent / "test_data" / ".deli"),
+            "deli_config": _DeliConfig.load_config(Path(__file__).parent / "data" / ".deli"),
             "logger": logging.getLogger(),
         },
     )

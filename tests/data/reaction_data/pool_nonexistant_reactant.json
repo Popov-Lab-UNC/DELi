@@ -9,8 +9,7 @@
     "step2": {
       "step_id": "2",
       "rxn_smarts": "[NH2:1].[C:2](=O)O>>[C:2](=O)N",
-      "reactants": ["BB1", "BB2"]
+      "reactants": ["product_1", ["BB2", "product_3"]]
     }
   }
 }
-

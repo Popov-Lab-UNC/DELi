@@ -1,7 +1,6 @@
 """Tests for deli.dels.reaction module"""
 
 import json
-import os
 from pathlib import Path
 
 import pytest
@@ -154,9 +153,7 @@ def test_reaction_priority():
     vial = ReactionVial()
     vial["TEST"] = _mol("NCC")  # ethylamine
     step.run_step(vial)
-    assert _smi(vial["product_test_step"]) == _smi(
-        _mol("CCNCC(C=O)C(C=O)C(C=O)")
-    )  # should use rxn2
+    assert _smi(vial["product_test_step"]) == _smi(_mol("CCNCC(C=O)C(C=O)C(C=O)"))  # should use rxn2
 
 
 # Map filename -> expected exception type (or None for success)
@@ -177,9 +174,7 @@ TEST_CASES = {
     "valid_reaction_data_dir.json": None,
 }
 
-DATA_DIR = Path(
-    os.path.abspath(os.path.join(os.path.dirname(__file__), "test_data", "reaction_test_data"))
-)
+DATA_DIR = Path(__file__).parent.parent.resolve() / "data" / "reaction_data"
 
 
 @pytest.mark.parametrize("fname, expected", list(TEST_CASES.items()))
