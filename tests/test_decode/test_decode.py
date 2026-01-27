@@ -18,7 +18,6 @@ from deli.decode.decoder import (
     DecodingSettings,
     SelectionDecoder,
 )
-from deli.decode.umi import UMI
 from deli.dels.barcode import DELBarcodeSchema, VariableBarcodeSection
 from deli.dels.building_block import TaggedBuildingBlock, TaggedBuildingBlockSet
 from deli.dels.combinatorial import DELibrary
@@ -243,7 +242,7 @@ def mock_building_block_calls(mock_tagged_building_blocks):
 @pytest.fixture
 def mock_umi():
     """Create a mock UMI"""
-    return UMI("ATCGATCG")
+    return "ATCGATCG"
 
 
 @pytest.fixture
