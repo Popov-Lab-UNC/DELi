@@ -4,6 +4,7 @@ import ast
 import configparser
 import csv
 import datetime
+import gzip
 import logging
 import os
 import sys
@@ -27,7 +28,7 @@ try:
 except ImportError:
     pass
 
-
+# custom exception hook to log uncaught exceptions
 def _custom_excepthook(exc_type, exc_value, exc_traceback):
     if issubclass(exc_type, KeyboardInterrupt):
         # Don't log KeyboardInterrupt as an error
@@ -39,6 +40,146 @@ def _custom_excepthook(exc_type, exc_value, exc_traceback):
 def _timestamp() -> str:
     """Get the time as a timestamp string"""
     return datetime.datetime.now().strftime("%m_%d_%Y_%H%M%S%f")
+
+
+def _standardize_and_validate_output_loc(
+        path: Path | str,
+        is_file: bool,
+        can_exist: bool = True,
+        overwrite: bool = False,
+        extension: str = None,
+        is_compressed: bool = False,
+) -> Path:
+    """
+    Standardize and validate the output location based on the given parameters.
+
+    Will Standardize to absolute path.
+    Will add ".gz" suffix if `is_compressed` is True and not already present.
+    Will *not* add any other suffixes automatically, will just warn.
+
+    Will exit and print message to CLI if validation fails.
+
+    Parameters
+    ----------
+    path : Path | str
+        The output path to validate.
+    is_file : bool
+        Whether the output path should be a file (True) or a directory (False).
+    can_exist : bool, default = True
+        Whether the output path is allowed to exist (even if `override` is `False`).
+    overwrite : bool, default = False
+        Whether to allow overwriting existing files/directories.
+    extension : str, optional
+        The required output file extension (e.g., '.txt').
+        Only used if `is_file` is `True`.
+    is_compressed : bool, default = False
+        Whether the output file is compressed with gzip.
+        Only used if `is_file` is `True`.
+
+    Returns
+    -------
+    Path
+        The validated (and possibly modified) output path.
+    """
+
+    logger = logging.getLogger("deli")
+
+    def _communicate_error_and_exit(message: str):
+        """helper func to communicate error and exit"""
+        click.echo()
+        if logger:
+            logger.error(message)
+        sys.exit(1)
+
+    def _communicate_warning(message: str):
+        """helper func to communicate warning"""
+        click.echo(f"\nWARNING: {message}\n")
+        if logger:
+            logger.warning(message)
+
+    path = Path(path).absolute()  # standardize to absolute path
+
+    # add the compressed suffix if needed
+    if is_compressed and is_file:
+        if path.suffix != ".gz":
+            msg = f"Output file '{path}' is going to be gzip compressed but is missing a .gz suffix"
+            path = path.with_suffix(path.suffix + ".gz")
+            msg += f"\n'.gz' added automatically; new file path: '{path}'"
+            _communicate_warning(msg)
+
+    if path.exists():
+        # mismatch between expected type and actual type
+        # these messages come first so a user known that --overwrite won't help here
+        if not is_file and path.is_file():
+            msg = (f"Path '{path}' is an existing, not a directory\n"
+                   f"--overwrite will not overwrite a file with a directory")
+            _communicate_error_and_exit(msg)
+        elif is_file and path.is_dir():
+            msg = (f"Path '{path}' is an existing directory, not a file\n"
+                   f"--overwrite will not overwrite a directory with a file")
+            _communicate_error_and_exit(msg)
+        # files in existing directory are not deleted with --overwrite
+        elif not is_file and path.is_dir() and overwrite and any(path.iterdir()):
+            msg = (f"Path '{path}' is an existing directory;\n"
+                   f"--overwrite will not remove existing files, though they many be overwritten")
+            _communicate_warning(msg)
+
+        # file exists, can be overwritten, but is not allowed too
+        if (not can_exist) and (not overwrite):
+            msg = f"Path '{path}' already exists; use deli --overwrite <your-command> to overwrite"
+            _communicate_error_and_exit(msg)
+
+        # check for reserved file names on Windows
+        if os.path.isreserved(path):
+            msg = f"Path '{path}' uses a reserved name on Windows; please choose a different name"
+            _communicate_error_and_exit(msg)
+
+        # warning if path is a symlink
+        if path.is_symlink():
+            _communicate_warning(f"Path '{path}' is a symbolic link; original reference file will *not* be overwritten")
+
+    # handle the extension check
+    if is_file and extension:
+        if len(path.suffixes) == is_compressed:
+            msg = f"Output file '{path}' is missing a file extension {extension}"
+            _communicate_warning(msg)
+        else:
+            suffix = path.suffixes[-1 - is_compressed]  # second extension from the end if compressed
+            if suffix != extension:
+                msg = f"Output file '{path}' has extension '{suffix}' but expected '{extension}'"
+                _communicate_warning(msg)
+
+    return path
+
+
+def _open_text_file(path: Path):
+    """
+    Open a plain text file, handling gzip if needed
+
+    Parameters
+    ----------
+    path : Path
+        The path to the file to open.
+
+    Returns
+    -------
+    file object
+        The opened file object.
+    """
+    import gzip
+
+    if path.suffix == ".gz":
+        return gzip.open(path, "rt")
+    else:
+        try:
+            with open(path, "r") as f:
+                # try reading a small chunk to check if it's a text file
+                f.read(1024)
+            return open(path, "r")
+        except UnicodeDecodeError:
+            msg = f"Cannot read file '{path}' as a text file; is this a valid text file?"
+            logging.getLogger("deli").error(msg)
+            click.echo(msg)
 
 
 def _load_any_selection(selection: os.PathLike) -> Selection:
@@ -336,14 +477,7 @@ def decode_group(ctx):
 
 @decode_group.command(name="run")
 @click.argument("decode-file", type=click.Path(exists=True), required=True)
-@click.option(
-    "--out-dir",
-    "-o",
-    type=click.Path(),
-    required=False,
-    default="./",
-    help="Output directory to save results to",
-)
+@click.option("--out-dir", "-o", type=click.Path(), required=False, default="./", help="Output directory to save results to")
 @click.option("--prefix", "-p", type=click.STRING, required=False, default="", help="Prefix for output files")
 @click.option("--show-tqdm", "-t", is_flag=True, help="Show tqdm progress")
 @click.option("--save-fastq-info", "-q", is_flag=True, help="Save fastq file info to output")
@@ -365,15 +499,22 @@ def run_decode(
     skip_report,
 ):
     """
-    Decode DNA sequences from a DEL selection
+    Convert DNA sequences into DEL compound identities
 
     DECODE-FILE is the path to a YAML configure file describing the DEL selection,
     sequences, and decoding settings.
 
-    Some outputs are generated on the fly, stopping a job mid run can result
+    DELi treats this process as "embarrassingly parallel"; if you were to split
+    the input sequences across N separate processes, the output files can be trivially
+    combined and will be identical to a single process with all sequences.
+
+
+    NOTE: Some outputs are generated on the fly, stopping a job mid run can result
     in partial output files.
 
     See the docs for a detailed description of output files generated.
+    See the `deli decode merge` command for more info on combining output files.
+
     """
     from deli.decode.base import FailedDecodeAttempt
     from deli.decode.decoder import DecodingSettings, SelectionDecoder
@@ -524,37 +665,21 @@ def run_decode(
         logger.info(f"wrote decoding report to: '{report_file}'")
 
 
-@decode_group.command(name="aggregate")
+@decode_group.command(name="collect")
 @click.argument("decoded-reads", type=click.Path(exists=True), nargs=-1, required=True)
-@click.option(
-    "--score-threshold",
-    "-s",
-    type=click.INT,
-    required=False,
-    default=100,
-    help="Reject decoded compounds above this score",
-)
-@click.option(
-    "--count-threshold",
-    "-c",
-    type=click.INT,
-    required=False,
-    default=1,
-    help="Minimum count threshold for including compounds in output",
-)
-@click.option(
-    "--out-loc",
-    "-o",
-    type=click.Path(),
-    required=False,
-    default="./aggregated_decodes.json",
-    help="Output location to save aggregated decodes to; will add .json suffix if missing",
-)
-@click.option("--compress", "-z", is_flag=True, help="Compress output JSON with gzip")
+@click.option("--score-threshold", "-s", type=click.INT, required=False, default=100, help="Reject decoded compounds above this score")
+@click.option("--count-threshold", "-c", type=click.INT, required=False, default=1, help="Minimum (dedup) count threshold for including compounds in output")
+@click.option("--out-loc", "-o", type=click.Path(), required=False, default="./aggregated_decodes.json", help="Output location to save aggregated decodes to; will add .json suffix if missing")
+@click.option("--compress", "-z", is_flag=True, help="Compress output with gzip")
 @click.pass_context
-def aggregate_decodes(ctx, decoded_reads, score_threshold, count_threshold, out_loc, compress):
+def collect_decodes(ctx, decoded_reads, score_threshold, count_threshold, out_loc, compress):
     """
-    Aggregate decoded reads from decoded TSV file(s) into a JSON count format
+    Collect decoded reads from decoded TSV file(s) into a JSON count format
+
+    This process requires that all decoded that are part of a given selection are provided.
+    If they are not, count values can be overestimated in future jobs
+
+    NOTE: this is a memory intensive operation; ensure sufficient memory is available
 
     JSON will be new line delimited (NDJSON), with each line representing a unique compound
     as a dictionary with the following fields:
@@ -565,9 +690,6 @@ def aggregate_decodes(ctx, decoded_reads, score_threshold, count_threshold, out_
     - umi_counts: list[dict]
         A list of dictionaries, each with keys 'k' and 'c' representing the unique
         UMIs ('k') and their counts ('c') associated with this compound
-
-    Aggregation is used to determine how many times each compound was decoded
-    and the unique UMIs (and their counts) associated with each compound.
     """
     import polars as pl
 
@@ -581,14 +703,14 @@ def aggregate_decodes(ctx, decoded_reads, score_threshold, count_threshold, out_
         click.echo(msg)
         sys.exit(1)
     if compress:
-        if out_path.suffixes[-2:] != [".json", ".gz"]:
-            if out_path.suffixes[-1] != ".json":
-                out_path = out_path.with_suffix(".json.gz")
+        if out_path.suffixes[-2:] != [".ndjson", ".gz"]:
+            if out_path.suffixes[-1] != ".ndjson":
+                out_path = out_path.with_suffix(".ndjson.gz")
             else:
                 out_path = out_path.with_suffix(".gz")
     else:
-        if out_path.suffix != ".json":
-            out_path = out_path.with_suffix(".json")
+        if out_path.suffix != ".ndjson":
+            out_path = out_path.with_suffix(".ndjson")
     out_path.parent.mkdir(parents=True, exist_ok=True)
     logger.debug(f"writing aggregated decoded sequences to: '{out_path}'")
 
@@ -621,34 +743,183 @@ def aggregate_decodes(ctx, decoded_reads, score_threshold, count_threshold, out_
     logger.info(f"aggregated decoded sequences from {len(decoded_reads)} input files to {out_path}")
 
 
+@decode_group.command(name="count")
+@click.argument("aggregated-compounds", type=click.Path(exists=True), required=True)
+@click.option("--out-loc", "-o", type=click.Path(), required=False, default=None, help="Path to output file")
+@click.option("--cluster-umis", "-u", is_flag=True, help="Cluster UMIs to determine final count")
+@click.option("--keep-raw-count", "-r", is_flag=True, help="Keep raw count in output")
+@click.option("--keep-dedup-count", "-d", is_flag=True, help="Keep deduplicated count in output; ignored unless --cluster-umis is used")
+@click.option("--output-type" "-t", type=click.Choice(["tsv", "gzip", "parquet", "avro"]), default="tsv", help="Output file type")
+@click.pass_context
+def count_compounds(ctx, aggregated_compounds, out_loc, cluster_umis, keep_raw_count, keep_dedup_count, output_type):
+    """
+    Count compounds from aggregated decoded compounds file
+
+    AGGREGATED-COMPOUNDS is the path to the aggregated decoded compounds NDJSON file
+    generated using `deli decode collect`
+
+    NOTE: "gzip" output type will generate a gzip compressed TSV file. Parquet and AVRO files are written at the
+    end using a temperary file
+    """
+    from deli.decode.count import raw_count, dedup_count, corrected_count
+
+    # check conditional imports
+    if output_type == "parquet":
+        try:
+            import pyarrow as pa # noqa: F401
+            import pyarrow.parquet as pq # noqa: F401
+        except ImportError:
+            msg = "pyarrow is required for parquet output; please install with 'pip install pyarrow'"
+            click.echo(msg)
+            ctx.obj["logger"].error(msg)
+            sys.exit(1)
+    elif output_type == "avro":
+        try:
+            import fastavro # noqa: F401
+        except ImportError:
+            msg = "fastavro is required for avro output; please install with 'pip install fastavro'"
+            click.echo(msg)
+            ctx.obj["logger"].error(msg)
+            sys.exit(1)
+
+    logger = ctx.obj["logger"]
+
+    # determine output type
+    compress = False
+    if output_type == "gzip":
+        output_type = "tsv"
+        compress = True
+    elif output_type == "parquet":
+        output_type = "parquet"
+    elif output_type == "avro":
+        output_type = "avro"
+    elif output_type == "tsv":
+        output_type = "tsv"
+    else:
+        msg = f"unknown output type '{output_type}'"
+        logger.error(msg)
+        click.echo(msg)
+        sys.exit(1)
+
+    # prepare output path
+    if out_loc is None:
+        out_loc = Path(f"./counted_compounds.{output_type}")
+    out_loc = _standardize_and_validate_output_loc(
+        out_loc,
+        is_file=True,
+        can_exist=True,
+        overwrite=True,
+        extension=f".{output_type}",
+        is_compressed=compress,
+    )
+
+    # initialize writer
+    if output_type in ["tsv", "gzip"]:
+        if output_type == "tsv":
+            out_file = open(out_loc, "w")
+        else:
+            out_file = gzip.open(out_loc, "wt")
+        def _write_tsv(row_dict):
+            out_file.write("\t".join([str(val) for val in row_dict.values()]).strip() + "\n")
+        writer = _write_tsv
+    elif output_type == "avro":
+        schema = {
+            'type': 'record',
+            'name': 'CompoundCounts',
+            'fields': [
+                {'name': 'library_id', 'type': 'string'},
+                {'name': 'bb_ids', 'type': 'string'},
+                {'name': 'count', 'type': 'int'},
+                {'name': 'raw_count', 'type': ['int', 'null']} if keep_raw_count else None,
+                {'name': 'dedup_count', 'type': ['int', 'null']} if keep_dedup_count and not cluster_umis else None,
+            ]
+        }
+        schema['fields'] = [field for field in schema['fields'] if field is not None]  # Remove None fields
+        out_file = open(out_loc, "wb")
+        writer = fastavro.writer(out_file, schema)
+    elif output_type == "parquet":
+        table_schema = pa.schema([
+            pa.field("library_id", pa.string()),
+            pa.field("bb_ids", pa.string()),
+            pa.field("count", pa.int32()),
+            pa.field("raw_count", pa.int32()) if keep_raw_count else None,
+            pa.field("dedup_count", pa.int32()) if keep_dedup_count and not cluster_umis else None,
+        ])
+        table_schema = table_schema.remove_metadata()  # Remove None fields
+        pq_writer = pq.ParquetWriter(out_loc, table_schema)
+        def _write_parquet(batch):
+            pa_batch = pa.RecordBatch.from_pylist(batch, schema=table_schema)
+            pq_writer.write_batch(pa_batch)
+        writer = _write_parquet
+    else:
+        msg = f"unknown output type '{output_type}'"
+        logger.error(msg)
+        click.echo(msg)
+        sys.exit(1)
+
+    _batch_size = 5000
+    _batch = []
+    _ticker = 0
+    with _open_text_file(Path(aggregated_compounds)) as in_file:
+        for line in tqdm(in_file, desc="Counting compounds"):
+            _ticker += 1
+            cpd_info = ast.literal_eval(line)
+
+            # calculate counts
+            raw_count = sum([count_struct["c"] for count_struct in cpd_info["umi_counts"]])
+            dedup_count = len(cpd_info["umi_counts"])
+            count = dedup_count  # default to dedup count if not clustering
+            if cluster_umis:
+                count = corrected_count(cpd_info["umi_counts"])
+
+            # prepare output info
+            row = {
+                "library_id": cpd_info["library_id"],
+                "bb_ids": cpd_info["bb_ids"],
+                "count": count,
+            }
+            if keep_raw_count:
+                row["raw_count"] = raw_count
+            if keep_dedup_count and not cluster_umis:
+                row["dedup_count"] = dedup_count
+            _batch.append(row)
+
+            if len(_batch) >= _batch_size:
+                logger.info(f"writing {len(_batch)} records to output")
+                writer(_batch)
+                _batch = []
+
+    if _batch:
+        writer(_batch)
+
+    # close out files
+    if output_type == "avro":
+        writer.flush()
+        logger.debug("flushed avro writer")
+        out_file.close()
+    elif output_type == "parquet":
+        pq_writer.fl
+        pq_writer.close()
+    else:
+        out_file.close()
+    logger.debug("closed output file")
+
+    logger.info(f"wrote f{_ticker} compounds to: '{out_loc}'")
+
+
 @decode_group.command(name="report")
 @click.argument("decode_stats_file", nargs=-1, type=click.Path(exists=True), required=True)
-@click.option(
-    "--out-loc",
-    "-o",
-    type=click.Path(),
-    required=False,
-    default="./decode_report.html",
-    help="Output location to save report to",
-)
-@click.option(
-    "--selection",
-    "-s",
-    type=click.Path(exists=True),
-    required=False,
-    help="Selection file contain info about conditions for decoding",
-    default=None,
-)
+@click.argument("decode_file", type=click.Path(exists=True), required=False, default=None)
+@click.option("--out-loc", "-o", type=click.Path(), required=False, default="./decode_report.html", help="Output location to save report to")
 @click.pass_context
 def generate_report(ctx, decode_stats_file, out_loc, selection):
     """
     Generate an HTML decoding report from decoding statistics file(s)
 
+    DECODE_STATS_FILE is the path(s) to the decoding statistics JSON files to generate a report with .
+
     If multiple statistic files are provided, will merge them into a single report.
     This is useful for dealing with parallel decoding runs for the same selection.
-
-    Providing the selection file used for the decoding will enable more detailed reporting,
-    such as listing libraries that were present in the selection but had no decoded sequences.
 
     DECODE_STATS_FILE are the paths to the decoding statistics JSON files.
     """
@@ -695,119 +966,52 @@ def generate_report(ctx, decode_stats_file, out_loc, selection):
     logger.info(f"wrote decoding report to: '{out_loc_path}'")
 
 
-@cli.group(name="degen")
-@click.pass_context
-def degen_group(ctx):
-    """Group for degenerating decoded sequences commands"""
-    pass
-
-
-@degen_group.command(name="run")
+@cli.command(name="cubify")
 @click.argument("aggregated-compounds", type=click.Path(exists=True), required=True)
-@click.option(
-    "--out-loc",
-    "-o",
-    type=click.Path(),
-    required=False,
-    default="./degenerated_compounds.tsv",
-    help="Location to save results to",
-)
-@click.option("--raw-counts", "-r", is_flag=True, help="Include raw counts in output")
-@click.option("--cpd-ids", "-d", is_flag=True, help="Include full DEL compound IDs in output")
-@click.option(
-    "--count-threshold",
-    "-q",
-    type=click.INT,
-    required=False,
-    default=0,
-    help="Minimum score threshold for including decoded sequences in degeneration",
-)
+@click.option("--output", "-o", type=click.Path(), required=False, default="./cube", help="Location to save results to")
+@click.option("--cube-format", "-f", type=click.STRING, default="lbc", help="Cube format string; see DELi documentation for details")
+@click.option("--overwrite", "-w", is_flag=True, help="Overwrite existing cube file if it exists")
+@click.option("--corrected-count-threshold", "-E", type=click.INT, default=0, help="Threshold to include compounds in Cube based on error-corrected count")
+@click.option("--dedup-count-threshold", "-D", type=click.INT, default=0, help="Threshold to include compounds in Cube based on deduped count")
+@click.option( "--raw-count-threshold","-R", type=click.INT, default=0, help="Threshold to include compounds in Cube based on raw count")
 @click.option("--use-tqdm", "-t", is_flag=True, help="Show tqdm progress bar")
+@click.option("--selection", "-s", type=click.Path(exists=True), required=False, default=None, help="Path to DELi selection file to use for compound ID generation")
 @click.pass_context
-def run_degen(ctx, aggregated_compounds, out_loc, raw_counts, cpd_ids, count_threshold, use_tqdm):
+def run_cubify(ctx, aggregated_compounds, output, cube_format, overwrite, corrected_count_threshold, dedup_count_threshold, raw_count_threshold, use_tqdm, selection):
     """
-    Degenerate decoded sequences into compound counts based on UMIs
+    Covert aggregated decoded compounds (in NDJSON format) into a formated "Cube" file.
 
-    AGGREGATED_COMPOUNDS is the path to the aggregated decoded JSON file to degenerate.
+    Cube formats can include:
+    - i: compound id
+    - l: library id
+    - s: compound SMILES
+    - b: building block ids (one column per cycle)
+    - B: building block SMILES (one column per cycle)
+    - e: error-corrected count
+    - d: deduplicated count
+    - r: raw count
 
-    Output will be a TSV file mapping compounds to their degenerated counts in a
-    See the Docs for more information on degeneration and the meaning of certain count values.
 
-    Note: Degeneration assumes that all decoded sequences have already been aggregated into unique
-    compound + UMI pairs with counts. Use the `deli decode aggregate` command to generate
-    the required aggregated decoded file from decoded TSV files.
+
+    For example; to just include the compound ID and its error-corrected count, use the format string "ie".
+
+    NOTE: DELi considers Compounds IDs to be irreversible; that is, the compound ID cannot be used to
+    retrieve the original building block IDs or library information. Be aware that excluding library ID
+    and building block IDs from the Cube file will prevent DELi from being able to map back to the original
+    compound / DEL information in any future uses of the Cube file.
+
+    See the DELi documentation for more information on how to specify Cube files.
     """
-    from deli.dels.compound import generate_del_compound_id
-
-    logger = ctx.obj["logger"]
-
-    out_loc_path = Path(out_loc).absolute()
-    if out_loc_path.exists() and out_loc_path.is_dir():
-        msg = f"output location '{out_loc_path}' is a directory; please provide a file path"
-        logger.error(msg)
-        click.echo(msg)
-        sys.exit(1)
-    if out_loc_path.suffix != ".tsv":
-        out_loc_path = out_loc_path.with_suffix(".tsv")
-    out_loc_path.parent.mkdir(parents=True, exist_ok=True)
-    logger.debug(f"writing degenerate sequences to: '{out_loc_path}'")
-
-    compounds_json_path = Path(aggregated_compounds)
-    logger.info(f"loading aggregated decoded compounds from '{compounds_json_path}'")
-    if Path.suffix == ".gz":
-        import gzip
-
-        logger.debug("decompressing file with gzip")
-        file = gzip.open(compounds_json_path, "rt")
-    else:
-        file = open(compounds_json_path, "r")
-
-    header = ["lib_id", "bb_ids", "count"]
-    if raw_counts:
-        header.append("raw_count")
-    if cpd_ids:
-        header = ["compound_id"] + header
-
-    out_file = csv.DictWriter(
-        open(out_loc_path, "w", newline=""), fieldnames=header, delimiter="\t", extrasaction="ignore"
-    )
-
-    skipped = 0
-    passed = 0
-    for i, line in tqdm(enumerate(file), desc="degenerating compounds", disable=not use_tqdm):
-        cpd_info = ast.literal_eval(line)
-        # calculate degen counts
-        if cpd_ids:
-            cpd_info["compound_id"] = generate_del_compound_id(cpd_info["library_id"], cpd_info["bb_ids"].split(","))
-        if raw_counts:
-            cpd_info["raw_count"] = sum([count_struct["c"] for count_struct in cpd_info["umi_counts"]])
-        cpd_info["count"] = len(cpd_info["umi_counts"])
-        # check for count threshold
-        if cpd_info["count"] > count_threshold:
-            out_file.writerow(cpd_info)
-            passed += 1
-        else:
-            skipped += 1
-
-        if ((i + 1) % 10000) == 0:
-            logger.debug(f"degenerated {i + 1:,} compounds...")
-
-    logger.info(f"degenerated {passed} compounds")
-    if skipped > 0:
-        logger.info(
-            f"skipped {skipped} out of {skipped + passed} ({round((skipped / (skipped + passed)) * 100, 2)}%) "
-            f"compounds below count threshold of {count_threshold}"
-        )
-    logger.info(f"wrote degenerated compounds to '{out_loc_path}'")
+    pass
 
 
 @cli.command(name="enumerate")
 @click.argument("library_file", type=click.Path(exists=True), required=True)
 @click.option("--out_path", "-o", type=click.Path(), required=False, default="", help="Output CSV file path")
-@click.option("--tqdm", "-t", is_flag=True, help="Enable TQDM progress bar")
+@click.option("--use-tqdm", "-t", is_flag=True, help="Enable TQDM progress bar")
 @click.option("--fail-on-error", "-f", is_flag=True, help="Fail on first error during enumeration")
 @click.option("--drop-failed", "-d", is_flag=True, help="Drop compounds with failed enumerations")
-def enumerate_(library_file, out_path, tqdm, fail_on_error, drop_failed):
+def enumerate_(library_file, out_path, use_tqdm, fail_on_error, drop_failed):
     """
     Enumerates compounds from a given library
 
@@ -825,7 +1029,7 @@ def enumerate_(library_file, out_path, tqdm, fail_on_error, drop_failed):
     enumerator.enumerate_to_file(
         output_file,
         separator=",",
-        use_tqdm=tqdm,
+        use_tqdm=use_tqdm,
         fail_on_error=fail_on_error,
         drop_failed=drop_failed,
     )
