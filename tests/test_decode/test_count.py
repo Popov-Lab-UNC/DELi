@@ -2,7 +2,7 @@
 
 import pytest
 
-from deli.cube.count import (
+from deli.decode.count import (
     _build_graph,
     _build_graph_semi_directional,
     _count_connected_components,
