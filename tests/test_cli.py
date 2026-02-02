@@ -312,6 +312,30 @@ def test_decode_count(tmpdir, runner, collected_file_path):
     assert result.exit_code == 0
     assert output_file.exists()
 
+    # try with umi clustering
+    output_file = temp_home_path / "count_results.tsv"
+
+    result = runner.invoke(
+        count_compounds,
+        [
+            str(temp_home_path / "collected_decodes.ndjson"),
+            "--out-loc",
+            str(output_file),
+            "--output-format",
+            "tsv",
+            "-u",
+            "-r",
+            "-d",
+        ],
+        obj={
+            "deli_config": _DeliConfig.load_config(Path(__file__).parent / "data" / ".deli"),
+            "logger": logging.getLogger(),
+        },
+    )
+
+    assert result.exit_code == 0
+    assert output_file.exists()
+
     # try tsv.gz input
     output_file = temp_home_path / "count_results.tsv.gz"
 

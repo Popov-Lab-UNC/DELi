@@ -128,11 +128,6 @@ def _standardize_and_validate_output_loc(
             msg = f"Path '{path}' already exists; use deli --overwrite <your-command> to overwrite"
             _communicate_error_and_exit(msg)
 
-        # check for reserved file names on Windows
-        if os.path.isreserved(path):
-            msg = f"Path '{path}' uses a reserved name on Windows; please choose a different name"
-            _communicate_error_and_exit(msg)
-
         # warning if path is a symlink
         if path.is_symlink():
             _communicate_warning(f"Path '{path}' is a symbolic link; original reference file will *not* be overwritten")
