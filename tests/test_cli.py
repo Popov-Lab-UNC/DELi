@@ -215,7 +215,7 @@ def test_decode_run(tmpdir, runner, selection_file_path, fastq_file_path):
     with open(temp_home_path / "example_decode.yaml", "w") as f:
         yaml.dump(data, f)
 
-    runner.invoke(
+    result = runner.invoke(
         run_decode,
         [
             str(temp_home_path / "example_decode.yaml"),
@@ -232,6 +232,7 @@ def test_decode_run(tmpdir, runner, selection_file_path, fastq_file_path):
     )
 
     # check files exist
+    assert result.exit_code == 0
     assert (temp_home_path / "DecodeResults" / "TEST_decoded.tsv").exists()
     assert (temp_home_path / "DecodeResults" / "TEST_decode_report.html").exists()
     assert (temp_home_path / "DecodeResults" / "TEST_decode_statistics.json").exists()
