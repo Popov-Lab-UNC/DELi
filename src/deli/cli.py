@@ -619,6 +619,84 @@ def click_set_deli_data_dir(ctx, path, update_config):
     )
 
 
+@data.command(name="validate")
+@click.argument("path", type=click.Path(), required=False, default=None)
+@click.pass_context
+def click_validate_deli_data_dir(ctx, path):
+    """
+    Validate a DELi data directory
+
+    PATH is the path to the deli data directory to validate.
+    If not provided, will validate the currently set DELi data directory.
+    """
+    from deli.configure import validate_deli_data_dir, DELI_DATA_SUB_DIRS, DELI_DATA_EXTENSIONS
+    from collections import defaultdict
+
+    if path is not None:
+        _path = Path(path).resolve()
+    else:
+        try:
+            _path = ctx.obj["deli_config"].deli_data_dir
+        except DeliDataDirError:
+            click.echo("DELi data directory is not set; cannot validate")
+            sys.exit(1)
+
+    try:
+        validate_deli_data_dir(_path)
+    except FileNotFoundError:
+        click.echo(
+            f"Directory at '{_path}' does not exist.\n"
+            f"You can create a new DELi data directory using 'deli data init {_path}'"
+        )
+        sys.exit(1)
+    except NotADirectoryError:
+        click.echo(
+            f"'{_path}' is not a directory.\n"
+            f"You can create a new DELi data directory with this name using "
+            f"'deli data init --overwrite {_path}'"
+        )
+        sys.exit(1)
+    except DeliDataDirError as e:
+        click.echo(
+            f"DELi data directory '{_path}' is missing required sub-directories\n"
+            f"use 'deli data init --fix-missing {_path}' to add missing sub-directories\n"
+            f"Details: {e}"
+        )
+        sys.exit(1)
+
+    total_issues = 0
+    for sub_dir_name, sub_dir_ext in zip(DELI_DATA_SUB_DIRS, DELI_DATA_EXTENSIONS):
+        click.echo(f"Validating sub-directory: '{sub_dir_name}'")
+        sub_dir_path = _path / sub_dir_name
+
+        files = [file_path for file_path in sub_dir_path.rglob('*') if file_path.is_file() and (file_path.suffix == sub_dir_ext)]
+
+        file_name_path_map = defaultdict(list)
+        for file_path in files:
+            file_name_path_map[file_path.stem].append(file_path)
+
+        warnings = 0
+        for file_name, paths in file_name_path_map.items():
+            if len(paths) > 1:
+                warnings += 1
+                click.echo(f"WARNING: Found multiple files with the same name '{file_name}'")
+                click.echo("Can cause ambiguity during data loading; consider removing/renaming duplicates")
+                for p in paths:
+                    click.echo(f" - {p}")
+
+        if warnings > 0:
+            click.echo(f"Total warnings in '{sub_dir_name}': {warnings}")
+        else:
+            click.echo(f"No issues found in '{sub_dir_name}'")
+        total_issues += warnings
+
+    if total_issues == 0:
+        click.echo(f"DELi data directory '{_path}' is valid with no issues found.")
+    else:
+        click.echo(f"DELi data directory '{_path}' validation completed with {total_issues} total issues found.")
+        sys.exit(1)
+
+
 @cli.group(name="decode")
 @click.pass_context
 def decode_group(ctx):
