@@ -31,9 +31,12 @@ _custom_order_7_3 = "p1,p2,d3,p4,d5,d6,d7"
 _hamming_order_15_4 = "p1,p2,d3,p4,d5,d6,d7,p8,d9,d10,d11,d12,d13,d14,d15"
 _custom_order_15_4 = "p1,p2,d3,p4,d5,d6,d7,p8,d9,d10,d11,d12,d13,d14,d15"
 
+# WHEN ADDING A NEW SUB_DIR TO THE DELI DATA DIR, MAKE SURE TO UPDATE THESE TUPLES
+# THIS IS HOW DELI KNOWS WHAT TO VALIDATE AND MAKE WHEN USING THE DELI DATA DIR
 DELI_DATA_SUB_DIRS: Final = ("libraries", "building_blocks", "reactions", "tool_compounds")
+DELI_DATA_EXTENSIONS: Final = (".json", ".csv", ".rxn", ".json")
 
-DELI_CONFIG = None
+DELI_CONFIG = None  # global to hold the loaded DELi config
 
 
 class DELiConfigError(Exception):
