@@ -16,7 +16,7 @@ def _get_dna_hamming_neighbors(seq) -> set[str]:
 
     Returns
     -------
-    list[str]
+    set[str]
     """
     seqs = set()
     for i, let in enumerate(seq):

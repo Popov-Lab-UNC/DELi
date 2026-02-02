@@ -1,6 +1,5 @@
 """command line functions for deli"""
 
-import ast
 import configparser
 import csv
 import datetime
@@ -767,6 +766,7 @@ def count_compounds(ctx, collected_decodes, out_loc, cluster_umis, keep_raw_coun
     NOTE: "gzip" output format will generate a gzip compressed TSV file. Writing to output occurs in batches.
     """
     from deli.decode.count import corrected_count
+    import json
 
     # check conditional imports
     if output_format == "parquet":
@@ -828,22 +828,24 @@ def count_compounds(ctx, collected_decodes, out_loc, cluster_umis, keep_raw_coun
         _header = ["library_id", "bb_ids", "count"]
         if keep_raw_count:
             _header.append("raw_count")
-        if keep_dedup_count and not cluster_umis:
+        if keep_dedup_count and cluster_umis:
             _header.append("dedup_count")
         out_file.write("\t".join(_header) + "\n")
     elif output_format == "avro":
+        fields = [
+            {'name': 'library_id', 'type': 'string'},
+            {'name': 'bb_ids', 'type': 'string'},
+            {'name': 'count', 'type': 'int'},
+        ]
+        if keep_raw_count:
+            fields.append({'name': 'raw_count', 'type': ['int', 'null']})
+        if keep_dedup_count and cluster_umis:
+            fields.append({'name': 'dedup_count', 'type': ['int', 'null']})
         schema = {
             'type': 'record',
             'name': 'CompoundCounts',
-            'fields': [
-                {'name': 'library_id', 'type': 'string'},
-                {'name': 'bb_ids', 'type': 'string'},
-                {'name': 'count', 'type': 'int'},
-                {'name': 'raw_count', 'type': ['int', 'null']} if keep_raw_count else None,
-                {'name': 'dedup_count', 'type': ['int', 'null']} if keep_dedup_count and not cluster_umis else None,
-            ]
+            'fields': fields
         }
-        schema['fields'] = [field for field in schema['fields'] if field is not None]  # Remove None fields
         out_file = open(out_loc, "wb")
         writer = lambda x: fastavro.writer(out_file, schema, x)
     elif output_format == "parquet":
@@ -854,7 +856,7 @@ def count_compounds(ctx, collected_decodes, out_loc, cluster_umis, keep_raw_coun
         ]
         if keep_raw_count:
             fields.append(pa.field("raw_count", pa.int32()))
-        if keep_dedup_count and not cluster_umis:
+        if keep_dedup_count and cluster_umis:
             fields.append(pa.field("dedup_count", pa.int32()))
         table_schema = pa.schema(fields)
         table_schema = table_schema.remove_metadata()  # Remove None fields
@@ -872,8 +874,8 @@ def count_compounds(ctx, collected_decodes, out_loc, cluster_umis, keep_raw_coun
     with _open_text_file(Path(collected_decodes)) as in_file:
         for line in tqdm(in_file, desc="Counting compounds"):
             _ticker += 1
-            cpd_info = ast.literal_eval(line)
-
+            #cpd_info = ast.literal_eval(line)
+            cpd_info = json.loads(line)
             # calculate counts
             raw_count = sum([count_struct["c"] for count_struct in cpd_info["umi_counts"]])
             dedup_count = len(cpd_info["umi_counts"])
@@ -890,7 +892,7 @@ def count_compounds(ctx, collected_decodes, out_loc, cluster_umis, keep_raw_coun
             }
             if keep_raw_count:
                 row["raw_count"] = raw_count
-            if keep_dedup_count and not cluster_umis:
+            if keep_dedup_count and cluster_umis:
                 row["dedup_count"] = dedup_count
             _batch.append(row)
 
@@ -919,7 +921,7 @@ def count_compounds(ctx, collected_decodes, out_loc, cluster_umis, keep_raw_coun
 @click.argument("decode_file", type=click.Path(exists=True), required=False, default=None)
 @click.option("--out-loc", "-o", type=click.Path(), required=False, default="./decode_report.html", help="Output location to save report to")
 @click.pass_context
-def generate_report(ctx, decode_stats_file, out_loc, selection):
+def generate_report(ctx, decode_stats_file, decode_file, out_loc):
     """
     Generate an HTML decoding report from decoding statistics file(s)
 
@@ -945,9 +947,9 @@ def generate_report(ctx, decode_stats_file, out_loc, selection):
     out_loc_path.parent.mkdir(parents=True, exist_ok=True)
 
     selection_obj: Selection | None = None
-    if selection is not None:
-        selection_obj = _load_any_selection(selection)
-        logger.debug(f"loaded selection '{selection_obj.selection_id}' from '{selection}'")
+    if decode_file is not None:
+        selection_obj = _load_any_selection(decode_file)
+        logger.debug(f"loaded selection '{selection_obj.selection_id}' from '{decode_file}'")
 
     overall_stats = DecodeStatistics()
 
