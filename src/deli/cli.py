@@ -166,7 +166,6 @@ def _open_text_file(path: Path):
     file object
         The opened file object.
     """
-    import gzip
 
     if path.suffix == ".gz":
         return gzip.open(path, "rt")
