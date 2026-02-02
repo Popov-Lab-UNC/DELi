@@ -3,6 +3,7 @@
 import configparser
 import csv
 import datetime
+import functools
 import gzip
 import logging
 import os
@@ -207,14 +208,149 @@ def _load_any_selection(selection: os.PathLike) -> Selection:
         sys.exit(1)
 
 
-# set up root logger
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
-logging.captureWarnings(True)
-sys.excepthook = _custom_excepthook
+def _get_random_deli_quote() -> str:
+    """
+    Returns a random quote relating to delis.
+
+    Returns:
+        str: A random deli-related quote
+    """
+    import random
+
+    deli_quotes = [
+        "Life is like a deli sandwich - it's all about the layers.",
+        "A good pastrami on rye can solve most of life's problems.",
+        "The deli is where cultures meet between two slices of bread.",
+        "Nothing says New York like a proper deli at 2 AM.",
+        "A deli without pickles is like a day without sunshine.",
+        "The secret to happiness? Fresh rye bread and good company at the deli counter.",
+        "In a world of fast food, be a slow-crafted deli sandwich.",
+        "The best conversations happen while waiting for your number at the deli.",
+        "A deli is a museum of meats and a gallery of cheeses.",
+        "You can't buy happiness, but you can buy a pastrami sandwich, and that's pretty close.",
+        "The deli counter is the great equalizer - everyone waits their turn.",
+        "A true deli doesn't skimp on the meat - pile it high!",
+        "The smell of a good deli is the cologne of the gods.",
+        "Behind every great sandwich is an even greater deli owner.",
+        "A deli without character is just a sandwich shop.",
+        "The art of the deli is in the slicing - thin, but not too thin.",
+        "Life's too short for bad delis and bad attitudes.",
+        "A proper Reuben is a work of art, not just a sandwich.",
+        "The deli is where nostalgia tastes like corned beef.",
+        "You haven't lived until you've had a real New York deli experience.",
+        "A deli's reputation is built one sandwich at a time.",
+        "The best therapy is a good deli sandwich and a cream soda.",
+        "In the deli, we trust - all others pay cash.",
+        "A world without delis would be a world without soul.",
+        "The pickle barrel is the heart of every great deli.",
+        "Good delis are like good friends - hard to find but worth keeping.",
+        "The deli special isn't just lunch, it's an experience.",
+        "A cold cut above the rest - that's what makes a great deli.",
+        "The key to a great deli? Respect the meat, honor the bread.",
+        "Life's simple pleasures: a good book, a quiet afternoon, and a deli sandwich.",
+        "The deli is where generations gather and memories are made.",
+        "You can tell a lot about a city by the quality of its delis.",
+        "A bagel with lox and schmear - the breakfast of champions.",
+        "The deli counter is a stage, and the slicer is the performer.",
+        "There's no problem that can't be discussed over a deli sandwich.",
+        "A good deli knows your order before you say it.",
+        "The best delis have sawdust on the floor and love in the sandwiches.",
+        "Matzo ball soup - because sometimes you need a hug in a bowl.",
+        "A deli without a grumpy owner just doesn't feel authentic.",
+        "The numbered ticket system: teaching patience since forever.",
+        "A true deli smells like heaven and looks like organized chaos.",
+        "Chopped liver - you either love it or you're wrong.",
+        "The deli is proof that good things come to those who wait in line.",
+        "A half-sour pickle is worth a thousand words.",
+        "The best delis have been run by the same family for generations.",
+        "A knish is a potato hug wrapped in dough.",
+        "The deli case is a rainbow of meats and a symphony of flavors.",
+        "You can take the person out of the deli, but not the deli out of the person.",
+        "A good deli mustard should clear your sinuses and your mind.",
+        "The deli is where 'a little bit more' is the standard measurement.",
+        "Corned beef: the meat that built empires and fed the hungry.",
+        "A deli without character is like coffee without caffeine - pointless.",
+        "The secret ingredient in every deli sandwich? Tradition.",
+        "A proper deli has more personality than most people.",
+        "The counter person who remembers your name is worth their weight in gold.",
+        "A deli is not just a place, it's a state of mind.",
+        "The sound of the meat slicer is the soundtrack of comfort.",
+        "A deli sandwich eaten standing up tastes better than one sitting down.",
+        "The best deals in life are found at the deli counter.",
+        "A hot pastrami sandwich is proof that there is a God.",
+        "The deli is where strangers become regulars and regulars become family.",
+        "You haven't truly argued until you've debated the best deli in town.",
+        "A good coleslaw is the unsung hero of every deli sandwich.",
+        "The deli owner who remembers your father's order is a living treasure.",
+        "In the deli, time moves slower and sandwiches get bigger.",
+        "A proper Italian sub requires engineering skills and an appetite.",
+        "The deli is where calories don't count and portions don't lie.",
+        "A fresh Kaiser roll is the foundation of civilization.",
+        "The best delis are always exactly three blocks further than you want to walk.",
+        "A pound of turkey never looks like a pound at the deli - it's a beautiful mystery.",
+        "The deli pickle: crunchy, sour, and absolutely essential.",
+        "A good deli salad requires mayo, dedication, and no judgment.",
+        "The sound of wax paper being torn is the deli's signature song.",
+        "A deli that doesn't argue about the correct way to make a sandwich isn't trying hard enough.",
+        "The best investment you can make is in a good relationship with your deli guy.",
+        "A club sandwich is proof that more is sometimes more.",
+        "The deli is the last place where 'just a little extra' is always free.",
+        "A proper hero sandwich requires both hands and a plan.",
+        "The smell of fresh rye bread is worth waking up early for.",
+        "A deli without a sense of humor is missing the point entirely.",
+        "The turkey gets all the credit, but the Swiss cheese does all the work.",
+        "A good deli wrap is like a burrito that went to college.",
+        "The deli cooler is Narnia for hungry people.",
+        "A proper BLT requires structural integrity and faith.",
+        "The best delis have floors that have seen decades and scales that have weighed tons.",
+        "A chicken salad sandwich is summer in a roll.",
+        "The deli is where 'hold the mayo' is respected but questioned.",
+        "A good egg salad requires precision, patience, and paprika.",
+        "The art of the deli is knowing when to stop adding ingredients - and ignoring that knowledge.",
+        "A tuna melt is the comfort food that hugs you back.",
+        "The deli menu is a novel that you never finish reading.",
+        "A proper Cubano requires a press, patience, and perfection.",
+        "The best delis have at least one sandwich named after a regular customer.",
+        "A deli that toasts your sandwich with care is a deli that cares about life.",
+        "The roast beef should be pink, the bread should be fresh, and the owner should have opinions.",
+        "A good deli doesn't follow trends - it creates memories.",
+        "The oil and vinegar at an Italian deli is holy water for sandwiches.",
+        "A proper meatball sub requires a shower afterwards - that's how you know it's good.",
+        "The deli where everyone knows your usual order is your second home.",
+        "A breakfast sandwich from a good deli is worth two from anywhere else.",
+        "The best delis measure success in satisfied customers, not Yelp stars.",
+        "A Monte Cristo is proof that delis can do fancy when they want to.",
+        "The deli counter is the original social network.",
+        "A good deli cheese selection is more diverse than the United Nations.",
+        "The best part of a deli sandwich is the first bite - the second best part is every bite after.",
+        "A deli that runs out of bread before noon is doing something very right.",
+        "The pickle spear on the side isn't a garnish - it's a requirement.",
+    ]
+
+    return random.choice(deli_quotes)
+
+
+def with_deli_quote(f):
+    """Decorator for Click commands that prints a random deli quote after successful execution."""
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        try:
+            import sys
+            if '--help' in sys.argv or '-h' in sys.argv:
+                return f(*args, **kwargs)
+
+            # Execute the original command
+            result = f(*args, **kwargs)
+
+            ctx = click.get_current_context()
+            if ctx.obj and ctx.obj.get('quotes_enabled', False):
+                click.echo(f"\n{_get_random_deli_quote()}\n\t -DELi Bot\n")
+
+            return result
+        except Exception:
+            raise
+
+    return wrapper
 
 
 @click.group()
@@ -225,6 +361,7 @@ sys.excepthook = _custom_excepthook
 )
 @click.option("--debug", is_flag=True, help="Enable debug mode")
 @click.option("--disable-logging", is_flag=True, help="Turn off DELi logging")
+@click.option("--stream-logs", is_flag=True, help="Stream logs to stdout in addition to saving to deli.log")
 @click.option(
     "--deli-data-dir",
     type=click.Path(),
@@ -239,12 +376,28 @@ sys.excepthook = _custom_excepthook
     default=None,
     help="Path to DELi config file to use; if not provided, will use default at ~/.deli",
 )
+@click.option("--quote", "-q", is_flag=True, help="Output a random deli related quote after the program finishes")
 @click.pass_context
-def cli(ctx, debug, disable_logging, deli_data_dir, config_file):
+def cli(ctx, debug, disable_logging, stream_logs, deli_data_dir, config_file, quote):
     """Main command group entry"""
     from deli.configure import get_deli_config
 
     ctx.ensure_object(dict)
+
+    if stream_logs:
+        handlers = [logging.FileHandler("deli.log"), logging.StreamHandler(sys.stdout)]
+    else:
+        handlers = [logging.FileHandler("deli.log")]
+
+    # set up root logger
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        handlers=handlers,
+    )
+    logging.captureWarnings(True)
+    sys.excepthook = _custom_excepthook
 
     # prepare logger
     logger = logging.getLogger("deli")
@@ -284,7 +437,12 @@ def cli(ctx, debug, disable_logging, deli_data_dir, config_file):
 
     ctx.obj["deli_config"] = deli_config
     logger.debug(f"using DELi config file at: '{deli_config.location}'")
-    logger.debug(f"using DELi Data Directory at: '{deli_config.deli_data_dir}'")
+    try:
+        logger.debug(f"using DELi Data Directory at: '{deli_config.deli_data_dir}'")
+    except DeliDataDirError:
+        logger.warning(f"DELi data directory is not set in configuration")
+
+    ctx.obj['quotes_enabled'] = quote
 
 
 @cli.group(name="config")
@@ -479,6 +637,7 @@ def decode_group(ctx):
 @click.option("--exclude-score", is_flag=True, help="Exclude scores from decoding results")
 @click.option("--skip-report", is_flag=True, help="Skip generating the decoding report at the end")
 @click.pass_context
+@with_deli_quote
 def run_decode(
     ctx,
     decode_file,
@@ -665,6 +824,7 @@ def run_decode(
 @click.option("--out-loc", "-o", type=click.Path(), required=False, default="./aggregated_decodes.json", help="Output location to save aggregated decodes to; will add .json suffix if missing")
 @click.option("--compress", "-z", is_flag=True, help="Compress output with gzip")
 @click.pass_context
+@with_deli_quote
 def collect_decodes(ctx, decoded_reads, score_threshold, count_threshold, out_loc, compress):
     """
     Collect decoded reads from decoded TSV file(s) into a JSON count format
@@ -749,9 +909,11 @@ def collect_decodes(ctx, decoded_reads, score_threshold, count_threshold, out_lo
 @click.option("--cluster-umis", "-u", is_flag=True, help="Cluster UMIs to determine final count")
 @click.option("--keep-raw-count", "-r", is_flag=True, help="Keep raw count in output")
 @click.option("--keep-dedup-count", "-d", is_flag=True, help="Keep deduplicated count in output; ignored unless --cluster-umis is used")
-@click.option("--output-format", "-t", type=click.Choice(["tsv", "gzip", "parquet", "avro"]), default="tsv", help="Output file format")
+@click.option("--output-format", "-f", type=click.Choice(["tsv", "gzip", "parquet", "avro"]), default="tsv", help="Output file format")
+@click.option("--use-tqdm", "-t", is_flag=True, help="Use tqdm to show progress")
 @click.pass_context
-def count_compounds(ctx, collected_decodes, out_loc, cluster_umis, keep_raw_count, keep_dedup_count, output_format):
+@with_deli_quote
+def count_compounds(ctx, collected_decodes, out_loc, cluster_umis, keep_raw_count, keep_dedup_count, output_format, use_tqdm):
     """
     Count compounds from collected decoded file
 
@@ -867,7 +1029,7 @@ def count_compounds(ctx, collected_decodes, out_loc, cluster_umis, keep_raw_coun
     _batch = []
     _ticker = 0
     with _open_text_file(Path(collected_decodes)) as in_file:
-        for line in tqdm(in_file, desc="Counting compounds"):
+        for line in tqdm(in_file, desc="Counting compounds", disable=not use_tqdm):
             _ticker += 1
             #cpd_info = ast.literal_eval(line)
             cpd_info = json.loads(line)
@@ -916,6 +1078,7 @@ def count_compounds(ctx, collected_decodes, out_loc, cluster_umis, keep_raw_coun
 @click.argument("decode_file", type=click.Path(exists=True), required=False, default=None)
 @click.option("--out-loc", "-o", type=click.Path(), required=False, default="./decode_report.html", help="Output location to save report to")
 @click.pass_context
+@with_deli_quote
 def generate_report(ctx, decode_stats_file, decode_file, out_loc):
     """
     Generate an HTML decoding report from decoding statistics file(s)
