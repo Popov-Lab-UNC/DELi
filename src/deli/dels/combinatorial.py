@@ -32,7 +32,7 @@ RESERVED_CONFIG_KEYS = [
 
 
 @no_type_check  # too much of a hassle for IO
-def _parse_library_json(data: dict, load_dna: bool) -> dict[str, Any]:
+def _parse_library_json(data: dict, load_dna: bool, load_chemicals: bool = True) -> dict[str, Any]:
     """
     Load from a JSON dict
 
@@ -42,6 +42,9 @@ def _parse_library_json(data: dict, load_dna: bool) -> dict[str, Any]:
         data read in from JSON
     load_dna: bool
         whether to load information about DNA barcodes
+    load_chemicals: bool, default = True
+        whether to load chemical information
+        this extends to any type of chemical info, including SMILES or Reaction info
 
     Returns
     -------
@@ -75,7 +78,7 @@ def _parse_library_json(data: dict, load_dna: bool) -> dict[str, Any]:
                 tool_compounds.append(
                     DopedToolCompound(
                         compound_id=doped_compound_id,
-                        smiles=smiles,
+                        smiles=smiles if load_chemicals else None,
                         bb_tags=tuple(_bb_tags),
                     )
                 )
@@ -83,7 +86,7 @@ def _parse_library_json(data: dict, load_dna: bool) -> dict[str, Any]:
                 tool_compounds.append(
                     ToolCompound(
                         compound_id=doped_compound_id,
-                        smiles=smiles,
+                        smiles=smiles if load_chemicals else None,
                     )
                 )
 
@@ -122,9 +125,11 @@ def _parse_library_json(data: dict, load_dna: bool) -> dict[str, Any]:
                     raise LibraryBuildError(
                         f"doped compound {doped_compound.compound_id} missing tag for cycle {cycle}"
                     ) from e
-            _observed_sets.append((cycle, TaggedBuildingBlockSet.load(file_path, include_fake_tags=fake_tags)))
+            _observed_sets.append(
+                (cycle, TaggedBuildingBlockSet.load(file_path, include_fake_tags=fake_tags, load_smiles=load_chemicals))
+            )
         else:
-            _observed_sets.append((cycle, BuildingBlockSet.load(file_path)))
+            _observed_sets.append((cycle, BuildingBlockSet.load(file_path, load_smiles=load_chemicals)))
 
     # check for right order of sets
     _bb_cycles = [_[0] for _ in _observed_sets]
@@ -143,7 +148,7 @@ def _parse_library_json(data: dict, load_dna: bool) -> dict[str, Any]:
     truncated_linker = data.get("truncated_linker", None)
     scaffold = data.get("scaffold", None)
 
-    if "reactions" in data.keys():
+    if ("reactions" in data.keys()) and load_chemicals:
         rxn_tree = ReactionTree.load_from_dict(
             data["reactions"],
             frozenset(bb_set_ids),
@@ -268,7 +273,7 @@ class CombinatorialLibrary(Library[DELCompound], DeliDataLoadable):
 
     @classmethod
     @accept_deli_data_name("libraries", "json")
-    def load(cls, path: str) -> "CombinatorialLibrary":
+    def load(cls, path: str, load_chemical_info: bool = True) -> "CombinatorialLibrary":
         """
         Load a library from the DELi data directory
 
@@ -287,13 +292,20 @@ class CombinatorialLibrary(Library[DELCompound], DeliDataLoadable):
         ----------
         path: str
             path of the library to load
+        load_chemical_info: bool
+            whether to load chemical information.
+            Skipping loading chemical info can save memory and time if it is not needed
 
         Returns
         -------
         CombinatorialLibrary
         """
         library_id = Path(path).stem.replace(" ", "_")
-        _cls = cls(library_id=library_id, **_parse_library_json(json.load(open(path)), load_dna=False))
+        _cls = cls(
+            library_id=library_id,
+            **_parse_library_json(json.load(open(path)), load_dna=False, load_chemicals=load_chemical_info),
+        )
+        return _cls
         _cls.loaded_from = path
         return _cls
 
@@ -729,7 +741,7 @@ class DELibrary(CombinatorialLibrary, BarcodedMixin[DELBarcodeSchema]):
 
     @classmethod
     @accept_deli_data_name("libraries", "json")
-    def load(cls, path: str) -> "DELibrary":
+    def load(cls, path: str, load_chemical_info: bool = True) -> "DELibrary":
         """
         Load a library from the DELi data directory
 
@@ -749,13 +761,19 @@ class DELibrary(CombinatorialLibrary, BarcodedMixin[DELBarcodeSchema]):
         ----------
         path: str
             path of the library to load
+        load_chemical_info: bool
+            whether to load chemical information.
+            Skipping loading chemical info can save memory and time if it is not needed
 
         Returns
         -------
         DELibrary
         """
         library_id = Path(path).stem.replace(" ", "_")
-        _cls = cls(library_id=library_id, **_parse_library_json(json.load(open(path)), load_dna=True))
+        _cls = cls(
+            library_id=library_id,
+            **_parse_library_json(json.load(open(path)), load_dna=True, load_chemicals=load_chemical_info),
+        )
         _cls.loaded_from = path
         return _cls
 

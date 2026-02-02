@@ -42,16 +42,6 @@ def test_tool_compound_load_missing_id_raises(tmp_path: Path):
         ToolCompound.load(str(p))
 
 
-def test_tool_compound_load_returns_none_for_valid(tmp_path: Path):
-    """Test that ToolCompound.load returns None as per current implementation."""
-    # Current implementation constructs an instance but does not return it.
-    data = {"compound_id": "T100", "smiles": "CC"}
-    p = write_json(tmp_path, data)
-    res = ToolCompound.load(str(p))
-    # ensure no exception and current behavior returns None
-    assert res is None
-
-
 def test_doped_tool_compound_to_from_dict_roundtrip():
     """Test DopedToolCompound to_dict and from_dict round-trip behavior."""
     dtc = DopedToolCompound(compound_id="D001", bb_tags=("A", "B", "C"), smiles="CC")
