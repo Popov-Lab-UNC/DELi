@@ -879,7 +879,8 @@ def count_compounds(ctx, collected_decodes, out_loc, cluster_umis, keep_raw_coun
             dedup_count = len(cpd_info["umi_counts"])
             count = dedup_count  # default to dedup count if not clustering
             if cluster_umis:
-                count = corrected_count(cpd_info["umi_counts"])
+                umi_counts_by_seq = {item["k"]: item["c"] for item in cpd_info["umi_counts"]}
+                count = corrected_count(umi_counts_by_seq)
 
             # prepare output info
             row = {
