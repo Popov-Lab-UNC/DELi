@@ -514,53 +514,57 @@ def _build_default_hamming_code_strings(
 def accept_deli_data_name(
     sub_dir: str,  # cannot use literal unpacking if we want to support older python versions
     extension: str,
-    target_param: str = "path",
-    return_on_not_found: bool = False,
+    target_param: str = "name",
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """
     Decorator to allow load functions to take name of DELi data object
 
-    Notes
-    -----
     This should be used decorate the `load` function of any
     class that has the `DeliDataLoadable` mixin
 
-    It will result in the function taking in, rather than a full path,
-    the name of the object (e.g. "MyMegaLibrary") and the
-    DELi config object that defines where deli_data_dir is
+    This enables the function to accept the name of a file in
+    a specific DELi data sub-directory rather than
+    requiring the full path to be provided (though full paths are still accepted)
 
-    Set the sub-dir (libraries, indexes, building_blocks, barcodes)
-    when assigning the decorator based on where the data should be
-    See `Storing DEL info` in docs for more details
+    Full paths will be prioritized over names if both are possible (that is,
+    there is a file in the CWD with the same name as a DELi data object)
 
-    Also set the file `extension` so that the write file loaders
-    can be used and file type checked
-
-    Not all DEL objects use the same file format.
-    DocStrings of a given object will define which
-    file formats can be used
+    Notes
+    -----
+    The DELi data dir treats the "name" of an object as the file name without
+    its extension. See the docs for more info on how the DELi data directory works
 
     Parameters
     ----------
     sub_dir: str
-        the name of the DELi data sub directory to look in
+        the name of the DELi data subdirectory to look in
     extension: str
         the file extension for matching files
-    target_param: str, default = "path"
-        the name of the parameter to look up in deli data dir
-    return_on_not_found: bool, default = False
-        if True, will return the original input string if the file is not found
-        instead of raising DeliDataNotFound
+    target_param: str, default = "name"
+        the name of the parameter to look up in deli data dir;
+        This allows decorating functions that use a different name for the parameter
+        (e.g. "name_or_path" instead of "name") in the function call.
 
     Returns
     -------
     decorated_function: Callable[P, R]
     """
 
-    def _build_deli_data_path(path: str) -> Path | str:
-        if os.path.exists(path):
-            return Path(path)
+    def _build_deli_data_path(name: str) -> Path | str:
+        path = Path(name).absolute()
 
+        # if this path exists as-is, return it
+        if path.exists():
+            return path
+        else:
+            if "/" in name or "\\" in name:
+                # looks like a path but doesn't exist
+                raise DeliDataNotFound(
+                    f"{name} looks like a path but cannot be found; if trying to use the name of a file in the "
+                    f"Deli Data Dir only include the file name with any file extensions"
+                )
+
+        # search for a file matching the name in the deli data dir
         _sub_dir_path = get_deli_config().deli_data_dir / sub_dir
         if not os.path.exists(_sub_dir_path):
             raise DeliDataNotFound(
@@ -568,15 +572,22 @@ def accept_deli_data_name(
                 f"did you check that deli_data_dir is set correctly?"
             )
 
-        _file_name = os.path.basename(path).split(".")[0] + "." + extension
-        file_path = get_deli_config().deli_data_dir / sub_dir / _file_name
+        file_name = name + "." + extension
 
-        if not os.path.exists(file_path) and (not return_on_not_found):
-            raise DeliDataNotFound(f"cannot find file '{path}.{extension}' in {_sub_dir_path}")
-        elif os.path.exists(file_path):
-            return file_path
+        possible_locations = list(_sub_dir_path.rglob(file_name, case_sensitive=True))
+        if len(possible_locations) > 1:
+            raise DeliDataNotFound(
+                f"multiple files named '{file_name}' found in DELi data subdirectory '{_sub_dir_path}': "
+                f"{possible_locations}; please provide a full path to the desired file OR rename files to be unique; "
+                f"you can check for file name conflicts in the DELi data directory using 'deli data validate' command"
+            )
+        elif len(possible_locations) == 0:
+            raise DeliDataNotFound(
+                f"cannot find a file matching '{name}.{extension}' in {_sub_dir_path} or its subdirectories; "
+                f"check if this name exists in the DELi data directory"
+            )
         else:
-            return path
+            return possible_locations[0].absolute()
 
     try:
         decorator = _build_argument_validation_decorator(_build_deli_data_path, target_param)
@@ -622,7 +633,7 @@ class DeliDataLoadable(abc.ABC):
 
     @classmethod
     @abc.abstractmethod
-    @accept_deli_data_name(sub_dir="barcodes", extension="json")
+    @accept_deli_data_name(sub_dir="DUMMY", extension="DUMMY")
     def load(cls, name_or_path: str):
         """Load the file into the object"""
         raise NotImplementedError()
