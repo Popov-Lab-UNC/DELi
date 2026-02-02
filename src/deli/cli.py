@@ -911,7 +911,7 @@ def count_compounds(ctx, collected_decodes, out_loc, cluster_umis, keep_raw_coun
         out_file.close()
     logger.debug("closed output file")
 
-    logger.info(f"wrote f{_ticker} compounds to: '{out_loc}'")
+    logger.info(f"wrote {_ticker} compounds to: '{out_loc}'")
 
 
 @decode_group.command(name="report")
