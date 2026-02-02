@@ -5,8 +5,8 @@ date_ran: "2025-03-30"
 additional_info: "This is a test selection for the DELi decode."
 
 sequence_files:
-  - "./test_data/example.fastq"
-  - "./test_data/example.fastq"
+  - "./data/example.fastq"
+  - "./data/example.fastq"
 
 libraries:
     - "DEL004"

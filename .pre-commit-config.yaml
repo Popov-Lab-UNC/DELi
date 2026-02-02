@@ -1,6 +1,6 @@
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: v6.0.0
     hooks:
       - id: check-yaml
         args: ['--unsafe']
@@ -10,20 +10,22 @@ repos:
       - id: check-merge-conflict
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.11.13
+    rev: v0.14.14
     hooks:
       - id: ruff
         args: ["--config", "pyproject.toml", "--fix"]
+        exclude: "src/deli/cli.*"
       - id: ruff-format
         args: ["--config", "pyproject.toml"]
+        exclude: "src/deli/cli.*"
 
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.16.0
+    rev: v1.19.1
     hooks:
       - id: mypy
         additional_dependencies:
           - types-PyYAML
-        exclude: '^nextflow/.*'
+        exclude: "src/deli/cli.*|^nextflow/.*"
 
   - repo: local
     hooks:

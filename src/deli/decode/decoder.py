@@ -29,7 +29,6 @@ from .library_demultiplex import (
     ToolCompoundLibrary_,
     get_library_demultiplexer_type,
 )
-from .umi import UMI
 
 
 MAX_RETRIES = 50  # number of alignments to attempt before giving up
@@ -180,8 +179,8 @@ C = TypeVar("C", bound="Compound")
 class DecodedCompound(abc.ABC, Generic[C]):
     """Base class for compounds that were decoded from a DNA read"""
 
-    def __init__(self, umi: UMI):
-        self.umi: UMI = umi
+    def __init__(self, umi: str):
+        self.umi = umi
 
     @abc.abstractmethod
     def to_compound(self) -> C:
@@ -296,7 +295,7 @@ class DecodedDELCompound(DecodedCompound[DELCompound]):
         the called library
     building_block_calls : list[ValidCall[TaggedBuildingBlock]]
         the building block calls *in order of the library's building block sections*
-    umi: UMI or `None`
+    umi: str or `None`
         the UMI for the read
         if not using umi or no umi in the barcode, use a `None`
     """
@@ -305,7 +304,7 @@ class DecodedDELCompound(DecodedCompound[DELCompound]):
         self,
         library: DELibrary,
         building_block_calls: list[ValidCall[TaggedBuildingBlock]],
-        umi: UMI,
+        umi: str,
     ):
         self.library = library
         self.building_block_calls = building_block_calls
@@ -387,7 +386,7 @@ class DecodedDELCompound(DecodedCompound[DELCompound]):
         return {
             "bb_ids": ",".join(bb_call.obj.bb_id for bb_call in self.building_block_calls),
             "bb_scores": ",".join(str(bb_call.score) for bb_call in self.building_block_calls),
-            "umi": self.umi.umi_sequence if self.umi is not None else "null",
+            "umi": self.umi,
         }
 
     def get_smiles(self) -> str:
@@ -450,7 +449,7 @@ class DecodedToolCompound(DecodedCompound[ToolCompound]):
         self,
         tool_compound: ToolCompound,
         alignment_score: float,
-        umi: UMI,
+        umi: str,
     ):
         self.alignment_score = alignment_score
         self.tool_compound: ToolCompound = tool_compound
@@ -508,7 +507,7 @@ class DecodedToolCompound(DecodedCompound[ToolCompound]):
         -------
         dict[str, str]
         """
-        return {"umi": self.umi.umi_sequence if self.umi is not None else "null"}
+        return {"umi": self.umi}
 
     def get_smiles(self) -> str:
         """
@@ -947,7 +946,6 @@ class DELibraryDecoder(_SequenceDecoder):
             global_adj += (call_stop - call_start) - (stop - start - self.wiggle)
 
         # call the UMI
-        umi_call: UMI
         if (self._section_after_umi is not None) and (self._section_before_umi is not None):
             umi_start = called_sec_spans[self._section_before_umi][1] + self._section_dist_before_umi
             umi_stop = called_sec_spans[self._section_before_umi][0] - self._section_dist_after_umi
@@ -956,22 +954,22 @@ class DELibraryDecoder(_SequenceDecoder):
                     sequence=aligned_sequence.sequence,
                     umi_sequence=aligned_sequence.sequence.sequence[umi_start:umi_stop],
                 )
-            umi_call = UMI(aligned_sequence.sequence.sequence[umi_start:umi_stop])
+            umi_call = aligned_sequence.sequence.sequence[umi_start:umi_stop]
         elif self._section_before_umi is not None:
             umi_start = called_sec_spans[self._section_before_umi][1] + self._section_dist_before_umi
             umi_stop = umi_start + len(self.library.barcode_schema.umi_section.section_tag)
-            umi_call = UMI(aligned_sequence.sequence.sequence[umi_start:umi_stop])
+            umi_call = aligned_sequence.sequence.sequence[umi_start:umi_stop]
         elif self._section_after_umi is not None:
             umi_stop = called_sec_spans[self._section_after_umi][0] - self._section_dist_after_umi
             umi_start = umi_stop - len(self.library.barcode_schema.umi_section.section_tag)
-            umi_call = UMI(aligned_sequence.sequence.sequence[umi_start:umi_stop])
+            umi_call = aligned_sequence.sequence.sequence[umi_start:umi_stop]
         else:
             return FailedDecodeAttempt(aligned_sequence.sequence, "No sections to determine UMI location")
 
-        if "N" in umi_call.umi_sequence:
+        if "N" in umi_call:
             return UMIContainsAmbiguity(
                 sequence=aligned_sequence.sequence,
-                umi_sequence=umi_call.umi_sequence,
+                umi_sequence=umi_call,
             )
 
         if all(bb_call.obj.is_real() for bb_call in called_secs.values()):  # real DEL compound
@@ -1053,13 +1051,11 @@ class ToolCompoundDecoder(_SequenceDecoder):
             return DecodedToolCompound(
                 tool_compound=self.tagged_tool_compound,
                 alignment_score=float(distance),
-                umi=UMI(
-                    aligned_sequence.sequence.sequence[
-                        aligned_sequence.section_spans["umi"][0] : len(
-                            self.tagged_tool_compound.barcode_schema.umi_section.section_tag
-                        )
-                    ]
-                ),
+                umi=aligned_sequence.sequence.sequence[
+                    aligned_sequence.section_spans["umi"][0] : len(
+                        self.tagged_tool_compound.barcode_schema.umi_section.section_tag
+                    )
+                ],
             )
 
 
