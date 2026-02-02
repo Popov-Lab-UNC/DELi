@@ -680,8 +680,8 @@ def run_decode(
     out_dir_path.mkdir(parents=True, exist_ok=True)
     logger.debug(f"using output directory at: '{out_dir_path}'")
 
-    # load in the sequenced selection file
-    selection: SequencedSelection = SequencedSelection.from_yaml(decode_file)
+    # load in the sequenced selection file (without chemical info)
+    selection: SequencedSelection = SequencedSelection.from_yaml(decode_file, load_chemical_info=False)
     logger.info(f"loaded selection '{selection.selection_id}' from '{decode_file}'")
     logger.debug(
         f"detected {len(selection.library_collection)} libraries: "
@@ -1106,7 +1106,7 @@ def generate_report(ctx, decode_stats_file, decode_file, out_loc):
 
     selection_obj: Selection | None = None
     if decode_file is not None:
-        selection_obj = _load_any_selection(decode_file)
+        selection_obj = DELSelection.from_yaml(decode_file, load_chemical_info=False)
         logger.debug(f"loaded selection '{selection_obj.selection_id}' from '{decode_file}'")
 
     overall_stats = DecodeStatistics()
