@@ -1,5 +1,6 @@
 """Test cases for the Deli CLI commands."""
 
+import gzip
 import logging
 import os
 import shutil
@@ -14,6 +15,8 @@ from deli.cli import (
     click_init_deli_data_dir,
     click_set_deli_data_dir,
     click_which_deli_data_dir,
+    collect_decodes,
+    count_compounds,
     run_decode,
 )
 from deli.configure import _DeliConfig, get_deli_config, set_deli_data_dir, validate_deli_data_dir
@@ -35,6 +38,18 @@ def selection_file_path():
 def fastq_file_path():
     """Path to the example fastq file"""
     return Path(__file__).parent / "data" / "example.fastq"
+
+
+@pytest.fixture()
+def decoded_file_path():
+    """Path to the example fastq file"""
+    return Path(__file__).parent / "data" / "example_decoded.tsv"
+
+
+@pytest.fixture()
+def collected_file_path():
+    """Path to the example fastq file"""
+    return Path(__file__).parent / "data" / "collected_decodes.ndjson"
 
 
 @pytest.mark.functional
@@ -203,9 +218,7 @@ def test_decode_run(tmpdir, runner, selection_file_path, fastq_file_path):
     runner.invoke(
         run_decode,
         [
-            str(
-                temp_home_path / "example_decode.yaml",
-            ),
+            str(temp_home_path / "example_decode.yaml"),
             "-o",
             "./DecodeResults",
             "-p",
@@ -223,3 +236,146 @@ def test_decode_run(tmpdir, runner, selection_file_path, fastq_file_path):
     assert (temp_home_path / "DecodeResults" / "TEST_decode_report.html").exists()
     assert (temp_home_path / "DecodeResults" / "TEST_decode_statistics.json").exists()
     assert (temp_home_path / "DecodeResults" / "TEST_failed_decoding.tsv").exists()
+
+
+@pytest.mark.functional
+def test_decode_collect(tmpdir, runner, decoded_file_path):
+    """Test the command `deli decode collect`"""
+    temp_home_path = Path(tmpdir)
+    os.chdir(temp_home_path)
+
+    shutil.copy2(decoded_file_path, temp_home_path / "example_decoded.tsv")
+    output_file = temp_home_path / "collected_results.ndjson"
+
+    result = runner.invoke(
+        collect_decodes,
+        [
+            str(temp_home_path / "example_decoded.tsv"),
+            "--out-loc",
+            str(output_file),
+        ],
+        obj={
+            "deli_config": _DeliConfig.load_config(Path(__file__).parent / "data" / ".deli"),
+            "logger": logging.getLogger(),
+        },
+    )
+    assert result.exit_code == 0
+    assert output_file.exists()
+
+    # rerun with compress
+    output_file = temp_home_path / "collected_results.ndjson.gz"
+    result = runner.invoke(
+        collect_decodes,
+        [
+            str(temp_home_path / "example_decoded.tsv"),
+            "--out-loc",
+            str(output_file),
+            "--compress",
+        ],
+        obj={
+            "deli_config": _DeliConfig.load_config(Path(__file__).parent / "data" / ".deli"),
+            "logger": logging.getLogger(),
+        },
+    )
+    assert result.exit_code == 1
+    assert not output_file.exists()
+
+
+@pytest.mark.functional
+def test_decode_count(tmpdir, runner, collected_file_path):
+    """Test the command `deli decode count`"""
+    import polars as pl
+
+    temp_home_path = Path(tmpdir)
+    os.chdir(temp_home_path)
+
+    shutil.copy2(collected_file_path, temp_home_path / "collected_decodes.ndjson")
+
+    # try tsv input
+    output_file = temp_home_path / "count_results.tsv"
+
+    result = runner.invoke(
+        count_compounds,
+        [
+            str(temp_home_path / "collected_decodes.ndjson"),
+            "--out-loc",
+            str(output_file),
+            "--output-format",
+            "tsv",
+        ],
+        obj={
+            "deli_config": _DeliConfig.load_config(Path(__file__).parent / "data" / ".deli"),
+            "logger": logging.getLogger(),
+        },
+    )
+
+    assert result.exit_code == 0
+    assert output_file.exists()
+
+    # try tsv.gz input
+    output_file = temp_home_path / "count_results.tsv.gz"
+
+    result = runner.invoke(
+        count_compounds,
+        [
+            str(temp_home_path / "collected_decodes.ndjson"),
+            "--out-loc",
+            str(output_file),
+            "--output-format",
+            "gzip",
+        ],
+        obj={
+            "deli_config": _DeliConfig.load_config(Path(__file__).parent / "data" / ".deli"),
+            "logger": logging.getLogger(),
+        },
+    )
+
+    assert result.exit_code == 0
+    assert output_file.exists()
+    with gzip.open(output_file, "rt", encoding="utf-8") as f_in:
+        header = f_in.readline()
+        assert "count" in header
+
+    # try parquet format
+    output_file = temp_home_path / "count_results.parquet"
+
+    result = runner.invoke(
+        count_compounds,
+        [
+            str(temp_home_path / "collected_decodes.ndjson"),
+            "--out-loc",
+            str(output_file),
+            "--output-format",
+            "parquet",
+        ],
+        obj={
+            "deli_config": _DeliConfig.load_config(Path(__file__).parent / "data" / ".deli"),
+            "logger": logging.getLogger(),
+        },
+    )
+
+    assert result.exit_code == 0
+    assert output_file.exists()
+    pl.read_parquet(output_file)
+
+    # try avro format
+    output_file = temp_home_path / "count_results.avro"
+
+    result = runner.invoke(
+        count_compounds,
+        [
+            str(temp_home_path / "collected_decodes.ndjson"),
+            "--out-loc",
+            str(output_file),
+            "--output-format",
+            "avro",
+        ],
+        obj={
+            "deli_config": _DeliConfig.load_config(Path(__file__).parent / "data" / ".deli"),
+            "logger": logging.getLogger(),
+        },
+    )
+
+    assert result.exit_code == 0
+    assert output_file.exists()
+    pl.read_avro(output_file)

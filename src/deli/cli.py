@@ -695,6 +695,13 @@ def collect_decodes(ctx, decoded_reads, score_threshold, count_threshold, out_lo
 
     logger = ctx.obj["logger"]
 
+    # compression not yet supported in polars sink_ndjson, prevent use
+    if compress:
+        msg = "compression for output is not yet supported by stable polars; please do not use --compress"
+        logger.error(msg)
+        click.echo(msg)
+        sys.exit(1)
+
     # validate output directory
     out_path = Path(out_loc).absolute()
     if out_path.exists() and out_path.is_dir():
@@ -732,39 +739,38 @@ def collect_decodes(ctx, decoded_reads, score_threshold, count_threshold, out_lo
         pl.scan_csv(decoded_reads, has_header=True, separator="\t", ignore_errors=True)
         .select(["library_id", "bb_ids", "umi", "overall_score"])
         .filter(pl.col("overall_score") <= score_threshold)
-        .groupby(["library_id", "bb_ids"])
+        .group_by(["library_id", "bb_ids"])
         .agg(pl.col("umi"))
         .filter(pl.col("umi").list.len() >= count_threshold)
         .with_columns(
             umi_counts=pl.col("umi").list.eval(pl.element().value_counts().struct.rename_fields(["k", "c"])),
         )
-        .sink_ndjson(out_path, compression="gzip" if compress else "uncompressed")
+        .sink_ndjson(out_path)
     )
     logger.info(f"aggregated decoded sequences from {len(decoded_reads)} input files to {out_path}")
 
 
 @decode_group.command(name="count")
-@click.argument("aggregated-compounds", type=click.Path(exists=True), required=True)
+@click.argument("collected-decodes", type=click.Path(exists=True), required=True)
 @click.option("--out-loc", "-o", type=click.Path(), required=False, default=None, help="Path to output file")
 @click.option("--cluster-umis", "-u", is_flag=True, help="Cluster UMIs to determine final count")
 @click.option("--keep-raw-count", "-r", is_flag=True, help="Keep raw count in output")
 @click.option("--keep-dedup-count", "-d", is_flag=True, help="Keep deduplicated count in output; ignored unless --cluster-umis is used")
-@click.option("--output-type" "-t", type=click.Choice(["tsv", "gzip", "parquet", "avro"]), default="tsv", help="Output file type")
+@click.option("--output-format", "-t", type=click.Choice(["tsv", "gzip", "parquet", "avro"]), default="tsv", help="Output file format")
 @click.pass_context
-def count_compounds(ctx, aggregated_compounds, out_loc, cluster_umis, keep_raw_count, keep_dedup_count, output_type):
+def count_compounds(ctx, collected_decodes, out_loc, cluster_umis, keep_raw_count, keep_dedup_count, output_format):
     """
-    Count compounds from aggregated decoded compounds file
+    Count compounds from collected decoded file
 
-    AGGREGATED-COMPOUNDS is the path to the aggregated decoded compounds NDJSON file
+    COLLECTED-DECODES is the path to the collected decodes NDJSON file
     generated using `deli decode collect`
 
-    NOTE: "gzip" output type will generate a gzip compressed TSV file. Parquet and AVRO files are written at the
-    end using a temperary file
+    NOTE: "gzip" output format will generate a gzip compressed TSV file. Writing to output occurs in batches.
     """
-    from deli.decode.count import raw_count, dedup_count, corrected_count
+    from deli.decode.count import corrected_count
 
     # check conditional imports
-    if output_type == "parquet":
+    if output_format == "parquet":
         try:
             import pyarrow as pa # noqa: F401
             import pyarrow.parquet as pq # noqa: F401
@@ -773,7 +779,7 @@ def count_compounds(ctx, aggregated_compounds, out_loc, cluster_umis, keep_raw_c
             click.echo(msg)
             ctx.obj["logger"].error(msg)
             sys.exit(1)
-    elif output_type == "avro":
+    elif output_format == "avro":
         try:
             import fastavro # noqa: F401
         except ImportError:
@@ -786,43 +792,47 @@ def count_compounds(ctx, aggregated_compounds, out_loc, cluster_umis, keep_raw_c
 
     # determine output type
     compress = False
-    if output_type == "gzip":
-        output_type = "tsv"
+    if output_format == "gzip":
+        output_format = "tsv"
         compress = True
-    elif output_type == "parquet":
-        output_type = "parquet"
-    elif output_type == "avro":
-        output_type = "avro"
-    elif output_type == "tsv":
-        output_type = "tsv"
+    elif output_format == "parquet":
+        output_format = "parquet"
+    elif output_format == "avro":
+        output_format = "avro"
+    elif output_format == "tsv":
+        output_format = "tsv"
     else:
-        msg = f"unknown output type '{output_type}'"
+        msg = f"unknown output type '{output_format}'"
         logger.error(msg)
         click.echo(msg)
         sys.exit(1)
 
     # prepare output path
     if out_loc is None:
-        out_loc = Path(f"./counted_compounds.{output_type}")
+        out_loc = Path(f"./counted_compounds.{output_format}")
     out_loc = _standardize_and_validate_output_loc(
         out_loc,
         is_file=True,
         can_exist=True,
         overwrite=True,
-        extension=f".{output_type}",
+        extension=f".{output_format}",
         is_compressed=compress,
     )
 
     # initialize writer
-    if output_type in ["tsv", "gzip"]:
-        if output_type == "tsv":
+    if output_format == "tsv":
+        if not compress:
             out_file = open(out_loc, "w")
         else:
             out_file = gzip.open(out_loc, "wt")
-        def _write_tsv(row_dict):
-            out_file.write("\t".join([str(val) for val in row_dict.values()]).strip() + "\n")
-        writer = _write_tsv
-    elif output_type == "avro":
+        writer = lambda x: out_file.write("\n".join(["\t".join([str(val) for val in rd.values()]).strip() for rd in x]))
+        _header = ["library_id", "bb_ids", "count"]
+        if keep_raw_count:
+            _header.append("raw_count")
+        if keep_dedup_count and not cluster_umis:
+            _header.append("dedup_count")
+        out_file.write("\t".join(_header) + "\n")
+    elif output_format == "avro":
         schema = {
             'type': 'record',
             'name': 'CompoundCounts',
@@ -836,23 +846,23 @@ def count_compounds(ctx, aggregated_compounds, out_loc, cluster_umis, keep_raw_c
         }
         schema['fields'] = [field for field in schema['fields'] if field is not None]  # Remove None fields
         out_file = open(out_loc, "wb")
-        writer = fastavro.writer(out_file, schema)
-    elif output_type == "parquet":
-        table_schema = pa.schema([
+        writer = lambda x: fastavro.writer(out_file, schema, x)
+    elif output_format == "parquet":
+        fields = [
             pa.field("library_id", pa.string()),
             pa.field("bb_ids", pa.string()),
             pa.field("count", pa.int32()),
-            pa.field("raw_count", pa.int32()) if keep_raw_count else None,
-            pa.field("dedup_count", pa.int32()) if keep_dedup_count and not cluster_umis else None,
-        ])
+        ]
+        if keep_raw_count:
+            fields.append(pa.field("raw_count", pa.int32()))
+        if keep_dedup_count and not cluster_umis:
+            fields.append(pa.field("dedup_count", pa.int32()))
+        table_schema = pa.schema(fields)
         table_schema = table_schema.remove_metadata()  # Remove None fields
         pq_writer = pq.ParquetWriter(out_loc, table_schema)
-        def _write_parquet(batch):
-            pa_batch = pa.RecordBatch.from_pylist(batch, schema=table_schema)
-            pq_writer.write_batch(pa_batch)
-        writer = _write_parquet
+        writer = lambda x: pq_writer.write_batch(pa.RecordBatch.from_pylist(x, schema=table_schema))
     else:
-        msg = f"unknown output type '{output_type}'"
+        msg = f"unknown output type '{output_format}'"
         logger.error(msg)
         click.echo(msg)
         sys.exit(1)
@@ -860,7 +870,7 @@ def count_compounds(ctx, aggregated_compounds, out_loc, cluster_umis, keep_raw_c
     _batch_size = 5000
     _batch = []
     _ticker = 0
-    with _open_text_file(Path(aggregated_compounds)) as in_file:
+    with _open_text_file(Path(collected_decodes)) as in_file:
         for line in tqdm(in_file, desc="Counting compounds"):
             _ticker += 1
             cpd_info = ast.literal_eval(line)
@@ -893,12 +903,9 @@ def count_compounds(ctx, aggregated_compounds, out_loc, cluster_umis, keep_raw_c
         writer(_batch)
 
     # close out files
-    if output_type == "avro":
-        writer.flush()
-        logger.debug("flushed avro writer")
+    if output_format == "avro":
         out_file.close()
-    elif output_type == "parquet":
-        pq_writer.fl
+    elif output_format == "parquet":
         pq_writer.close()
     else:
         out_file.close()
