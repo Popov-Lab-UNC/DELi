@@ -57,7 +57,7 @@ class ToolCompound(Compound, DeliDataLoadable):
 
     @classmethod
     @accept_deli_data_name("tool_compounds", "json", target_param="name_or_path")
-    def load(cls, name_or_path: str):
+    def load(cls, name_or_path: str, load_smiles: bool = True) -> "ToolCompound":
         """
         Load a ToolCompound from a Tool Compound JSON file.
 
@@ -75,6 +75,8 @@ class ToolCompound(Compound, DeliDataLoadable):
         ----------
         name_or_path: str
             The name or path of the JSON file to load.
+        load_smiles: bool, default=True
+            Whether to load the SMILES string from the file, if present.
 
         Returns
         -------
@@ -90,7 +92,7 @@ class ToolCompound(Compound, DeliDataLoadable):
         if "compound_id" not in data:
             raise ToolCompoundParsingError(f"tool compound missing 'compound_id' field from file '{name_or_path}'")
 
-        cls(compound_id=data["compound_id"], smiles=data.get("smiles", None))
+        return cls(compound_id=data["compound_id"], smiles=data.get("smiles", None) if load_smiles else None)
 
 
 class DopedToolCompound(ToolCompound):
@@ -190,7 +192,7 @@ class TaggedToolCompound(ToolCompound):
 
     @classmethod
     @accept_deli_data_name("tool_compounds", "json", target_param="name_or_path")
-    def load(cls, name_or_path: str):
+    def load(cls, name_or_path: str, load_smiles: bool = True) -> "TaggedToolCompound":
         """
         Load a TaggedToolCompound from a Tool Compound JSON file.
 
@@ -208,6 +210,8 @@ class TaggedToolCompound(ToolCompound):
         ----------
         name_or_path: str
             The name or path of the JSON file to load.
+        load_smiles: bool, default=True
+            Whether to load the SMILES string from the file, if present.
 
         Returns
         -------
@@ -234,7 +238,7 @@ class TaggedToolCompound(ToolCompound):
         return cls(
             compound_id=data["compound_id"],
             barcode_schema=barcode_schema,
-            smiles=data.get("smiles", None),
+            smiles=data.get("smiles", None) if load_smiles else None,
         )
 
 

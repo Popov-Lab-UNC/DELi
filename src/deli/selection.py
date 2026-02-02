@@ -120,7 +120,7 @@ class Selection:
         )
 
     @classmethod
-    def from_dict(cls, data: dict):
+    def from_dict(cls, data: dict, load_chemical_info: bool = True) -> Self:
         """
         Create a Selection object from a dictionary.
 
@@ -128,14 +128,20 @@ class Selection:
         ----------
         data: dict
             the dictionary containing selection data
+        load_chemical_info: bool, default = True
+            Whether to load any present chemical information for libraries and tool compounds in selection.
 
         Returns
         -------
         Selection
             the Selection object created from the dictionary
         """
-        lib_collection = LibraryCollection([CombinatorialLibrary.load(lib) for lib in data["libraries"]])
-        tool_compounds = [ToolCompound.load(tc) for tc in data.get("tool_compounds", [])]
+        lib_collection = LibraryCollection(
+            [CombinatorialLibrary.load(lib, load_chemical_info=load_chemical_info) for lib in data["libraries"]]
+        )
+        tool_compounds = [
+            ToolCompound.load(tc, load_smiles=load_chemical_info) for tc in data.get("tool_compounds", [])
+        ]
 
         return cls(
             library_collection=lib_collection,
@@ -148,7 +154,7 @@ class Selection:
         )
 
     @classmethod
-    def from_yaml(cls, path: str | os.PathLike) -> Self:
+    def from_yaml(cls, path: str | os.PathLike, load_chemical_info: bool = True) -> Self:
         """
         Create a Selection object from a YAML file
 
@@ -156,13 +162,16 @@ class Selection:
         ----------
         path: str | os.PathLike
             the path to the YAML file containing selection data
+        load_chemical_info: bool, default = True
+            Whether to load chemical information for libraries and tool compounds if present.
+            Disabling this can speed up loading time and save memory if chemical info is not needed.
 
         Returns
         -------
-        Self
+        Selection
         """
         data = yaml.safe_load(open(path, "r"))
-        return cls.from_dict(data)
+        return cls.from_dict(data, load_chemical_info=load_chemical_info)
 
     def to_json_str(self) -> dict:
         """
@@ -241,7 +250,7 @@ class DELSelection(Selection):
         self.tool_compounds: Sequence[TaggedToolCompound] = tool_compounds if tool_compounds else []
 
     @classmethod
-    def from_dict(cls, data: dict) -> "DELSelection":
+    def from_dict(cls, data: dict, load_chemical_info: bool = False) -> "DELSelection":
         """
         Create a DELSelection object from a dictionary.
 
@@ -249,14 +258,20 @@ class DELSelection(Selection):
         ----------
         data: dict
             the dictionary containing selection data
+        load_chemical_info: bool, default = False
+            Whether to load any present chemical information for libraries and tool compounds in selection.
 
         Returns
         -------
         DELSelection
             the Selection object created from the dictionary
         """
-        lib_collection = DELibraryCollection([DELibrary.load(lib) for lib in data["libraries"]])
-        tool_compounds = [TaggedToolCompound.load(tc) for tc in data.get("tool_compounds", [])]
+        lib_collection = DELibraryCollection(
+            [DELibrary.load(lib, load_chemical_info=load_chemical_info) for lib in data["libraries"]]
+        )
+        tool_compounds = [
+            TaggedToolCompound.load(tc, load_smiles=load_chemical_info) for tc in data.get("tool_compounds", [])
+        ]
 
         return cls(
             library_collection=lib_collection,
@@ -333,7 +348,7 @@ class SequencedSelection(DELSelection):
         return self.sequence_reader.get_sequence_files()
 
     @classmethod
-    def from_dict(cls, data: dict) -> "SequencedSelection":
+    def from_dict(cls, data: dict, load_chemical_info: bool = True) -> "SequencedSelection":
         """
         Create a Selection object from a dictionary.
 
@@ -341,14 +356,20 @@ class SequencedSelection(DELSelection):
         ----------
         data: dict
             the dictionary containing selection data
+        load_chemical_info: bool, default = True
+            Whether to load any present chemical information for libraries and tool compounds in selection.
 
         Returns
         -------
         Selection
             the Selection object created from the dictionary
         """
-        lib_collection = DELibraryCollection([DELibrary.load(lib) for lib in data["libraries"]])
-        tool_compounds = [TaggedToolCompound.load(tc) for tc in data.get("tool_compounds", [])]
+        lib_collection = DELibraryCollection(
+            [DELibrary.load(lib, load_chemical_info=load_chemical_info) for lib in data["libraries"]]
+        )
+        tool_compounds = [
+            TaggedToolCompound.load(tc, load_smiles=load_chemical_info) for tc in data.get("tool_compounds", [])
+        ]
         sequence_reader = get_reader(data["sequence_files"])
 
         return cls(

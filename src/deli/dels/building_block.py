@@ -560,7 +560,7 @@ class BuildingBlockSet(DeliDataLoadable):
 
     @classmethod
     @accept_deli_data_name(sub_dir="building_blocks", extension="csv")
-    def load(cls, path: str, check_for_smiles: bool = False) -> "BuildingBlockSet":
+    def load(cls, path: str, check_for_smiles: bool = False, load_smiles: bool = True) -> "BuildingBlockSet":
         """
         Load a building block set from the DELi data directory
 
@@ -578,18 +578,25 @@ class BuildingBlockSet(DeliDataLoadable):
         check_for_smiles: bool, default = False
             if `True` will check that the building block file has a SMILES column
             *will not* check that all SMILES are valid or present for all compounds
+        load_smiles: bool, default = True
+            if `True` will load SMILES from the file if present.
 
         Returns
         -------
         BuildingBlockSet
         """
-        _cls = cls.load_from_csv(path, set_id=os.path.basename(path).split(".")[0], check_for_smiles=check_for_smiles)
+        _cls = cls.load_from_csv(
+            path,
+            set_id=os.path.basename(path).split(".")[0],
+            check_for_smiles=check_for_smiles,
+            load_smiles=load_smiles,
+        )
         _cls.loaded_from = path
         return _cls
 
     @classmethod
     def load_from_csv(
-        cls, path: str, set_id: Optional[str] = None, check_for_smiles: bool = False
+        cls, path: str, set_id: Optional[str] = None, check_for_smiles: bool = False, load_smiles: bool = True
     ) -> "BuildingBlockSet":
         """
         Read a building block set from a csv file
@@ -609,6 +616,8 @@ class BuildingBlockSet(DeliDataLoadable):
         check_for_smiles: bool, default = False
             if `True` will check that the building block file has a SMILES column
             *will not* check that all SMILES are valid or present for all compounds
+        load_smiles: bool, default = True
+            if `True` will load SMILES from the file if present.
 
         Returns
         -------
@@ -638,7 +647,7 @@ class BuildingBlockSet(DeliDataLoadable):
             for i, line in enumerate(f):
                 splits = line.strip().split(",")
                 _id = splits[_id_col_idx]
-                _smiles = splits[_smi_col_idx] if _smi_col_idx is not None else None
+                _smiles = splits[_smi_col_idx] if ((_smi_col_idx is not None) and load_smiles) else None
                 _subset = splits[_subset_id_col_idx] if _subset_id_col_idx is not None else None
 
                 if _id in _building_block_map.keys():
@@ -974,7 +983,11 @@ class TaggedBuildingBlockSet(BuildingBlockSet):
     @classmethod
     @accept_deli_data_name(sub_dir="building_blocks", extension="csv")
     def load(
-        cls, path: str, check_for_smiles: bool = False, include_fake_tags: Optional[dict[str, str | list[str]]] = None
+        cls,
+        path: str,
+        check_for_smiles: bool = False,
+        load_smiles: bool = True,
+        include_fake_tags: Optional[dict[str, str | list[str]]] = None,
     ) -> "TaggedBuildingBlockSet":
         """
         Load a tagged building block set from the DELi data directory
@@ -993,6 +1006,8 @@ class TaggedBuildingBlockSet(BuildingBlockSet):
         check_for_smiles: bool, default = False
             if `True` will check that the building block file has a SMILES column
             *will not* check that all SMILES are valid or present for all compounds
+        load_smiles: bool, default = True
+            if `True` will load SMILES from the file if present.
         include_fake_tags: Optional[dict[str, str | list[str]]], default = None
             If provided, will include fake tagged building blocks in the set.
             These are provided as a dictionary mapping from bb_id to tag(s).
@@ -1003,7 +1018,12 @@ class TaggedBuildingBlockSet(BuildingBlockSet):
         -------
         TaggedBuildingBlockSet
         """
-        _cls = cls.load_from_csv(path, set_id=os.path.basename(path).split(".")[0])
+        _cls = cls.load_from_csv(
+            path,
+            set_id=os.path.basename(path).split(".")[0],
+            load_smiles=load_smiles,
+            include_fake_tags=include_fake_tags,
+        )
         _cls.loaded_from = path
         return _cls
 
@@ -1013,6 +1033,7 @@ class TaggedBuildingBlockSet(BuildingBlockSet):
         path: str,
         set_id: Optional[str] = None,
         check_for_smiles: bool = False,
+        load_smiles: bool = True,
         include_fake_tags: Optional[dict[str, str | list[str]]] = None,
     ) -> "TaggedBuildingBlockSet":
         """
@@ -1035,6 +1056,8 @@ class TaggedBuildingBlockSet(BuildingBlockSet):
         check_for_smiles: bool, default = False
             if `True` will check that the building block file has a SMILES column
             *will not* check that all SMILES are valid or present for all compounds
+        load_smiles: bool, default = True
+            if `True` will load SMILES from the file if present.
         include_fake_tags: Optional[dict[str, str | list[str]]], default = None
             If provided, will include fake tagged building blocks in the set.
             These are provided as a dictionary mapping from bb_id to tag(s).
@@ -1071,7 +1094,7 @@ class TaggedBuildingBlockSet(BuildingBlockSet):
             for i, line in enumerate(f):
                 splits = line.strip().split(",")
                 _id = splits[_id_col_idx]
-                _smiles = splits[_smi_col_idx] if _smi_col_idx is not None else None
+                _smiles = splits[_smi_col_idx] if ((_smi_col_idx is not None) and load_smiles) else None
                 _subset = splits[_subset_id_col_idx] if _subset_id_col_idx is not None else None
                 _tag = splits[extra_cols[BB_FILE_TAG_COLUMN]]
 
