@@ -8,7 +8,7 @@ from operator import mul
 from pathlib import Path
 from typing import Any, Literal, Optional, Sequence, TypeVar, no_type_check, overload
 
-from deli.configure import DeliDataLoadable, resolve_deli_data_name
+from deli.configure import DeliDataLoadable, resolve_deli_data_name, validate_path_exists
 from deli.enumeration.enumerator import EnumeratedDELCompound, Enumerator
 from deli.enumeration.reaction import ReactionTree
 from deli.utils import to_smi
@@ -272,25 +272,18 @@ class CombinatorialLibrary(Library[DELCompound], DeliDataLoadable):
         return False
 
     @classmethod
-    @resolve_deli_data_name("libraries", "json")
-    def load(cls, path: str, load_chemical_info: bool = True) -> "CombinatorialLibrary":
+    @validate_path_exists(path_arg_name="path_or_name")
+    @resolve_deli_data_name("libraries", "json", target_param="path_or_name")
+    def load(cls, path_or_name: str, load_chemical_info: bool = True) -> "CombinatorialLibrary":
         """
         Load a library from the DELi data directory
 
-        Notes
-        -----
-        This is decorated by `accept_deli_data`
-        which makes this function actually take
-          path_or_name: str
-
-        `path_or_name` can be the full path to the file
-        or it can be the name of the object to load
-
-        See `Storing DEL info` in docs for more details
+        `path_or_name` can be the full path to the file,
+        or it can be the name of the object to load from the deli data directory
 
         Parameters
         ----------
-        path: str
+        path_or_name: str
             path of the library to load
         load_chemical_info: bool
             whether to load chemical information.
@@ -300,13 +293,13 @@ class CombinatorialLibrary(Library[DELCompound], DeliDataLoadable):
         -------
         CombinatorialLibrary
         """
-        library_id = Path(path).stem.replace(" ", "_")
+        library_id = Path(path_or_name).stem.replace(" ", "_")
         _cls = cls(
             library_id=library_id,
-            **_parse_library_json(json.load(open(path)), load_dna=False, load_chemicals=load_chemical_info),
+            **_parse_library_json(json.load(open(path_or_name)), load_dna=False, load_chemicals=load_chemical_info),
         )
         return _cls
-        _cls.loaded_from = path
+        _cls.loaded_from = path_or_name
         return _cls
 
     @property
@@ -740,26 +733,18 @@ class DELibrary(CombinatorialLibrary, BarcodedMixin[DELBarcodeSchema]):
                     )
 
     @classmethod
-    @resolve_deli_data_name("libraries", "json")
-    def load(cls, path: str, load_chemical_info: bool = True) -> "DELibrary":
+    @validate_path_exists(path_arg_name="path_or_name")
+    @resolve_deli_data_name("libraries", "json", target_param="path_or_name")
+    def load(cls, path_or_name: str, load_chemical_info: bool = True) -> "DELibrary":
         """
         Load a library from the DELi data directory
 
-        Notes
-        -----
-        This is decorated by `accept_deli_data`
-        which makes this function actually take
-          path_or_name: str
-
-        `path_or_name` can be the full path to the file
-        or it can be the name of the object to load
-
-        See `Storing DEL info` in docs for more details
-
+        `path_or_name` can be the full path to the file,
+        or it can be the name of the object to load from the deli data dir
 
         Parameters
         ----------
-        path: str
+        path_or_name: str
             path of the library to load
         load_chemical_info: bool
             whether to load chemical information.
@@ -769,12 +754,12 @@ class DELibrary(CombinatorialLibrary, BarcodedMixin[DELBarcodeSchema]):
         -------
         DELibrary
         """
-        library_id = Path(path).stem.replace(" ", "_")
+        library_id = Path(path_or_name).stem.replace(" ", "_")
         _cls = cls(
             library_id=library_id,
-            **_parse_library_json(json.load(open(path)), load_dna=True, load_chemicals=load_chemical_info),
+            **_parse_library_json(json.load(open(path_or_name)), load_dna=True, load_chemicals=load_chemical_info),
         )
-        _cls.loaded_from = path
+        _cls.loaded_from = path_or_name
         return _cls
 
     def iter_bb_barcode_sections_and_sets(

@@ -100,6 +100,12 @@ class Reaction(DeliDataLoadable):
         """
         Load a reaction from a SMARTS/SMIRKS string or file
 
+        Notes
+        -----
+        Unlike other load functions, `Reactions` can be loaded directly with from a SMIRKS.
+        Therefore, this function does not require the `@validate_path_exists` decorator,
+        since it is valid to pass a non-path string (even after `accept_deli_data_name` is applied).
+
         Parameters
         ----------
         path_name_rxn: str
