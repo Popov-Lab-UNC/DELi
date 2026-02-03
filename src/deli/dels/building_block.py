@@ -6,7 +6,7 @@ import warnings
 from collections import defaultdict
 from typing import Literal, Optional, Sequence, overload
 
-from deli.configure import DeliDataLoadable, accept_deli_data_name
+from deli.configure import DeliDataLoadable, resolve_deli_data_name
 from deli.utils.mol_utils import SmilesMixin
 
 
@@ -559,7 +559,7 @@ class BuildingBlockSet(DeliDataLoadable):
             return subset_lookup
 
     @classmethod
-    @accept_deli_data_name(sub_dir="building_blocks", extension="csv")
+    @resolve_deli_data_name(sub_dir="building_blocks", extension="csv")
     def load(cls, path: str, check_for_smiles: bool = False, load_smiles: bool = True) -> "BuildingBlockSet":
         """
         Load a building block set from the DELi data directory
@@ -981,7 +981,7 @@ class TaggedBuildingBlockSet(BuildingBlockSet):
         return {tag: self.building_blocks[i] for tag, i in self._dna_lookup_table.items()}
 
     @classmethod
-    @accept_deli_data_name(sub_dir="building_blocks", extension="csv")
+    @resolve_deli_data_name(sub_dir="building_blocks", extension="csv")
     def load(
         cls,
         path: str,

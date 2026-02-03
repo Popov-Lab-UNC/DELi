@@ -135,11 +135,17 @@ class _DeliConfig:
 
         self.location = Path.home() / ".deli"
 
+        self._deli_data_dir_validated: bool = False
+
     @property
     def deli_data_dir(self) -> Path:
         if self._deli_data_dir is None:
             raise DeliDataDirError("DELi data directory is not set")
         else:
+            # lazily validate the deli data dir
+            if not self._deli_data_dir_validated:
+                validate_deli_data_dir(self._deli_data_dir)
+                self._deli_data_dir_validated = True
             return self._deli_data_dir
 
     @deli_data_dir.setter
@@ -157,8 +163,6 @@ class _DeliConfig:
             else:
                 _path = value.resolve()
 
-            # validate the deli data directory
-            validate_deli_data_dir(_path)
             self._deli_data_dir = _path
 
     @deli_data_dir.deleter
@@ -364,7 +368,7 @@ class _DeliConfig:
 
 def validate_deli_data_dir(deli_data_dir_: Path) -> bool:
     """
-    Validate that the given DELi data directory exists and has all the required sub-directories
+    Validate that the given DELi data directory exists and has all the required subdirectories
 
     Parameters
     ----------
@@ -393,6 +397,7 @@ def validate_deli_data_dir(deli_data_dir_: Path) -> bool:
             f"missing sub-directories {list(missing_sub_dirs)}"
             f"use 'deli data init --fix-missing {deli_data_dir_}' to add missing sub-directories"
         )
+
     return True
 
 
@@ -514,23 +519,51 @@ def _build_default_hamming_code_strings(
     return _codes
 
 
-def accept_deli_data_name(
+def _build_argument_specific_function_decorator(func_: Callable[[Any], Any], target_arg_name: str):
+    """
+    Build a decorator that applies a function to a specific argument of any function it decorates
+    """
+
+    def outer(func: Callable[P, R]) -> Callable[P, R]:
+        @functools.wraps(func)
+        def inner(*args: P.args, **kwargs: P.kwargs) -> R:
+            pos = None
+            if target_arg_name in kwargs:
+                target_arg_value = kwargs[target_arg_name]
+            else:
+                signature = inspect.signature(func)
+                pos = list(signature.parameters.keys()).index(target_arg_name)
+                target_arg_value = args[pos]
+            new_arg = func_(target_arg_value)
+            if pos:
+                _new_args = (*args[:pos], new_arg, *args[pos + 1 :])
+            else:
+                kwargs[target_arg_name] = new_arg
+                _new_args = (*args,)
+            return func(*_new_args, **kwargs)
+
+        return inner
+
+    return outer
+
+
+def resolve_deli_data_name(
     sub_dir: str,  # cannot use literal unpacking if we want to support older python versions
     extension: str,
     target_param: str = "name",
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """
-    Decorator to allow load functions to take name of DELi data object
+    Decorator to allow functions to convert the name of a DELi data object to its full path in the DELi data dir.
 
-    This should be used decorate the `load` function of any
-    class that has the `DeliDataLoadable` mixin
+    This is primarily used to decorate the `load` function of any class implementing `DeliDataLoadable`
+    mixin.
 
-    This enables the function to accept the name of a file in
-    a specific DELi data sub-directory rather than
-    requiring the full path to be provided (though full paths are still accepted)
-
-    Full paths will be prioritized over names if both are possible (that is,
-    there is a file in the CWD with the same name as a DELi data object)
+    This decorator *does not* guarantee returned values will be validated paths.
+    Paths are only validated when a successful deli data resolution occurs.
+    Otherwise, the passed value is returned as-is.
+    If you function required a validated path, you should also use the `@validate_path` decorator.
+    *IMPORTANT*: `@validate_path` should never come before this decorator in the decorator stack, as it would
+    prevent this decorator from resolving DELi data names to files paths
 
     Notes
     -----
@@ -550,10 +583,11 @@ def accept_deli_data_name(
 
     Returns
     -------
-    decorated_function: Callable[P, R]
+    Decorated function
     """
 
-    def _build_deli_data_path(name: str) -> Path | str:
+    # this is the main function to build the deli data path
+    def _resolve_deli_data_path(name: str) -> Path | str:
         path = Path(name).absolute()
 
         # if this path exists as-is, return it
@@ -582,7 +616,8 @@ def accept_deli_data_name(
             raise DeliDataNotFound(
                 f"multiple files named '{file_name}' found in DELi data subdirectory '{_sub_dir_path}': "
                 f"{possible_locations}; please provide a full path to the desired file OR rename files to be unique; "
-                f"you can check for file name conflicts in the DELi data directory using 'deli data validate' command"
+                f"you can check for all file name conflicts in a given DELi data directory using 'deli data validate' "
+                f"command"
             )
         elif len(possible_locations) == 0:
             raise DeliDataNotFound(
@@ -592,41 +627,46 @@ def accept_deli_data_name(
         else:
             return possible_locations[0].absolute()
 
+    # build the decorator
     try:
-        decorator = _build_argument_validation_decorator(_build_deli_data_path, target_param)
-    except ValueError as err:  # will throw this error if the function lacks a "path" argument
+        decorator = _build_argument_specific_function_decorator(_resolve_deli_data_path, target_param)
+    except ValueError as err:  # will throw this error if the function lacks an argument with the 'target_param' name
+        # this error should never happen without a bug in the code (since we control the decorated functions)
         raise RuntimeError(
-            "cannot decorate function without 'path' parameter with the `accept_deli_data_name` decorator"
+            f"expected function to have an argument named '{target_param}'; "
+            f"if you are seeing this error outside of development please report a bug"
         ) from err
     return decorator
 
 
-def _build_argument_validation_decorator(validator_func: Callable[[Any], Any], target_arg_name: str):
+def validate_path_exists(path_arg_name="path") -> Callable[[Callable[P, R]], Callable[P, R]]:
     """
-    General decorator generator for validating a given argument with a validator function.
+    A decorator to validate that a specified file path argument exists.
+
+    Parameters
+    ----------
+    path_arg_name: str, default="path"
+        The name of the argument in the decorated function that contains the file path to validate.
+
+    Returns
+    -------
+    Decorated function
     """
 
-    def outer(func: Callable[P, R]) -> Callable[P, R]:
-        @functools.wraps(func)
-        def inner(*args: P.args, **kwargs: P.kwargs) -> R:
-            pos = None
-            if target_arg_name in kwargs:
-                target_arg_value = kwargs[target_arg_name]
-            else:
-                signature = inspect.signature(func)
-                pos = list(signature.parameters.keys()).index(target_arg_name)
-                target_arg_value = args[pos]
-            new_arg = validator_func(target_arg_value)
-            if pos:
-                _new_args = (*args[:pos], new_arg, *args[pos + 1 :])
-            else:
-                kwargs[target_arg_name] = new_arg
-                _new_args = (*args,)
-            return func(*_new_args, **kwargs)
+    def _validate_file_path(file_path: str) -> str:
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"The specified path does not exist: {file_path}")
+        return file_path
 
-        return inner
-
-    return outer
+    # build the decorator
+    try:
+        return _build_argument_specific_function_decorator(_validate_file_path, path_arg_name)
+    except ValueError as err:  # will throw this error if the function lacks an argument with the 'target_param' name
+        # this error should never happen without a bug in the code (since we control the decorated functions)
+        raise RuntimeError(
+            f"expected function to have an argument named '{path_arg_name}'; "
+            f"if you are seeing this error outside of development please report a bug"
+        ) from err
 
 
 class DeliDataLoadable(abc.ABC):
@@ -636,7 +676,7 @@ class DeliDataLoadable(abc.ABC):
 
     @classmethod
     @abc.abstractmethod
-    @accept_deli_data_name(sub_dir="DUMMY", extension="DUMMY")
+    @resolve_deli_data_name(sub_dir="DUMMY", extension="DUMMY")
     def load(cls, name_or_path: str):
         """Load the file into the object"""
         raise NotImplementedError()

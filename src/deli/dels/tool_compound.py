@@ -1,6 +1,6 @@
 """Handle tool compounds for DELi"""
 
-from deli.configure import DeliDataLoadable, accept_deli_data_name
+from deli.configure import DeliDataLoadable, resolve_deli_data_name
 
 from .barcode import ToolCompoundBarcodeSchema
 from .compound import Compound
@@ -56,7 +56,7 @@ class ToolCompound(Compound, DeliDataLoadable):
             }
 
     @classmethod
-    @accept_deli_data_name("tool_compounds", "json", target_param="name_or_path")
+    @resolve_deli_data_name("tool_compounds", "json", target_param="name_or_path")
     def load(cls, name_or_path: str, load_smiles: bool = True) -> "ToolCompound":
         """
         Load a ToolCompound from a Tool Compound JSON file.
@@ -191,7 +191,7 @@ class TaggedToolCompound(ToolCompound):
         self.barcode_schema = barcode_schema
 
     @classmethod
-    @accept_deli_data_name("tool_compounds", "json", target_param="name_or_path")
+    @resolve_deli_data_name("tool_compounds", "json", target_param="name_or_path")
     def load(cls, name_or_path: str, load_smiles: bool = True) -> "TaggedToolCompound":
         """
         Load a TaggedToolCompound from a Tool Compound JSON file.

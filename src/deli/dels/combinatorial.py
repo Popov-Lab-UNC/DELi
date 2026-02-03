@@ -8,7 +8,7 @@ from operator import mul
 from pathlib import Path
 from typing import Any, Literal, Optional, Sequence, TypeVar, no_type_check, overload
 
-from deli.configure import DeliDataLoadable, accept_deli_data_name
+from deli.configure import DeliDataLoadable, resolve_deli_data_name
 from deli.enumeration.enumerator import EnumeratedDELCompound, Enumerator
 from deli.enumeration.reaction import ReactionTree
 from deli.utils import to_smi
@@ -272,7 +272,7 @@ class CombinatorialLibrary(Library[DELCompound], DeliDataLoadable):
         return False
 
     @classmethod
-    @accept_deli_data_name("libraries", "json")
+    @resolve_deli_data_name("libraries", "json")
     def load(cls, path: str, load_chemical_info: bool = True) -> "CombinatorialLibrary":
         """
         Load a library from the DELi data directory
@@ -740,7 +740,7 @@ class DELibrary(CombinatorialLibrary, BarcodedMixin[DELBarcodeSchema]):
                     )
 
     @classmethod
-    @accept_deli_data_name("libraries", "json")
+    @resolve_deli_data_name("libraries", "json")
     def load(cls, path: str, load_chemical_info: bool = True) -> "DELibrary":
         """
         Load a library from the DELi data directory
