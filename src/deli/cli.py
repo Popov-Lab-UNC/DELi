@@ -641,6 +641,8 @@ def click_validate_deli_data_dir(ctx, path):
             click.echo("DELi data directory is not set; cannot validate")
             sys.exit(1)
 
+    total_issues = 0
+
     try:
         validate_deli_data_dir(_path)
     except FileNotFoundError:
@@ -657,16 +659,11 @@ def click_validate_deli_data_dir(ctx, path):
         )
         sys.exit(1)
     except DeliDataDirError as e:
-        click.echo(
-            f"DELi data directory '{_path}' is missing required sub-directories\n"
-            f"use 'deli data init --fix-missing {_path}' to add missing sub-directories\n"
-            f"Details: {e}"
-        )
-        sys.exit(1)
+        click.echo(e)  # don't need to rephrase this error
+        total_issues += 1  # don't stop here, continue to check for other issues
 
-    total_issues = 0
     for sub_dir_name, sub_dir_ext in zip(DELI_DATA_SUB_DIRS, DELI_DATA_EXTENSIONS):
-        click.echo(f"Validating sub-directory: '{sub_dir_name}'")
+        click.echo(f"-------------------\nValidating sub-directory: '{sub_dir_name}\n'")
         sub_dir_path = _path / sub_dir_name
 
         files = [file_path for file_path in sub_dir_path.rglob('*') if file_path.is_file() and (file_path.suffix == sub_dir_ext)]
