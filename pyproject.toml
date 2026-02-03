@@ -121,11 +121,6 @@ exclude = "src/deli/cli.py"
 [tool.coverage.report]
 fail_under = 75
 
-[tool.pytest.ini_options]
-addopts = """
-    --color=yes
-    --html=test-results/unit-tests-results.html
-"""
 markers = [
     "unit: marks tests as unit tests",
     "functional: marks test as functional tests",
