@@ -17,7 +17,7 @@ repos:
         exclude: "src/deli/cli.*"
       - id: ruff-format
         args: ["--config", "pyproject.toml"]
-        exclude: "src/deli/cli.*"
+        exclude: "src/deli/cli.py"
 
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.19.1
@@ -25,7 +25,7 @@ repos:
       - id: mypy
         additional_dependencies:
           - types-PyYAML
-        exclude: "src/deli/cli.*|^nextflow/.*"
+        exclude: "src/deli/cli.py|^nextflow/.*|^tests/.*"
 
   - repo: local
     hooks:

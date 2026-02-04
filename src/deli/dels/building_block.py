@@ -6,7 +6,7 @@ import warnings
 from collections import defaultdict
 from typing import Literal, Optional, Sequence, overload
 
-from deli.configure import DeliDataLoadable, accept_deli_data_name
+from deli.configure import DeliDataLoadable, resolve_deli_data_name, validate_path_exists
 from deli.utils.mol_utils import SmilesMixin
 
 
@@ -559,8 +559,9 @@ class BuildingBlockSet(DeliDataLoadable):
             return subset_lookup
 
     @classmethod
-    @accept_deli_data_name(sub_dir="building_blocks", extension="csv")
-    def load(cls, path: str, check_for_smiles: bool = False, load_smiles: bool = True) -> "BuildingBlockSet":
+    @resolve_deli_data_name(sub_dir="building_blocks", extension="csv", target_param="path_or_name")
+    @validate_path_exists(path_arg_name="path_or_name")
+    def load(cls, path_or_name: str, check_for_smiles: bool = False, load_smiles: bool = True) -> "BuildingBlockSet":
         """
         Load a building block set from the DELi data directory
 
@@ -573,7 +574,7 @@ class BuildingBlockSet(DeliDataLoadable):
 
         Parameters
         ----------
-        path: str
+        path_or_name: str
             path of the building block set to load
         check_for_smiles: bool, default = False
             if `True` will check that the building block file has a SMILES column
@@ -586,12 +587,12 @@ class BuildingBlockSet(DeliDataLoadable):
         BuildingBlockSet
         """
         _cls = cls.load_from_csv(
-            path,
-            set_id=os.path.basename(path).split(".")[0],
+            path_or_name,
+            set_id=os.path.basename(path_or_name).split(".")[0],
             check_for_smiles=check_for_smiles,
             load_smiles=load_smiles,
         )
-        _cls.loaded_from = path
+        _cls.loaded_from = path_or_name
         return _cls
 
     @classmethod
@@ -981,10 +982,11 @@ class TaggedBuildingBlockSet(BuildingBlockSet):
         return {tag: self.building_blocks[i] for tag, i in self._dna_lookup_table.items()}
 
     @classmethod
-    @accept_deli_data_name(sub_dir="building_blocks", extension="csv")
+    @resolve_deli_data_name(sub_dir="building_blocks", extension="csv", target_param="path_or_name")
+    @validate_path_exists(path_arg_name="path_or_name")
     def load(
         cls,
-        path: str,
+        path_or_name: str,
         check_for_smiles: bool = False,
         load_smiles: bool = True,
         include_fake_tags: Optional[dict[str, str | list[str]]] = None,
@@ -1001,7 +1003,7 @@ class TaggedBuildingBlockSet(BuildingBlockSet):
 
         Parameters
         ----------
-        path: str
+        path_or_name: str
             path of the building block set to load
         check_for_smiles: bool, default = False
             if `True` will check that the building block file has a SMILES column
@@ -1019,12 +1021,12 @@ class TaggedBuildingBlockSet(BuildingBlockSet):
         TaggedBuildingBlockSet
         """
         _cls = cls.load_from_csv(
-            path,
-            set_id=os.path.basename(path).split(".")[0],
+            path_or_name,
+            set_id=os.path.basename(path_or_name).split(".")[0],
             load_smiles=load_smiles,
             include_fake_tags=include_fake_tags,
         )
-        _cls.loaded_from = path
+        _cls.loaded_from = path_or_name
         return _cls
 
     @classmethod

@@ -8,7 +8,7 @@ from typing import Optional, Sequence, no_type_check
 from rdkit import Chem
 from rdkit.Chem import rdChemReactions
 
-from deli.configure import DeliDataLoadable, accept_deli_data_name
+from deli.configure import DeliDataLoadable, resolve_deli_data_name
 from deli.dels.building_block import parse_building_block_subset_id
 from deli.utils.mol_utils import to_mol, to_smi
 
@@ -62,9 +62,7 @@ class Reaction(DeliDataLoadable):
         try:
             self.rxn = rdChemReactions.ReactionFromSmarts(rxn_smarts)
         except Exception as e:
-            raise ReactionParsingError(
-                f"failed to parse reaction SMARTS/SMIRKS: {rxn_smarts}"
-            ) from e
+            raise ReactionParsingError(f"failed to parse reaction SMARTS/SMIRKS: {rxn_smarts}") from e
         self.num_reactants = self.rxn.GetNumReactantTemplates()
 
         # handle multiple product fragments
@@ -91,9 +89,7 @@ class Reaction(DeliDataLoadable):
         self.fail_on_multiple_products = fail_on_multiple_products
 
     @classmethod
-    @accept_deli_data_name(
-        "reactions", "rxn", return_on_not_found=True, target_param="path_name_rxn"
-    )
+    @resolve_deli_data_name("reactions", "rxn", target_param="path_name_rxn")
     def load(
         cls,
         path_name_rxn,
@@ -104,12 +100,17 @@ class Reaction(DeliDataLoadable):
         """
         Load a reaction from a SMARTS/SMIRKS string or file
 
+        Notes
+        -----
+        Unlike other load functions, `Reactions` can be loaded directly with from a SMIRKS.
+        Therefore, this function does not require the `@validate_path_exists` decorator,
+        since it is valid to pass a non-path string (even after `accept_deli_data_name` is applied).
+
         Parameters
         ----------
         path_name_rxn: str
-            the SMARTS/SMIRKS string or path to file containing it
-            can also be the name of a reaction file in the DELi data
-            reactions directory
+            the SMIRKS string, path to rxn file or name of reaction
+            in DELi data reactions directory
         pick_fragment: optional, int
             if the reaction produces multiple products,
             this indicates which product to pick (1-indexed)
@@ -126,6 +127,8 @@ class Reaction(DeliDataLoadable):
         Reaction
             the loaded reaction object
         """
+        # accept_deli_data_name will resolve valid names in deli data dir to paths,
+        # so if the path does not exist at this stage, then we assume it must be a SMIRKS
         if os.path.exists(path_name_rxn):
             with open(path_name_rxn, "r") as rxn_file:
                 rxn_smarts = rxn_file.read().strip()
@@ -135,7 +138,7 @@ class Reaction(DeliDataLoadable):
                 ignore_multiple_products=ignore_multiple_products,
                 fail_on_multiple_products=fail_on_multiple_products,
             )
-        else:
+        else:  # if this fails, that means it not a valid SMIRKS
             try:
                 return cls(
                     path_name_rxn,
@@ -219,8 +222,7 @@ class Reaction(DeliDataLoadable):
             if self.fail_on_multiple_products:
                 reactant_smiles = [Chem.MolToSmiles(arg) for arg in args]
                 raise ReactionError(
-                    f"multiple reaction pathways found for reaction "
-                    f"{self.to_smarts()} with reactants {reactant_smiles}"
+                    f"multiple reaction pathways found for reaction {self.to_smarts()} with reactants {reactant_smiles}"
                 )
             elif not self.ignore_multiple_products:
                 reactant_smiles = [Chem.MolToSmiles(arg) for arg in args]
@@ -364,10 +366,7 @@ class BBSetReactant(Reactant):
             except ValueError:
                 bb_set_id = self.bb_set_reactant_id
                 bb_subset_id = None
-            _error_msg = (
-                f"failed to find a reactant with id {self.bb_set_reactant_id} "
-                f"from BB Set {bb_set_id}"
-            )
+            _error_msg = f"failed to find a reactant with id {self.bb_set_reactant_id} from BB Set {bb_set_id}"
             if bb_subset_id is not None:
                 _error_msg += f" and subset {bb_subset_id}"
             _error_msg += f" in current reactant set {list(vial.keys())}"
@@ -405,9 +404,7 @@ class ProductReactant(Reactant):
     @product_id.setter
     def product_id(self, value):
         """Prevent modification of product_id property"""
-        raise RuntimeError(
-            "product_id is a read-only property derived from step_id; cannot be modified"
-        )
+        raise RuntimeError("product_id is a read-only property derived from step_id; cannot be modified")
 
     def get_from_vial(self, vial: ReactionVial) -> Chem.Mol:
         """
@@ -524,9 +521,7 @@ class ReactionStep:
         """
         self.step_name = step_name
         self.step_id: str = step_id if step_id else step_name
-        self.reactions: Sequence[Reaction] = (
-            [reaction] if isinstance(reaction, Reaction) else reaction
-        )
+        self.reactions: Sequence[Reaction] = [reaction] if isinstance(reaction, Reaction) else reaction
         self.reactants = reactants
         self.product_id = f"product_{self.step_id}"
 
@@ -584,12 +579,7 @@ class ReactionStep:
             try:
                 possible_reactants.add_product(
                     self.product_id,
-                    reaction.react(
-                        *[
-                            reactant.get_from_vial(possible_reactants)
-                            for reactant in self.reactants
-                        ]
-                    ),
+                    reaction.react(*[reactant.get_from_vial(possible_reactants) for reactant in self.reactants]),
                 )
                 return  # success, exit the method
             except ReactionError:
@@ -626,9 +616,7 @@ class ReactionThread:
             the ordered reaction steps that make up the thread
             *must* be in order from first to last step
         """
-        self.reaction_steps = (
-            reaction_steps if isinstance(reaction_steps, tuple) else tuple(reaction_steps)
-        )
+        self.reaction_steps = reaction_steps if isinstance(reaction_steps, tuple) else tuple(reaction_steps)
         self._final_product_id = self.reaction_steps[-1].product_id
 
         # validate that each BuildingBlockSet used by the thread only appears once
@@ -754,9 +742,7 @@ class ReactionTree:
             _bb_set_reactant_id_thread_sets.add(bb_set_reactant_id_thread_set)
 
     def _build_tree(self) -> tuple[tuple[_ReactionNode, ...], list[_ReactionNode]]:
-        _nodes: dict[str, _ReactionNode] = {
-            step.step_id: _ReactionNode(step) for step in self.reaction_steps
-        }
+        _nodes: dict[str, _ReactionNode] = {step.step_id: _ReactionNode(step) for step in self.reaction_steps}
 
         for step_id, node in _nodes.items():
             for reactant in node.step.flatten_reactants():
@@ -767,8 +753,7 @@ class ReactionTree:
                         parent_node = _nodes[parent_step_id]
                     except KeyError as e:
                         raise ReactionParsingError(
-                            f"reaction step {step_id} references missing "
-                            f"parent step {parent_step_id}"
+                            f"reaction step {step_id} references missing parent step {parent_step_id}"
                         ) from e
                     node.parents.append(parent_node)
                     parent_node.children.append(node)
@@ -847,12 +832,8 @@ class ReactionTree:
         for rxn_step_name, rxn_step_data in data.items():
             # extract optional reaction arguments
             _rxn_kwargs = {
-                "ignore_multiple_products": bool(
-                    rxn_step_data.get("ignore_multiple_products", False)
-                ),
-                "fail_on_multiple_products": bool(
-                    rxn_step_data.get("fail_on_multiple_products", False)
-                ),
+                "ignore_multiple_products": bool(rxn_step_data.get("ignore_multiple_products", False)),
+                "fail_on_multiple_products": bool(rxn_step_data.get("fail_on_multiple_products", False)),
                 "pick_fragment": int(rxn_step_data["pick_fragment"])
                 if rxn_step_data.get("pick_fragment", None)
                 else None,
@@ -872,15 +853,11 @@ class ReactionTree:
             try:
                 rxn_smarts = rxn_step_data["rxn_smarts"]
             except KeyError as e:
-                raise ReactionParsingError(
-                    f"reaction step {rxn_step_name} missing required 'rxn_smarts' field"
-                ) from e
+                raise ReactionParsingError(f"reaction step {rxn_step_name} missing required 'rxn_smarts' field") from e
 
             if isinstance(rxn_smarts, list):
                 reactions = [
-                    Reaction(smart, **_rxn_kwargs)
-                    if not use_deli_data_dir
-                    else Reaction.load(smart, **_rxn_kwargs)
+                    Reaction(smart, **_rxn_kwargs) if not use_deli_data_dir else Reaction.load(smart, **_rxn_kwargs)
                     for smart in rxn_smarts
                 ]
             else:
@@ -895,9 +872,7 @@ class ReactionTree:
             try:
                 reactant_ids = rxn_step_data["reactants"]
             except KeyError as e:
-                raise ReactionParsingError(
-                    f"reaction step {rxn_step_name} missing required 'reactants' field"
-                ) from e
+                raise ReactionParsingError(f"reaction step {rxn_step_name} missing required 'reactants' field") from e
             if not isinstance(reactant_ids, list):
                 raise ReactionParsingError(
                     f"reaction step {rxn_step_name} 'reactants' field "
@@ -916,15 +891,11 @@ class ReactionTree:
                                 f"pool '{reactant_id}'"
                             )
                         _reactant_pool.append(
-                            _build_reactant(
-                                pooled_reactant_id, possible_bb_set_ids, _static_comp_lookup
-                            )
+                            _build_reactant(pooled_reactant_id, possible_bb_set_ids, _static_comp_lookup)
                         )
                     reactants.append(PooledReactant(_reactant_pool))
                 elif isinstance(reactant_id, str):
-                    reactants.append(
-                        _build_reactant(reactant_id, possible_bb_set_ids, _static_comp_lookup)
-                    )
+                    reactants.append(_build_reactant(reactant_id, possible_bb_set_ids, _static_comp_lookup))
                 else:
                     raise ReactionParsingError(
                         f"reaction step '{rxn_step_name}' has an invalid "
@@ -965,14 +936,10 @@ class ReactionTree:
         for thread in self.threads:
             if frozenset(thread.bb_set_reactant_ids) == bb_subset_ids:
                 return thread
-        raise ReactionError(
-            f"no reaction thread found matching building block set ids {bb_subset_ids}"
-        )
+        raise ReactionError(f"no reaction thread found matching building block set ids {bb_subset_ids}")
 
 
-def _build_reactant(
-    reactant_id: str, bb_ids: frozenset[str], static_comp_map: dict[str, str | None]
-) -> Reactant:
+def _build_reactant(reactant_id: str, bb_ids: frozenset[str], static_comp_map: dict[str, str | None]) -> Reactant:
     """
     Build the correct reactant from its id string
 
@@ -1004,17 +971,12 @@ def _build_reactant(
                 if _value is not None:
                     return StaticReactant(to_mol(_value, fail_on_error=True))
             except ValueError as e:
-                raise ReactionParsingError(
-                    f"static reactant '{reactant_id}' has an invalid SMILES"
-                ) from e
-            raise ReactionParsingError(
-                f"static reactant '{reactant_id}' is missing, but was used in a reaction step"
-            )
+                raise ReactionParsingError(f"static reactant '{reactant_id}' has an invalid SMILES") from e
+            raise ReactionParsingError(f"static reactant '{reactant_id}' is missing, but was used in a reaction step")
         else:
             try:
                 return StaticReactant(to_mol(reactant_id, fail_on_error=True))
             except ValueError as e:
                 raise ReactionParsingError(
-                    f"reactant id '{reactant_id}' appears to be a static reactant, "
-                    f"but is not a valid SMILES"
+                    f"reactant id '{reactant_id}' appears to be a static reactant, but is not a valid SMILES"
                 ) from e

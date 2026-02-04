@@ -14,6 +14,7 @@ from deli.cli import (
     click_init_deli_config,
     click_init_deli_data_dir,
     click_set_deli_data_dir,
+    click_validate_deli_data_dir,
     click_which_deli_data_dir,
     collect_decodes,
     count_compounds,
@@ -404,3 +405,33 @@ def test_decode_count(tmpdir, runner, collected_file_path):
     assert result.exit_code == 0
     assert output_file.exists()
     pl.read_avro(output_file)
+
+
+@pytest.mark.functional
+def test_validate_deli_data_dir(tmpdir, runner):
+    """Test the validate_deli_data_dir function"""
+    from test_deli_data_dir import build_invalid_deli_data_dir, build_valid_deli_data_dir
+
+    temp_home_path = Path(tmpdir)
+    os.chdir(temp_home_path)
+
+    valid_data_dir = build_valid_deli_data_dir(temp_home_path)
+
+    result = runner.invoke(
+        click_validate_deli_data_dir,
+        [str(valid_data_dir)],
+    )
+
+    assert result.exit_code == 0
+
+    # Create an invalid deli data directory structure
+    invalid_data_dir = build_invalid_deli_data_dir(temp_home_path)
+
+    result = runner.invoke(
+        click_validate_deli_data_dir,
+        [str(invalid_data_dir)],
+    )
+
+    assert result.exit_code == 1
+    assert "total issues found" in result.output
+    assert "WARNING: Found multiple files with the same name" in result.output
