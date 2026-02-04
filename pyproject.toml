@@ -116,7 +116,7 @@ follow_untyped_imports = true
 
 [tool.mypy]
 files = ["src"]
-exclude = "src/deli/cli.py"
+exclude = "src/deli/cli.py|tests"
 
 [tool.coverage.report]
 fail_under = 75
