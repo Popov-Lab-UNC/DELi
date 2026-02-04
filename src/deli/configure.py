@@ -53,6 +53,7 @@ def set_deli_data_dir(data_dir: Optional[str | Path]) -> None:
 def get_deli_config() -> "_DeliConfig":
     """Get the DELi config, loading it lazily if not already loaded"""
     global DELI_CONFIG
+    # lazy loading of the deli config
     if DELI_CONFIG is None:
         _deli_config_dir = os.environ.get("DELI_CONFIG", None)
         if (_deli_config_dir is not None) and (_deli_config_dir != ""):
@@ -72,6 +73,7 @@ def get_deli_config() -> "_DeliConfig":
         if (isinstance(_deli_data_dir, str)) and (_deli_data_dir != ""):
             _deli_data_dir_path = Path(_deli_data_dir).resolve()
             DELI_CONFIG.deli_data_dir = _deli_data_dir_path
+            os.environ["DELI_DATA_DIR"] = str(_deli_data_dir_path)  # set it to shell env too for consistency
 
     return DELI_CONFIG
 
