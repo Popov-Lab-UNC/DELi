@@ -25,7 +25,7 @@ repos:
       - id: mypy
         additional_dependencies:
           - types-PyYAML
-        exclude: "src/deli/cli.py|^nextflow/.*"
+        exclude: "src/deli/cli.py|^nextflow/.*|^tests/.*"
 
   - repo: local
     hooks:

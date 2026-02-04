@@ -559,8 +559,8 @@ class BuildingBlockSet(DeliDataLoadable):
             return subset_lookup
 
     @classmethod
-    @validate_path_exists(path_arg_name="path_or_name")
     @resolve_deli_data_name(sub_dir="building_blocks", extension="csv", target_param="path_or_name")
+    @validate_path_exists(path_arg_name="path_or_name")
     def load(cls, path_or_name: str, check_for_smiles: bool = False, load_smiles: bool = True) -> "BuildingBlockSet":
         """
         Load a building block set from the DELi data directory
@@ -982,8 +982,8 @@ class TaggedBuildingBlockSet(BuildingBlockSet):
         return {tag: self.building_blocks[i] for tag, i in self._dna_lookup_table.items()}
 
     @classmethod
-    @validate_path_exists(path_arg_name="path_or_name")
     @resolve_deli_data_name(sub_dir="building_blocks", extension="csv", target_param="path_or_name")
+    @validate_path_exists(path_arg_name="path_or_name")
     def load(
         cls,
         path_or_name: str,

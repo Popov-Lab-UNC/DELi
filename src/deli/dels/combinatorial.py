@@ -272,8 +272,8 @@ class CombinatorialLibrary(Library[DELCompound], DeliDataLoadable):
         return False
 
     @classmethod
-    @validate_path_exists(path_arg_name="path_or_name")
     @resolve_deli_data_name("libraries", "json", target_param="path_or_name")
+    @validate_path_exists(path_arg_name="path_or_name")
     def load(cls, path_or_name: str, load_chemical_info: bool = True) -> "CombinatorialLibrary":
         """
         Load a library from the DELi data directory
@@ -733,8 +733,8 @@ class DELibrary(CombinatorialLibrary, BarcodedMixin[DELBarcodeSchema]):
                     )
 
     @classmethod
-    @validate_path_exists(path_arg_name="path_or_name")
     @resolve_deli_data_name("libraries", "json", target_param="path_or_name")
+    @validate_path_exists(path_arg_name="path_or_name")
     def load(cls, path_or_name: str, load_chemical_info: bool = True) -> "DELibrary":
         """
         Load a library from the DELi data directory

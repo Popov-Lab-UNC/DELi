@@ -14,6 +14,7 @@ from deli.cli import (
     click_init_deli_config,
     click_init_deli_data_dir,
     click_set_deli_data_dir,
+    click_validate_deli_data_dir,
     click_which_deli_data_dir,
     collect_decodes,
     count_compounds,
@@ -409,30 +410,12 @@ def test_decode_count(tmpdir, runner, collected_file_path):
 @pytest.mark.functional
 def test_validate_deli_data_dir(tmpdir, runner):
     """Test the validate_deli_data_dir function"""
-    from deli.cli import click_validate_deli_data_dir
-    from deli.configure import DELI_DATA_EXTENSIONS, DELI_DATA_SUB_DIRS
+    from test_deli_data_dir import build_invalid_deli_data_dir, build_valid_deli_data_dir
 
     temp_home_path = Path(tmpdir)
     os.chdir(temp_home_path)
 
-    # Create a valid deli data directory structure
-    valid_data_dir = temp_home_path / "valid_deli_data"
-    valid_data_dir.mkdir()
-    for sub_dir, ext in zip(DELI_DATA_SUB_DIRS, DELI_DATA_EXTENSIONS, strict=True):
-        (valid_data_dir / sub_dir).mkdir()
-        with open(valid_data_dir / sub_dir / f"placeholder1.{ext}", "w") as f:
-            f.write("This is a placeholder file.")
-        with open(valid_data_dir / sub_dir / "README.md", "w") as f:
-            f.write("This is a placeholder file with the wrong extension.")
-        (valid_data_dir / sub_dir / "sub_sub_dir1").mkdir()
-        with open(valid_data_dir / sub_dir / "sub_sub_dir1" / f"placeholder2.{ext}", "w") as f:
-            f.write("This is a placeholder file.")
-        (valid_data_dir / sub_dir / "sub_sub_dir1" / "sub_sub_sub_dir").mkdir()
-        with open(valid_data_dir / sub_dir / "sub_sub_dir1" / "sub_sub_sub_dir" / f"placeholder3.{ext}", "w") as f:
-            f.write("This is a placeholder file.")
-        (valid_data_dir / sub_dir / "sub_sub_dir2").mkdir()
-        with open(valid_data_dir / sub_dir / "sub_sub_dir1" / f"placeholder4.{ext}", "w") as f:
-            f.write("This is a placeholder file.")
+    valid_data_dir = build_valid_deli_data_dir(temp_home_path)
 
     result = runner.invoke(
         click_validate_deli_data_dir,
@@ -442,25 +425,7 @@ def test_validate_deli_data_dir(tmpdir, runner):
     assert result.exit_code == 0
 
     # Create an invalid deli data directory structure
-    # Create a valid deli data directory structure
-    invalid_data_dir = temp_home_path / "invalid_deli_data"
-    invalid_data_dir.mkdir()
-    for sub_dir, ext in zip(DELI_DATA_SUB_DIRS[1:], DELI_DATA_EXTENSIONS[1:], strict=True):
-        (invalid_data_dir / sub_dir).mkdir()
-        with open(invalid_data_dir / sub_dir / f"placeholder1.{ext}", "w") as f:
-            f.write("This is a placeholder file.")
-        with open(invalid_data_dir / sub_dir / "README.md", "w") as f:
-            f.write("This is a placeholder file with the wrong extension.")
-        (invalid_data_dir / sub_dir / "sub_sub_dir1").mkdir()
-        # this file is a duplicate to cause failure
-        with open(invalid_data_dir / sub_dir / "sub_sub_dir1" / f"placeholder1.{ext}", "w") as f:
-            f.write("This is a placeholder file.")
-        (invalid_data_dir / sub_dir / "sub_sub_dir1" / "sub_sub_sub_dir").mkdir()
-        with open(invalid_data_dir / sub_dir / "sub_sub_dir1" / "sub_sub_sub_dir" / f"placeholder3.{ext}", "w") as f:
-            f.write("This is a placeholder file.")
-        (invalid_data_dir / sub_dir / "sub_sub_dir2").mkdir()
-        with open(invalid_data_dir / sub_dir / "sub_sub_dir1" / f"placeholder4.{ext}", "w") as f:
-            f.write("This is a placeholder file.")
+    invalid_data_dir = build_invalid_deli_data_dir(temp_home_path)
 
     result = runner.invoke(
         click_validate_deli_data_dir,
@@ -469,3 +434,4 @@ def test_validate_deli_data_dir(tmpdir, runner):
 
     assert result.exit_code == 1
     assert "total issues found" in result.output
+    assert "WARNING: Found multiple files with the same name" in result.output

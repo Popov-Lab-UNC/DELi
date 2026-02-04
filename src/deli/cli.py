@@ -1,3 +1,5 @@
+# type: ignore
+
 """command line functions for deli"""
 
 import configparser
@@ -8,13 +10,14 @@ import gzip
 import logging
 import os
 import sys
+import warnings
 from pathlib import Path
 
 import click
 from tqdm import tqdm
 
 from deli import __version__
-from deli.configure import DeliDataDirError, DeliDataNotFound
+from deli.configure import DeliDataDirError
 from deli.dels.combinatorial import CombinatorialLibrary
 from deli.selection import DELSelection, Selection, SequencedSelection
 
@@ -35,6 +38,16 @@ def _custom_excepthook(exc_type, exc_value, exc_traceback):
         sys.__excepthook__(exc_type, exc_value, exc_traceback)
         return
     logging.exception("Uncaught exception: ", exc_info=(exc_type, exc_value, exc_traceback))
+
+
+def suppress_warnings(func):
+    """A decorator to suppress all warnings within the decorated function"""
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return func(*args, **kwargs)
+    return wrapper
 
 
 def _timestamp() -> str:
@@ -195,7 +208,7 @@ def _load_any_selection(selection: os.PathLike) -> Selection:
                 raise e_
         try:
             return DELSelection.from_yaml(selection)
-        except (DeliDataNotFound, FileNotFoundError):
+        except FileNotFoundError:
             logger.debug(f"failed to load libraries from selection file '{selection}'")
         except KeyError as e_:
             if "libraries" not in str(e_):
@@ -453,6 +466,7 @@ def config_group(ctx):
 
 
 @config_group.command(name="init")
+@suppress_warnings
 @click.argument("path", type=click.Path(), required=False, default=None)
 @click.option("--overwrite", "-o", is_flag=True, help="Overwrite any existing config file")
 @click.pass_context
@@ -485,6 +499,7 @@ def data(ctx):
 
 
 @data.command(name="init")
+@suppress_warnings
 @click.argument(
     "path",
     type=click.Path(),
@@ -525,6 +540,7 @@ def click_init_deli_data_dir(path, fix_missing, overwrite):
 
 
 @data.command(name="which")
+@suppress_warnings
 @click.pass_context
 def click_which_deli_data_dir(ctx):
     """
@@ -542,6 +558,7 @@ def click_which_deli_data_dir(ctx):
 
 
 @data.command(name="set")
+@suppress_warnings
 @click.argument("path", type=click.Path(), required=True)
 @click.option(
     "--update-config",
@@ -549,8 +566,9 @@ def click_which_deli_data_dir(ctx):
     is_flag=True,
     help="Update the DELi config to use this data directory as default",
 )
+@click.option("--force", "-f", is_flag=True, help="Force setting the data directory even if it fails validation")
 @click.pass_context
-def click_set_deli_data_dir(ctx, path, update_config):
+def click_set_deli_data_dir(ctx, path, update_config, force):
     """
     Set the DELi data directory to use for decoding
 
@@ -563,26 +581,22 @@ def click_set_deli_data_dir(ctx, path, update_config):
 
     _path = Path(path).resolve()
     try:
-        validate_deli_data_dir(_path)
-    except FileNotFoundError:
-        click.echo(
-            f"Directory at '{_path}' does not exist.\n"
-            f"You can create a new DELi data directory using 'deli data init {_path}'"
-        )
+        passed_validation = validate_deli_data_dir(_path)
+    except FileNotFoundError as e:
+        click.echo(e)
         sys.exit(1)
-    except NotADirectoryError:
-        click.echo(
-            f"'{_path}' is not a directory.\n"
-            f"You can create a new DELi data directory with this name using "
-            f"'deli data init --overwrite {_path}'"
-        )
+    except NotADirectoryError as e:
+        click.echo(e)
         sys.exit(1)
-    except DeliDataDirError:
+
+    if not passed_validation:
         click.echo(
-            f"DELi data directory '{_path}' is missing required sub-directories\n"
-            f"use 'deli data init --fix-missing {_path}' to add missing sub-directories"
+            f"WARNING: DELi data directory '{_path}' failed validation; this can cause unexpected errors.\n"
+            f"Get more detail using 'deli data validate {_path}'\n"
         )
-        sys.exit(1)
+        if not force:
+            click.echo(f"Use 'deli data set {_path} --force' to set the data directory anyway")
+            sys.exit(1)
 
     # update the config with the new data directory if requested
     if update_config:
@@ -620,6 +634,7 @@ def click_set_deli_data_dir(ctx, path, update_config):
 
 
 @data.command(name="validate")
+@suppress_warnings
 @click.argument("path", type=click.Path(), required=False, default=None)
 @click.pass_context
 def click_validate_deli_data_dir(ctx, path):
@@ -663,10 +678,10 @@ def click_validate_deli_data_dir(ctx, path):
         total_issues += 1  # don't stop here, continue to check for other issues
 
     for sub_dir_name, sub_dir_ext in zip(DELI_DATA_SUB_DIRS, DELI_DATA_EXTENSIONS):
-        click.echo(f"-------------------\nValidating sub-directory: '{sub_dir_name}\n'")
+        click.echo(f"-------------------\nValidating sub-directory: '{sub_dir_name}'\n")
         sub_dir_path = _path / sub_dir_name
 
-        files = [file_path for file_path in sub_dir_path.rglob('*') if file_path.is_file() and (file_path.suffix == sub_dir_ext)]
+        files = [file_path for file_path in sub_dir_path.rglob('*') if file_path.is_file() and (file_path.suffix == f".{sub_dir_ext}")]
 
         file_name_path_map = defaultdict(list)
         for file_path in files:

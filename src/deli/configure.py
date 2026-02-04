@@ -34,7 +34,7 @@ _custom_order_15_4 = "p1,p2,d3,p4,d5,d6,d7,p8,d9,d10,d11,d12,d13,d14,d15"
 # WHEN ADDING A NEW SUB_DIR TO THE DELI DATA DIR, MAKE SURE TO UPDATE THESE TUPLES
 # THIS IS HOW DELI KNOWS WHAT TO VALIDATE AND MAKE WHEN USING THE DELI DATA DIR
 DELI_DATA_SUB_DIRS: Final = ("libraries", "building_blocks", "reactions", "tool_compounds")
-DELI_DATA_EXTENSIONS: Final = (".json", ".csv", ".rxn", ".json")
+DELI_DATA_EXTENSIONS: Final = ("json", "csv", "rxn", "json")
 
 DELI_CONFIG: "_DeliConfig | None" = None  # global to hold the loaded DELi config
 
@@ -88,12 +88,6 @@ def load_deli_config(path: str | Path) -> None:
     DELI_CONFIG = _DeliConfig.load_config(path)
 
 
-class DeliDataNotFound(Exception):
-    """raised when a file cannot be found in DELi data directory"""
-
-    pass
-
-
 class DeliDataDirError(Exception):
     """raised when a DELi data directory cannot be found or is invalid (missing sub-dirs)"""
 
@@ -137,17 +131,11 @@ class _DeliConfig:
 
         self.location = Path.home() / ".deli"
 
-        self._deli_data_dir_validated: bool = False
-
     @property
     def deli_data_dir(self) -> Path:
         if self._deli_data_dir is None:
             raise DeliDataDirError("DELi data directory is not set")
         else:
-            # lazily validate the deli data dir
-            if not self._deli_data_dir_validated:
-                validate_deli_data_dir(self._deli_data_dir)
-                self._deli_data_dir_validated = True
             return self._deli_data_dir
 
     @deli_data_dir.setter
@@ -164,8 +152,9 @@ class _DeliConfig:
                     ) from e
             else:
                 _path = value.resolve()
-
+            validate_deli_data_dir(_path)
             self._deli_data_dir = _path
+            os.environ["DELI_DATA_DIR"] = str(_path)
 
     @deli_data_dir.deleter
     def deli_data_dir(self) -> None:
@@ -389,18 +378,41 @@ def validate_deli_data_dir(deli_data_dir_: Path) -> bool:
         )
 
     if not deli_data_dir_.is_dir():
-        raise NotADirectoryError(f"'{deli_data_dir_}' is not a directory")
+        raise NotADirectoryError(
+            f"'{deli_data_dir_}' is not a directory\n"
+            f"You can create a new DELi data directory with this name using "
+            f"'deli data init --overwrite {deli_data_dir_}'"
+        )
 
+    passed_validation = True
+
+    # check for missing directories
     sub_dirs = {p.stem for p in deli_data_dir_.iterdir()}
     missing_sub_dirs = set(DELI_DATA_SUB_DIRS) - sub_dirs
     if len(missing_sub_dirs) > 0:
-        raise DeliDataDirError(
-            f"DELi data directory '{deli_data_dir_}' is invalid; "
-            f"missing sub-directories {list(missing_sub_dirs)}"
-            f"use 'deli data init --fix-missing {deli_data_dir_}' to add missing sub-directories"
+        passed_validation = False
+        warnings.warn(
+            f"DELi data directory '{deli_data_dir_}' is missing sub-directories: {list(missing_sub_dirs)};\n"
+            f"use 'deli data init --fix-missing {deli_data_dir_}' to add missing sub-directories",
+            stacklevel=1,
         )
 
-    return True
+    # check for duplicate file names
+    for sub_dir, ext in zip(DELI_DATA_SUB_DIRS, DELI_DATA_EXTENSIONS, strict=True):
+        if sub_dir in missing_sub_dirs:
+            continue
+        sub_dir_path = deli_data_dir_ / sub_dir
+        matching_files = [f.name for f in sub_dir_path.rglob("*." + ext, case_sensitive=False) if f.is_file()]
+        if len(set(matching_files)) != len(matching_files):
+            passed_validation = False
+            warnings.warn(
+                f"DELi data subdirectory '{sub_dir_path}' has files with duplicate names; "
+                f"DELi will fail if asked to load a file by name from the deli data dir that has more than one option; "
+                f"See more details using `deli data validate {deli_data_dir_}'",
+                stacklevel=1,
+            )
+
+    return passed_validation
 
 
 def init_deli_data_directory(path: Path, fail_on_exist: bool = True, overwrite: bool = False):
@@ -537,7 +549,7 @@ def _build_argument_specific_function_decorator(func_: Callable[[Any], Any], tar
                 pos = list(signature.parameters.keys()).index(target_arg_name)
                 target_arg_value = args[pos]
             new_arg = func_(target_arg_value)
-            if pos:
+            if pos is not None:
                 _new_args = (*args[:pos], new_arg, *args[pos + 1 :])
             else:
                 kwargs[target_arg_name] = new_arg
@@ -595,38 +607,28 @@ def resolve_deli_data_name(
         # if this path exists as-is, return it
         if path.exists():
             return path
-        else:
-            if "/" in name or "\\" in name:
-                # looks like a path but doesn't exist
-                raise DeliDataNotFound(
-                    f"{name} looks like a path but cannot be found; if trying to use the name of a file in the "
-                    f"Deli Data Dir only include the file name with any file extensions"
-                )
 
         # search for a file matching the name in the deli data dir
         _sub_dir_path = get_deli_config().deli_data_dir / sub_dir
         if not os.path.exists(_sub_dir_path):
-            raise DeliDataNotFound(
-                f"cannot find DELi data subdirectory at `{_sub_dir_path}`; "
-                f"did you check that deli_data_dir is set correctly?"
+            raise DeliDataDirError(
+                f"cannot find DELi data subdirectory at '{_sub_dir_path}'; "
+                f"see more details with 'deli data validate {get_deli_config().deli_data_dir}'"
             )
 
         file_name = name + "." + extension
 
         possible_locations = list(_sub_dir_path.rglob(file_name, case_sensitive=True))
         if len(possible_locations) > 1:
-            raise DeliDataNotFound(
+            raise DeliDataDirError(
                 f"multiple files named '{file_name}' found in DELi data subdirectory '{_sub_dir_path}': "
                 f"{possible_locations}; please provide a full path to the desired file OR rename files to be unique; "
                 f"you can check for all file name conflicts in a given DELi data directory using 'deli data validate' "
                 f"command"
             )
         elif len(possible_locations) == 0:
-            raise DeliDataNotFound(
-                f"cannot find a file matching '{name}.{extension}' in {_sub_dir_path} or its subdirectories; "
-                f"check if this name exists in the DELi data directory"
-            )
-        else:
+            return name
+        else:  # it doesn't matter if there are no matches
             return possible_locations[0].absolute()
 
     # build the decorator
