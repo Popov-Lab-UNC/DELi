@@ -6,7 +6,8 @@ import json
 import os
 from collections import defaultdict
 from dataclasses import asdict
-from typing import Generic, Iterator, Literal, MutableSequence, Optional, TypeVar
+from functools import partial
+from typing import Callable, Generic, Iterator, Literal, MutableSequence, Optional, TypeVar
 
 from dnaio import SequenceRecord
 from Levenshtein import distance as levenshtein_distance
@@ -621,7 +622,7 @@ class BarcodeDecodingError(Exception):
     pass
 
 
-def _decode_section_first_greedy(
+def _decode_section_greedy(
     codon: str, caller: BarcodeCaller, true_length: int
 ) -> tuple[ValidCall | FailedBarcodeLookup, int, int]:
     """
@@ -672,17 +673,19 @@ def _decode_section_first_greedy(
     return FailedBarcodeLookup(codon), -1, -1
 
 
-def _decode_section_best_greedy(
+def _decode_section_first_perfect(
     codon: str, caller: BarcodeCaller, true_length: int, fail_on_conflict: bool = True
 ) -> tuple[ValidCall | FailedBarcodeLookup, int, int]:
     """
-    Decode a section codon by greedily finding the best scoring call
+    Decode a section codon by returning the best scoring call or first perfect found across all windows
 
-    This approach will greedily search for the best scoring call across all possible windows.
-    If a perfect match is found, it will return immediately as there is not a better possible call.
-    Otherwise, it will return the first call with the best score across all possible windows.
-    This means if more than one call has the same best score, the first one found will be returned, not
-    both nor neither.
+    This approach will search for the best scoring call across all possible windows.
+    If a perfect match is found, it will return immediately.
+    Otherwise, it will return the call with the best score across all possible windows.
+
+    If more than one call had the same (non-perfect) best score, the call will either:
+    - fail if `fail_on_conflict` is True, returning an AmbiguousBarcodeCall
+    - return the first call found with the best score if `fail_on_conflict` is False
 
     Notes
     -----
@@ -801,6 +804,66 @@ def _decode_section_return_all(
         return calls
 
 
+def _decode_section_search_all(
+    codon: str, caller: BarcodeCaller, true_length: int
+) -> tuple[ValidCall, int, int] | FailedBarcodeLookup:
+    """
+    Decode a section codon, searching all possible windows everytime.
+
+    This approach will scan all possible windows and return the best scoring one
+    *only if* there are no other calls with the same score. This includes perfect scores
+    (unlike the first perfect greedy approach, which would return the first perfect match
+    found even if there were multiple).
+
+    In practice this is likely overkill unless your tags are extremely similar to each other.
+
+    Notes
+    -----
+    This algorithm works by scanning the codon with various windows, one for each possible error type:
+    - substitution / no error (true length window)
+    - deletion (true length - 1 window)
+    - insertion (true length + 1 window)
+
+    All valid windows for the codon are generated in the order listed above and checked against the barcode caller.
+    The caller will return either a ValidCall or a FailedBarcodeLookup. ValidCalls can be imperfect depending on
+    the error tolerance of the caller.
+
+    Parameters
+    ----------
+    codon: str
+        the codon sequence to decode
+    caller: BarcodeCaller
+        the barcode caller to use for decoding the codon windows
+    true_length: int
+        the expected length of the codon without any errors.
+        This is used to determine the window sizes for scanning.
+
+    Returns
+    -------
+    tuple[ValidCall | FailedBarcodeLookup, int, int]
+        the decoded call (or failed lookup) and the start/stop indices of the matched window with respect to the codon
+        if the lookup failed, start/stop indices are returned but meaningless
+    """
+    calls = _decode_section_return_all(codon, caller, true_length)
+
+    if isinstance(calls, FailedBarcodeLookup):
+        return calls
+    else:
+        best_score = min(calls.keys())
+        if len(calls[best_score]) > 1:
+            return AmbiguousBarcodeCall(codon)
+        else:
+            return calls[best_score][0]
+
+
+MATCHING_APPROACHES: dict[str, Callable] = {
+    "greedy": _decode_section_greedy,
+    "first_best": partial(_decode_section_first_perfect, fail_on_conflict=False),
+    "first_perfect": partial(_decode_section_first_perfect, fail_on_conflict=True),
+    "search_all": _decode_section_search_all,
+}
+
+
 class _SequenceDecoder(abc.ABC):
     """Base interface for all sequence decoders"""
 
@@ -824,19 +887,44 @@ class _SequenceDecoder(abc.ABC):
 
 
 class DELibraryDecoder(_SequenceDecoder):
-    """Base class for a library decoder"""
+    """
+    Decoder that can convert an aligned sequence to a decoded DEL compound based on a given DEL library
+
+    This decoder is configured too work with a single, specific DELibrary object,
+    which contains all the information about the library structure and barcodes needed for decoding.
+    If you need to decode sequences from multiple libraries, you should create a DELibraryDecoder for each
+    library and call them separately on the same sequences, rather than trying to use one decoder for multiple
+    libraries.
+
+    Parameters
+    ----------
+    library: DELibrary
+        library to configure decoder for
+    global_adjustment: bool, default = False
+        If true, adjust the positions of later sections based on indels found in earlier sections
+        when decoding a read.
+        Note: Should only be used when the alignment method is not flanking, since flanking alignments
+        already account for indels in the barcode region.
+    default_error_correction_mode_str: str, default = "disable"
+        the default error correction mode to use for decoding sections
+    decode_matching_approach: str, default = "first_perfect"
+        the approach to use when matching decoded codons to building blocks. See the DecodeSettings Docs
+        for more info on the options.
+    """
 
     def __init__(
         self,
         library: DELibrary,
-        wiggle: bool = False,
         global_adjustment: bool = False,
-        default_error_correction_mode_str="disable",
+        default_error_correction_mode_str: str = "disable",
+        decode_matching_approach: Literal["greedy", "first_best", "first_perfect", "search_all"] = "first_perfect",
     ):
         self.library = library
-        self.wiggle = wiggle
         self.global_adjustment = global_adjustment
         self.default_error_correction_mode_str = default_error_correction_mode_str
+        self.decode_matching_approach = decode_matching_approach
+
+        self._matching_approach_func = MATCHING_APPROACHES[self.decode_matching_approach]
 
         self._callers: dict[BarcodeSection, BarcodeCaller[TaggedBuildingBlock]] = {
             bb_sec: get_barcode_caller(bb_set.tag_map, bb_sec.error_correction_mode)
@@ -917,10 +1005,8 @@ class DELibraryDecoder(_SequenceDecoder):
             start = max(start, cur_position)  # move start back if overlapping
             stop = max(start + len(section.section_tag), stop)  # ensure at least full length of section tag
 
-            if self.wiggle:  # wiggle increase the span by 1 on the right side
-                stop += 1
             codon = aligned_sequence.sequence.sequence[start:stop]
-            call, call_start, call_stop = _decode_section_best_greedy(codon, caller, len(section.section_tag))
+            call, call_start, call_stop = self._matching_approach_func(codon, caller, len(section.section_tag))
 
             if isinstance(call, FailedBarcodeLookup):
                 if isinstance(call, AmbiguousBarcodeCall):
@@ -943,7 +1029,7 @@ class DELibraryDecoder(_SequenceDecoder):
             # update current position and global adj
             cur_position = start + call_stop
             # account for wiggle that added 1 by subbing it of the stop again
-            global_adj += (call_stop - call_start) - (stop - start - self.wiggle)
+            global_adj += (call_stop - call_start) - (stop - start)
 
         # call the UMI
         if (self._section_after_umi is not None) and (self._section_before_umi is not None):
@@ -1123,8 +1209,6 @@ class DELCollectionDecoder:
     ----------
     library_demultiplexer: LibraryDemultiplexer
         the library demultiplexer to use for calling libraries
-    wiggle: bool, default = False
-        If true, allow for wiggling the tag to find the best match
     global_adjustment: bool, default = False
         If true, adjust the positions of later sections based on indels found in earlier sections
         when decoding a read.
@@ -1142,6 +1226,9 @@ class DELCollectionDecoder:
     default_error_correction_mode_str: str, default = "levenshtein_dist:1,asymmetrical"
         If a decodable section does not have an error correction mode defined,
         use this one by default.
+    decode_matching_approach: Literal["greedy", "first_best", "first_perfect", "search_all"] = "first_perfect",
+        decode matching approach to use.
+        See the DecodeSettings docs for more details on the different approaches.
     decode_statistics: DecodeStatistics or None, default = None
         the statistic tracker for the decoding run
         if None, will initialize a new, empty statistic object
@@ -1155,11 +1242,11 @@ class DELCollectionDecoder:
     def __init__(
         self,
         library_demultiplexer: LibraryDemultiplexer,
-        wiggle: bool = False,
         global_adjustment: bool = False,
         max_read_length: Optional[int] = None,
         min_read_length: Optional[int] = None,
         default_error_correction_mode_str: str = "levenshtein_dist:1,asymmetrical",
+        decode_matching_approach: Literal["greedy", "first_best", "first_perfect", "search_all"] = "first_perfect",
         decode_statistics: Optional[DecodeStatistics] = None,
     ):
         self.library_demultiplexer = library_demultiplexer
@@ -1173,9 +1260,9 @@ class DELCollectionDecoder:
             if isinstance(library, DELibrary):
                 self.library_decoders[library] = DELibraryDecoder(
                     library=library,
-                    wiggle=wiggle,
                     default_error_correction_mode_str=default_error_correction_mode_str,
                     global_adjustment=global_adjustment,
+                    decode_matching_approach=decode_matching_approach,
                 )
             elif isinstance(library, ToolCompoundLibrary_):
                 self.library_decoders[library] = ToolCompoundDecoder(
@@ -1311,16 +1398,27 @@ class DecodingSettings:
         if using a cutadapt style demultiplexer, this is the minimum number of bases
         that must align to the expected barcode section for a match to be called.
         See the cutadapt documentation for more details on this parameter.
-    wiggle: bool, default = False
-        if true, will extend aligned sections by 1 bp on each side
-        and then and scan all possible chunks of the expected barcode length,
-        1 smaller and 1 larger than expected length (in that order). If not
-        using a local realignment post demultiplexing this can help recover
-        reads lost to indels in the barcode region.
-    revcomp: bool, default = False
+    revcomp: bool, default = True
         If true, search the reverse compliment as well.
         In most cases it is faster to use an external tools
         to align and reverse compliment reads before decoding
+    library_wiggle: bool, default = False
+        if true, will extend library aligned sections by 1 bp on each sidd.
+        Similar to wiggle, but used during library demultiplexing.
+    wiggle: bool, default = False
+        if true, will extend aligned sections by 1 bp on each side during decoding.
+        Can help recover reads with INDELs if not using realignment after demultiplexing
+        (and is much faster).
+    decode_matching_approach: Literal["greedy", "first_best", "first_perfect", "search_all"] = "first_perfect",
+        the approach to use when matching decoded sections to the library during decoding.
+        - "greedy": find the best scoring match across all possible windows and return it, even if imperfect
+        - "first_best": search all possible windows and return the first occurring best match, even if more
+        than one window has the same best score
+        - "first_perfect": search all possible windows and return the first perfect match found, and otherwise
+        fail if more than one window (with non-perfect score) share the same best score
+        - "search_all": search all possible windows and return the best scoring one. Unlike 'first-perfect', if
+        multiple windows have a perfect score the read will be rejected as ambiguous rather than just taking
+        the first perfect match found.
     max_read_length: int or None, default = None
         maximum length of a read to be considered for decoding
         if above the max, decoding will fail
@@ -1345,8 +1443,10 @@ class DecodingSettings:
     library_error_tolerance: int = 1
     library_error_correction_mode_str: str = "levenshtein_dist:2,asymmetrical"
     min_library_overlap: int = 8
-    revcomp: bool = False
+    revcomp: bool = True
+    library_wiggle: bool = False
     wiggle: bool = False
+    decode_matching_approach: Literal["greedy", "first_best", "first_perfect", "search_all"] = "first_perfect"
     max_read_length: Optional[int] = None
     min_read_length: Optional[int] = None
     default_error_correction_mode_str: str = "levenshtein_dist:1,asymmetrical"
@@ -1450,12 +1550,12 @@ class SelectionDecoder:
         self.decoder = DELCollectionDecoder(
             library_demultiplexer=demultiplexer,
             decode_statistics=self.decode_stats,
-            wiggle=self.decode_settings.wiggle,
-            global_adjustment=self.decode_settings.demultiplexer_mode == "single"
+            global_adjustment=self.decode_settings.demultiplexer_mode == "single"  # not useful with flanking
             and (not self.decode_settings.realign),
             max_read_length=self.decode_settings.max_read_length,
             min_read_length=self.decode_settings.min_read_length,
             default_error_correction_mode_str=self.decode_settings.default_error_correction_mode_str,
+            decode_matching_approach=self.decode_settings.decode_matching_approach,
         )
 
     def decode_read(self, read: SequenceRecord) -> DecodedCollectionCompound | FailedDecodeAttempt:

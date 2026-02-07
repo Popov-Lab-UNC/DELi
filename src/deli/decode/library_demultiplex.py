@@ -146,11 +146,15 @@ class SectionSequenceMapper(abc.ABC):
         the barcode schema to use for alignment
     alignment_sections: tuple[str, ...]
         the names of the static sections to use for alignment
+    wiggle: bool, default=False
+        Whether to extend the span to search for sections by one base to the right.
+        Doing so can help to recover barcodes that have an insert mutation in them.
     """
 
-    def __init__(self, barcode_schema: BarcodeSchema, alignment_sections: tuple[str, ...]):
+    def __init__(self, barcode_schema: BarcodeSchema, alignment_sections: tuple[str, ...], wiggle: bool = False):
         self.barcode_schema = barcode_schema
         self.alignment_sections = alignment_sections
+        self.wiggle = wiggle
 
         self._required_sections = self.barcode_schema.get_required_section_names()
         self._spans = self.barcode_schema.get_section_spans(exclude_overhangs=False)
@@ -216,6 +220,17 @@ class SectionSequenceMapper(abc.ABC):
                     max(min(align_stop + adj_start - 1, _span[0]), 0),
                     max(align_stop + adj_stop - 1, _span[1]),
                 )
+
+        if self.wiggle:
+            _span = (_span[0], _span[1] + 1)  # adjust the stop region by one to the right
+
+        # second pass to make sure that spans that overlap with static sections are adjusted
+        for _, (align_start, align_stop) in alignment_section_spans.items():
+            _span = (
+                max(_span[0], align_stop),
+                min(_span[1], align_start),
+            )
+
         return _span
 
 
@@ -227,7 +242,22 @@ class LibraryLocator(SectionSequenceMapper):
     based on the known static barcode sections. This is useful for
     demultiplexing reads to libraries quickly, without needing to
     align all the required sections.
+
+    Parameters
+    ----------
+    barcode_schema: BarcodeSchema
+        the barcode schema to use for alignment
+    alignment_sections: tuple[str, ...]
+        the names of the static sections to use for alignment
+    library_wiggle: bool, default=False
+        whether to extend the span to search for the library codon by one base to the right.
+        Doing so can help to recover library codons that have an insert mutation in them.
     """
+
+    def __init__(
+        self, barcode_schema: BarcodeSchema, alignment_sections: tuple[str, ...], library_wiggle: bool = False
+    ):
+        super().__init__(barcode_schema, alignment_sections, wiggle=library_wiggle)
 
     def _get_sections_to_map(self) -> list[str]:
         """Only need to map library section for this one"""
@@ -279,7 +309,7 @@ class LibraryLocator(SectionSequenceMapper):
         """
         library_span = self.get_library_seq(sequence, alignment_section_spans)
         library_tag_length = len(self.barcode_schema.library_section.section_tag)
-        for length in [library_tag_length, library_tag_length - 1]:
+        for length in [library_tag_length, library_tag_length - 1, library_tag_length + 1]:
             start = 0
             end = start + length
             while end <= len(library_span):
@@ -315,12 +345,29 @@ class SectionSequenceAligner(SectionSequenceMapper):
     -----
     Will only align the sections listed as required by the
     `get_required_sections` method of the `BarcodeSchema`.
+
+    Parameters
+    ----------
+    barcode_schema: BarcodeSchema
+        the barcode schema to use for alignment
+    alignment_sections: tuple[str, ...]
+        the names of the static sections to use for alignment
+    wiggle: bool, default=False
+        Whether to extend the span to search for sections by one base to the right.
+        Doing so can help to recover barcodes that have an insert mutation in them.
     """
+
+    def __init__(self, barcode_schema: BarcodeSchema, alignment_sections: tuple[str, ...], wiggle: bool = False):
+        # always include library
+        if "library" not in alignment_sections:
+            super().__init__(barcode_schema, alignment_sections, wiggle=wiggle)
+        else:
+            super().__init__(barcode_schema, (*alignment_sections, "library"), wiggle=wiggle)
 
     def _get_sections_to_map(self) -> list[str]:
         """Map to only the required sections minus the library tag (already located)"""
         required = self.barcode_schema.get_required_section_names()
-        required.remove("library")  # not need for this library
+        required.remove("library")  # not needed since library is already known when this is used
         return required
 
     def align_sequence(
@@ -341,9 +388,16 @@ class SectionSequenceAligner(SectionSequenceMapper):
         -------
         Iterator[tuple[AlignedSeq, float]]
         """
+        lib_span = self.calculate_section_span("library", alignment_section_spans)
+
         _span_map = self._span_map.copy()
         for required_section in self._required_sections:
-            _span_map[required_section] = self.calculate_section_span(required_section, alignment_section_spans)
+            sec_span = self.calculate_section_span(required_section, alignment_section_spans)
+
+            _span_map[required_section] = (
+                max(lib_span[1], sec_span[0]),
+                min(_span_map[required_section][1], sec_span[1]),
+            )
         return iter([(AlignedSeq(sequence=sequence, section_spans=_span_map), 0)])
 
 
