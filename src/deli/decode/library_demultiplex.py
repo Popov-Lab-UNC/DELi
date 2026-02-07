@@ -127,7 +127,7 @@ class AlignedSeq:
         return self.sequence.sequence[start:stop]
 
 
-class SectionSequenceMapper(abc.ABC):
+class SectionSequenceMapper:
     """
     Mapper for barcodes based on known static barcode sections
 
@@ -184,11 +184,6 @@ class SectionSequenceMapper(abc.ABC):
                     adjusted_stop = adjusted_start + len(required_barcode_section.section_tag)
                 self._adjustment_table[alignment_section][required_section] = (adjusted_start, adjusted_stop)
 
-    @abc.abstractmethod
-    def _get_sections_to_map(self) -> list[str]:
-        """Get the names of the sections to map to"""
-        raise NotImplementedError()
-
     def calculate_section_span(
         self, section_name: str, alignment_section_spans: dict[str, tuple[int, int]]
     ) -> tuple[int, int]:
@@ -225,11 +220,12 @@ class SectionSequenceMapper(abc.ABC):
             _span = (_span[0], _span[1] + 1)  # adjust the stop region by one to the right
 
         # second pass to make sure that spans that overlap with static sections are adjusted
-        for _, (align_start, align_stop) in alignment_section_spans.items():
-            _span = (
-                max(_span[0], align_stop),
-                min(_span[1], align_start),
-            )
+        for alignment_section, (align_start, align_stop) in alignment_section_spans.items():
+            adj_start, adj_stop = self._adjustment_table[alignment_section][section_name]
+            if adj_start < 0:
+                _span = (_span[0], min(_span[1], align_start))
+            else:
+                _span = (max(_span[0], align_stop), _span[1])
 
         return _span
 
@@ -259,10 +255,6 @@ class LibraryLocator(SectionSequenceMapper):
     ):
         super().__init__(barcode_schema, alignment_sections, wiggle=library_wiggle)
 
-    def _get_sections_to_map(self) -> list[str]:
-        """Only need to map library section for this one"""
-        return ["library"]
-
     def get_library_seq(self, sequence: SequenceRecord, alignment_section_spans: dict[str, tuple[int, int]]) -> str:
         """
         Get the library sequence from the aligned sequence based on the provided alignment section spans
@@ -279,6 +271,46 @@ class LibraryLocator(SectionSequenceMapper):
         """
         _library_span = self.calculate_section_span("library", alignment_section_spans)
         return sequence.sequence[_library_span[0] : _library_span[1]]
+
+    def iter_possible_library_seqs_and_spans(
+        self, sequence: SequenceRecord, alignment_section_spans: dict[str, tuple[int, int]]
+    ) -> Iterator[tuple[str, tuple[int, int]]]:
+        """
+        Iterate over possible library sequences based on the provided alignment section spans
+
+        Will return both the sequence and the span that selected it
+
+        It is possible if using more than one static section that the library
+        codon is not perfectly defined due to INDELs in the read. It's also possible
+        that an INDEL elsewhere cause a misalignment. This will wiggle the library
+        codon by one base in either direction to generate possible library sequences
+        of length equal to the library tag length or one less (in that order)
+
+        This is very helpful for calling the library, as it helps account for
+        error that occur outside the library codon region
+
+        Parameters
+        ----------
+        sequence: SequenceRecord
+            the sequence to get the library from
+        alignment_section_spans: dict[str, tuple[int, int]]
+            the mapping of alignment section names to their (start, stop) indices in the sequence
+
+        Yields
+        ------
+        tuple[str, tuple[int, int]]
+            possible library barcodes and their spans
+        """
+        library_span = self.calculate_section_span("library", alignment_section_spans)
+        library_codon = sequence.sequence[library_span[0] : library_span[1]]
+        library_tag_length = len(self.barcode_schema.library_section.section_tag)
+        for length in [library_tag_length, library_tag_length - 1, library_tag_length + 1]:
+            start = 0
+            end = start + length
+            while end <= len(library_codon):
+                yield library_codon[start:end], (library_span[0] + start, library_span[0] + end)
+                start += 1
+                end = start + length
 
     def iter_possible_library_seqs(
         self, sequence: SequenceRecord, alignment_section_spans: dict[str, tuple[int, int]]
@@ -307,15 +339,8 @@ class LibraryLocator(SectionSequenceMapper):
         str
             possible library barcodes
         """
-        library_span = self.get_library_seq(sequence, alignment_section_spans)
-        library_tag_length = len(self.barcode_schema.library_section.section_tag)
-        for length in [library_tag_length, library_tag_length - 1, library_tag_length + 1]:
-            start = 0
-            end = start + length
-            while end <= len(library_span):
-                yield library_span[start:end]
-                start += 1
-                end = start + length
+        for seq, _ in self.iter_possible_library_seqs_and_spans(sequence, alignment_section_spans):
+            yield seq
 
 
 class SectionSequenceAligner(SectionSequenceMapper):
@@ -358,20 +383,20 @@ class SectionSequenceAligner(SectionSequenceMapper):
     """
 
     def __init__(self, barcode_schema: BarcodeSchema, alignment_sections: tuple[str, ...], wiggle: bool = False):
-        # always include library
-        if "library" not in alignment_sections:
+        # always include library in the alignment adjustment calculation
+        if "library" in alignment_sections:
             super().__init__(barcode_schema, alignment_sections, wiggle=wiggle)
         else:
             super().__init__(barcode_schema, (*alignment_sections, "library"), wiggle=wiggle)
 
-    def _get_sections_to_map(self) -> list[str]:
-        """Map to only the required sections minus the library tag (already located)"""
-        required = self.barcode_schema.get_required_section_names()
-        required.remove("library")  # not needed since library is already known when this is used
-        return required
+        self._required_sections.remove("library")  # don't need the library anymore, already been called
+        del self._span_map["library"]  # don't need library we already called it
 
     def align_sequence(
-        self, sequence: SequenceRecord, alignment_section_spans: dict[str, tuple[int, int]]
+        self,
+        sequence: SequenceRecord,
+        alignment_section_spans: dict[str, tuple[int, int]],
+        library_span: tuple[int, int],
     ) -> Iterator[tuple[AlignedSeq, float]]:
         """
         Align a sequence based on the provided alignment section spans
@@ -383,21 +408,29 @@ class SectionSequenceAligner(SectionSequenceMapper):
         alignment_section_spans: dict[str, tuple[int, int]]
             the mapping of alignment section names to their (start, stop) indices in the sequence
             determined by the alignment algorithm
+        library_span: tuple[int, int]
+            the (start, stop) indices of the library section in the sequence, determined by the library locator
 
         Returns
         -------
         Iterator[tuple[AlignedSeq, float]]
         """
-        lib_span = self.calculate_section_span("library", alignment_section_spans)
-
         _span_map = self._span_map.copy()
         for required_section in self._required_sections:
             sec_span = self.calculate_section_span(required_section, alignment_section_spans)
 
-            _span_map[required_section] = (
-                max(lib_span[1], sec_span[0]),
-                min(_span_map[required_section][1], sec_span[1]),
-            )
+            # This is to trim any overlap between the library section and the required section spans
+            # Note: we could do this by adding the library span to the alignment_section_spans dict
+            # however doing so would result in "single" section alignment mode to silently become double
+            # since it will now also use the library section to determine the location of required sections.
+            # this will mess up down stream logic, and not really ideal since the library tags are shorter
+            # and more prone to low quality alignment. Instead, this same logic to trim overlap exists here,
+            # outside the span generation logic.
+            if self._adjustment_table["library"][required_section][0] < 0:
+                _span_map[required_section] = (sec_span[0], min(sec_span[1], library_span[0]))
+            else:
+                _span_map[required_section] = (max(sec_span[0], library_span[1]), sec_span[1])
+
         return iter([(AlignedSeq(sequence=sequence, section_spans=_span_map), 0)])
 
 
@@ -1294,6 +1327,7 @@ class QueryBasesLibraryDemultiplexer(LibraryDemultiplexer, Generic[Q], abc.ABC):
         self,
         best_match: _Match,
         library_call: ValidLibraryCall,
+        library_span: tuple[int, int],
         sequence: SequenceRecord,
         _static_alignment_spans: Optional[dict[str, tuple[int, int]]] = None,
     ) -> Iterator[tuple[AlignedSeq, float]]:
@@ -1310,6 +1344,8 @@ class QueryBasesLibraryDemultiplexer(LibraryDemultiplexer, Generic[Q], abc.ABC):
             the best match found for the sequence
         library_call: ValidLibraryCall
             the library call generated from the best match
+        library_span: tuple[int, int]
+            the span of the library barcode in the read as determined by the best match
         sequence: SequenceRecord
             the sequence to align
         _static_alignment_spans: Optional[dict[str, tuple[int, int]]]
@@ -1327,7 +1363,9 @@ class QueryBasesLibraryDemultiplexer(LibraryDemultiplexer, Generic[Q], abc.ABC):
             _static_alignment_spans = (
                 best_match.get_section_spans() if _static_alignment_spans is None else _static_alignment_spans
             )
-            return self._section_seq_aligners[library_call.obj].align_sequence(sequence, _static_alignment_spans)
+            return self._section_seq_aligners[library_call.obj].align_sequence(
+                sequence, _static_alignment_spans, library_span
+            )
 
 
 class LibraryTagLibraryDemultiplexer(QueryBasesLibraryDemultiplexer[Q], abc.ABC):
@@ -1357,7 +1395,12 @@ class LibraryTagLibraryDemultiplexer(QueryBasesLibraryDemultiplexer[Q], abc.ABC)
             return FailedStaticAlignment(sequence)
         else:
             library_call = ValidCall(best_match.query.libraries[0], best_match.score)
-            return library_call, self._make_alignments(best_match, library_call, sequence)
+            return library_call, self._make_alignments(
+                best_match,
+                library_call,
+                best_match.get_section_spans()["library"],
+                sequence,
+            )
 
 
 class LibraryTagRegexLibraryDemultiplexer(LibraryTagLibraryDemultiplexer[_RegexQuery]):
@@ -1527,6 +1570,7 @@ class NoLibraryTagLibraryDemultiplexer(QueryBasesLibraryDemultiplexer[Q], abc.AB
 
         # Now find the best matching library within the best regex query
         library_call: ValidLibraryCall | FailedBarcodeLookup = FailedBarcodeLookup("placeholder")
+        library_span: tuple[int, int] = (-1, 1)  # placeholder
         if len(best_match.query.libraries) == 1:
             library_call = ValidCall(best_match.query.libraries[0], 0.0)  # only one possible library
         else:
@@ -1540,9 +1584,12 @@ class NoLibraryTagLibraryDemultiplexer(QueryBasesLibraryDemultiplexer[Q], abc.AB
 
             for init_aligner in self._library_locaters[best_match.query]:
                 _best_internal_call: ValidLibraryCall | FailedBarcodeLookup = FailedBarcodeLookup("placeholder")
+                _best_internal_span = (-1, -1)  # placeholder
                 _best_internal_score = 100.0
                 # allow some flexibility in the library tag location
-                for possible_library_seq in init_aligner.iter_possible_library_seqs(sequence, _static_alignment_spans):
+                for possible_library_seq, possible_lib_span in init_aligner.iter_possible_library_seqs_and_spans(
+                    sequence, _static_alignment_spans
+                ):
                     # track which sequences we've already tried
                     if possible_library_seq in observed_possible_lib_seqs:
                         continue  # skip if we've already tried this sequence
@@ -1554,18 +1601,18 @@ class NoLibraryTagLibraryDemultiplexer(QueryBasesLibraryDemultiplexer[Q], abc.AB
                     if not isinstance(_library_call, FailedBarcodeLookup):
                         if _library_call.score < _best_internal_score:
                             _best_internal_call = _library_call
+                            _best_internal_span = possible_lib_span
                             _best_internal_score = _library_call.score
                     if _best_internal_score == 0:
                         library_call = _best_internal_call
+                        library_span = _best_internal_span
                         break  # perfect match found
 
-                if _best_internal_call is not None:  # library locator made a call
-                    if _best_internal_score == 0:
-                        library_call = _best_internal_call
-                        break  # perfect match found
-                    elif _best_internal_score < _best_call_score:
-                        library_call = _best_internal_call
-                        _best_call_score = _best_internal_score
+                # library locator made a better call
+                if (_best_internal_call is not None) and (_best_internal_score < _best_call_score):
+                    library_call = _best_internal_call
+                    library_span = _best_internal_span
+                    _best_call_score = _best_internal_score
 
         # at this point we did everything we can to try and call the library
         if isinstance(library_call, FailedBarcodeLookup):
@@ -1574,7 +1621,7 @@ class NoLibraryTagLibraryDemultiplexer(QueryBasesLibraryDemultiplexer[Q], abc.AB
             return library_call, self._library_aligners[library_call.obj].align_sequence(sequence)
         else:
             return library_call, self._make_alignments(
-                best_match, library_call, sequence, _static_alignment_spans=_static_alignment_spans
+                best_match, library_call, library_span, sequence, _static_alignment_spans=_static_alignment_spans
             )
 
 
