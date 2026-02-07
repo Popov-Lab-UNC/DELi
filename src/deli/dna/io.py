@@ -98,15 +98,19 @@ class SingleFileSequenceReader(SequenceReader):
     ----------
     sequence_file: os.PathLike
         path to the sequence file to read
+    quality_threshold: int, optional
+        minimum average quality score for a sequence to be included
 
     Attributes
     ----------
     sequence_file: Path
         sequence file path
+    quality_threshold: int
     """
 
-    def __init__(self, sequence_file: os.PathLike):
+    def __init__(self, sequence_file: os.PathLike, quality_threshold: int | None = None):
         self.sequence_file: Path = Path(sequence_file)
+        self.quality_threshold: int = quality_threshold if quality_threshold is not None else -1
 
         # validate file quickly
         try:
@@ -115,9 +119,17 @@ class SingleFileSequenceReader(SequenceReader):
         except UnknownFileFormat as e:
             raise SequenceIOError(f"File {sequence_file} is not a recognized sequence file") from e
 
+    def _check_quality(self, record: SequenceRecord) -> bool:
+        """Check if a record meets the quality threshold"""
+        if self.quality_threshold > 0 and isinstance(record.qualities, str):
+            qualities = [ord(q) - 33 for q in record.qualities]  # Convert ASCII to Phred scores
+            avg_quality = sum(qualities) / len(qualities)
+            return avg_quality >= self.quality_threshold
+        return True
+
     def iter_seqs(self) -> Iterator[SequenceRecord]:
         """
-        Yield all sequences from the file
+        Yield all sequences from the file, applying quality filtering if specified
 
         Yields
         ------
@@ -125,11 +137,12 @@ class SingleFileSequenceReader(SequenceReader):
         """
         with dnaio.open(self.sequence_file) as f:
             for record in f:
-                yield record
+                if self._check_quality(record):
+                    yield record
 
     def iter_seqs_with_filenames(self) -> Iterator[tuple[Path, SequenceRecord]]:
         """
-        Yield all sequences from the file, paired with the filename
+        Yield all sequences from the file, paired with the filename, applying quality filtering if specified
 
         Yields
         ------
@@ -137,7 +150,8 @@ class SingleFileSequenceReader(SequenceReader):
         """
         with dnaio.open(self.sequence_file) as f:
             for record in f:
-                yield self.sequence_file, record
+                if self._check_quality(record):
+                    yield self.sequence_file, record
 
     def get_sequence_files(self) -> tuple[Path, ...]:
         """
@@ -154,27 +168,26 @@ class MultiFileSequenceReader(SequenceReader):
     """
     Read all sequences from a bulk list of files
 
-    Notes
-    -----
     Files must be single fastq files (in any compression).
     They cannot be directories or glob patterns.
-
     Files must also end in a standard fasta/fastq file extension.
 
     Parameters
     ----------
     sequence_files: Sequence[os.PathLike]
         paths to the sequence files to read
+    quality_threshold: int, optional
+        minimum average quality score for a sequence to be included
 
     Attributes
     ----------
     sequence_files: tuple[Path, ...]
     """
 
-    def __init__(self, sequence_files: Sequence[os.PathLike]):
+    def __init__(self, sequence_files: Sequence[os.PathLike], quality_threshold: int | None = None):
         self.sequence_files: tuple[Path, ...] = tuple(Path(sequence_file) for sequence_file in sequence_files)
         self._sequence_readers: tuple[SingleFileSequenceReader, ...] = tuple(
-            SingleFileSequenceReader(_file) for _file in self.sequence_files
+            SingleFileSequenceReader(_file, quality_threshold) for _file in self.sequence_files
         )
 
     def iter_seqs(self) -> Iterator[SequenceRecord]:
@@ -217,8 +230,6 @@ class SequenceDirectoryReader(MultiFileSequenceReader):
     """
     Read all sequences from all files in a given directory
 
-    Notes
-    -----
     Only files with commonly used fasta/fastq file extensions will be detected
     and read. If you are using non-standard extensions, please use
     `MultiFileSequenceReader` instead.
@@ -227,6 +238,8 @@ class SequenceDirectoryReader(MultiFileSequenceReader):
     ----------
     sequence_dir: os.PathLike
         path to the directory with sequence files to read
+    quality_threshold: int, optional
+        minimum average quality score for a sequence to be included
 
     Attributes
     ----------
@@ -236,7 +249,7 @@ class SequenceDirectoryReader(MultiFileSequenceReader):
         all sequence files detected in the directory
     """
 
-    def __init__(self, sequence_dir: os.PathLike):
+    def __init__(self, sequence_dir: os.PathLike, quality_threshold: int | None = None):
         self.sequence_dir: Path = Path(sequence_dir)
 
         possible_files = glob.glob(f"{self.sequence_dir}/*")
@@ -244,18 +257,17 @@ class SequenceDirectoryReader(MultiFileSequenceReader):
         if len(possible_files) == 0:
             raise SequenceIOError(f"No sequence files detected in directory {self.sequence_dir}")
 
-        super().__init__(sequence_files=[Path(file) for file in possible_files if _check_if_seq_file(file)])
+        super().__init__(
+            sequence_files=[Path(file) for file in possible_files if _check_if_seq_file(file)],
+            quality_threshold=quality_threshold,
+        )
 
 
 class SequenceGlobReader(MultiFileSequenceReader):
     """
     Read all sequences from all files from a glob pattern
 
-    matches any valid glob pattern that python's
-    `glob.glob` function can handle
-
-    Notes
-    -----
+    Matches any valid glob pattern that python's `glob.glob` function can handle.
     Only files with commonly used fasta/fastq file extensions will be detected
     and read.
 
@@ -263,6 +275,8 @@ class SequenceGlobReader(MultiFileSequenceReader):
     ----------
     sequence_glob: os.PathLike
         path to the directory with sequence files to read
+    quality_threshold: int, optional
+        minimum average quality score for a sequence to be included
 
     Attributes
     ----------
@@ -272,11 +286,12 @@ class SequenceGlobReader(MultiFileSequenceReader):
         all sequence files detected in the directory
     """
 
-    def __init__(self, sequence_glob: os.PathLike):
+    def __init__(self, sequence_glob: os.PathLike, quality_threshold: int | None = None):
         self.sequence_glob: Path = Path(sequence_glob)
 
         super().__init__(
-            sequence_files=[Path(file) for file in glob.glob(f"{self.sequence_glob}") if _check_if_seq_file(file)]
+            sequence_files=[Path(file) for file in glob.glob(f"{self.sequence_glob}") if _check_if_seq_file(file)],
+            quality_threshold=quality_threshold,
         )
 
 
