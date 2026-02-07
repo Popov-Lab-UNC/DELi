@@ -192,3 +192,26 @@ def test_compound_suffix_handling():
     assert dna_io._check_if_seq_file("reads.fasta.xz") is True
     # unknown compressor should not falsely identify
     assert dna_io._check_if_seq_file("reads.fastq.tar.gz") is False
+
+
+def test_quality_filtering(tmp_path: Path):
+    """Test quality filtering in SingleFileSequenceReader."""
+    p = tmp_path / "reads.fastq"
+    recs = [
+        ("r1", "ATGC", "IIII"),  # avg quality = 40
+        ("r2", "GGTT", "!!!!"),  # avg quality = 0
+        ("r3", "CCAA", "IIII"),  # avg quality = 40
+    ]
+    write_fastq(p, recs)
+
+    # Apply quality threshold of 20
+    reader = dna_io.SingleFileSequenceReader(p, quality_threshold=20)
+    got = list(reader.iter_seqs())
+
+    # Only r1 and r3 should pass the filter
+    assert len(got) == 2
+    assert got[0].name == "r1"
+    assert got[1].name == "r3"
+
+    # Ensure r2 is filtered out
+    assert all(r.name != "r2" for r in got)
