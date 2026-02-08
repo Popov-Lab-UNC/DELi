@@ -20,22 +20,28 @@ def _generate_calling_pie_chart(
     _all_colors = [
         "orange",
         "yellow",
+        "lightcoral",
         "firebrick",
         "crimson",
+        "orangered",
         "royalblue",
     ]
     _all_labels = [
         "Read to Small",
         "Read to Large",
+        "Failed to Align Read",
         "Failed Library Call",
         "Failed Building Block Call",
+        "Failed to Assign UMI",
         "Decoded",
     ]
     _all_values: list[int] = [
         decode_stats.num_failed_too_short,
         decode_stats.num_failed_too_long,
+        decode_stats.num_failed_alignment,
         decode_stats.num_failed_library_call,
-        decode_stats.num_failed_building_block_call + decode_stats.num_failed_alignment,
+        decode_stats.num_failed_building_block_call,
+        decode_stats.num_failed_umi,
         decode_stats.num_seqs_decoded,
     ]
 
@@ -127,7 +133,7 @@ def build_decoding_report(
     _seq_count_data: dict = {
         **{
             library_id: (
-                "{:,}".format(library_size) if isinstance(library_size, int) else library_size,
+                "{:,}".format(int(library_size)),
                 "{:,}".format(stats.num_seqs_decoded_per_lib.get(library_id, 0)),
             )
             for (library_id, library_size) in libraries_
