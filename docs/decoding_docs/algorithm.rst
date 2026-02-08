@@ -4,6 +4,23 @@
 Decoding Algorithm
 ==================
 
+DELi implements a 2 step decoding algorithm to convert raw sequences into compound data:
+
+1. Library Demultiplexing: Determine which library a read belongs to
+2. Barcode Decoding: Decode the variable barcode regions to determine the compound ID, UMI
+   and other decodable information.
+
+Each of these two steps are further broken down into two sub-steps:
+
+- Alignment: Align the read to some static (known) reference
+- Calling: Use the alignment to locate and decode (make a call) the barcode region(s) of interest.
+
+.. _demultiplexing-overview:
+
+Library Demultiplexing
+----------------------
+
+
 DELi uses the following process to decode raw DEL selection data into compound enrichment data.
 
 1. DELi will attempt to align the raw read to the various possible library barcode designs.
