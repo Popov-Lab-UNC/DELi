@@ -274,13 +274,13 @@ DELi *does not* use the alignment for this. Instead it uses the known distance b
 closest decoded section to find the UMI sequence. This is to adjust for INDELs that may have occurred in the read,
 since window scanning does not work on the UMI (there is nothing to call, the region is meant to be random).
 
-
 Decode Parallelization and Collection
 -------------------------------------
 The process of decoding a single read into a compound ID and UMI is embarrassingly parallel,
 as each read can be decoded independently of the others. This is why DELi's decoding algorithm does not
 implement any native multithreading or multiprocessing; it is easy (and way faster) to just run multiple processes of
-DELi on different chunks of the input FASTQ files.
+DELi on different chunks of the input FASTQ files. You can read more on how to do this in the
+:ref:`parallelization section <parallelization>`.
 
 However, before count and UMI degeneration can occur, the decoded compounds need to be aggregated; we need to know
 how many time each compound showed up and with what UMIs. This process is not easily parallelizable, since all the
