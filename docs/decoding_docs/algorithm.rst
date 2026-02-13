@@ -4,154 +4,191 @@
 Decoding Algorithm
 ==================
 
-DELi implements a 2 step decoding algorithm to convert raw sequences into compound data:
+Broadly speaking, DELi decodes raw DNA read into compound IDs using a simple 2 step system:
 
-1. Library Demultiplexing: Determine which library a read belongs to
-2. Barcode Decoding: Decode the variable barcode regions to determine the compound ID, UMI
-   and other decodable information.
+- Barcode Alignment: Determine which spans of the read belong to which sections of a DELs DNA barcode
+- Section Calling: Use the alignments to call the decodable sections of the barcode
 
-Each of these two steps are further broken down into two sub-steps:
+It would be nice if these steps were completely separate and flowed linearly, but in DELi these steps are intertwined.
+For example, to align the barcode you need to know which library to align the read too. To do that you need to know
+which library the read is from (so you can get to correct alignment). To do that you need to align the read and
+call the library section, which we already established cannot be done until we know the library. This doesn't make
+decoding impossible, instead it means a partial alignment to locate the library section must be done first, then a
+the library section called, then the alignment can be finished and the rest of the sections called.
 
-- Alignment: Align the read to some static (known) reference
-- Calling: Use the alignment to locate and decode (make a call) the barcode region(s) of interest.
+Most of this confusing interweaving happens during the first stages of decoding, where the reads library is determined.
+To isolated this, DELi refers to this stage as "library demultiplexing". It is during this stage the the reads library
+is called and an alignment between that libraries barcode and the read is generated.
 
-.. _demultiplexing-overview:
+After reads are converted to compound IDs, DELi can also do UMI correction ("degeneration" as it is called in DELi)
+to create a final count of unique compounds observed for a given compound ID.
 
-Library Demultiplexing
-----------------------
-
-
-DELi uses the following process to decode raw DEL selection data into compound enrichment data.
-
-1. DELi will attempt to align the raw read to the various possible library barcode designs.
-2. Those alignments to decode the single library the read is from.
-3. A refined alignment for the called library is performed to map barcodes regions to the read.
-4. Variable barcode regions are decoded to determine the final compound.
-5. Compounds are grouped by unique UMIs to produce final enrichment data for each compound.
-
-It any read fails at any of these steps (due to sequencing or PCR errors, or because there are multiple possible answers),
-that read is discarded as not decodable. For a highly quality sequencing,
-DELi can get anywhere from 80-90% of the reads decoded successfully.
-
-Sometimes, different approaches blur these steps together. For example you could align each read to a all
-possible libraries at the same time, which would both generated a refined align and decode the library in one step.
-To break things down a bit better, DELi separates these steps into three distinct modules:
-
-1. Library demultiplexing
-2. Barcode decoding
-3. UMI degeneration
+.. _library-demultiplexing:
 
 Library Demultiplexing
 ----------------------
-Library Demultiplexing is responsible to determining the library a read originated from as well as
-generating a set of possible :ref:`alignments <alignments>` of that read to the
-:ref:`library's barcode design <barcode-sec-ref>`.
-This is a crucial part of decoding, as in a typical DEL selection experiment screens a collection of DELs,
-not just a single library. Further, if there is not alignment between the libraries barcode design and the
-read, it will not be possible to decode the variable barcode regions to determine that compounds ID.
+DELi implements four different approaches for library demultiplexing:
 
-At first glace this is a bit tricky, since to call the library, you need to know how the library barcode is,
-but to know that you need an alignment, but to do that you need to know the library. DELi provides three solutions
-to this problem.
+- Full barcode demultiplexing
+- Library section demultiplexing
+- Single section demultiplexing
+- Flanking section demultiplexing
 
-.. _full-barcode-demulti::
+The last three approaches are roughly grouped together as :ref:`"static alignment" <static-section-alignment>` approaches, as they all rely on
+finding static (known) sections of the barcode to help align the read to the barcode design rather than doing a full
+sequence alignment.
+
+Each have benefits and drawbacks under different situations.
+The goal of so many methods is to give flexibility between speed and robustness.
+
+.. _full-barcode-demulti:
 
 Full barcode demultiplexing
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-A trivial solution is to just align the read to the full barcode design of each library, and pick the best alignment.
-This solves both problems at once. DELi support this method with the `full` demultiplexing mode.
-DELi uses Biopython's `PairwiseAligner <https://biopython.org/docs/dev/Tutorial/chapter_pairwise.html>`_ for a semi-global
-alignment adjusted for `N` wildcards to generate these full barcode alignments.
+An obvious way to determine which library is the read is from is to just try a full alignment to each possible
+library barcode schema. The one with the best alignment score is (likely) the correct library. In ``full`` mode
+DELi uses a or a semi-global alignment with a custom scoring matrix that does not penalize for the 'N' wildcards in
+the barcode schemas during alignment. It is implemented using Biopython's
+`PairwiseAligner <https://biopython.org/docs/dev/Tutorial/chapter_pairwise.html>`_.
 
-There are drawbacks to this approach. Primarily, it is computationally expensive.
-In this frame work, if you have 50 libraries, you need to perform 50 alignments per read. Early stopping on a
-perfect alignment can help, but not by much. Things are even worse if you need to search the reverse complement.
-This will double the number of alignments that are needed.
-However, there are benefits as well. This method is the most flexible to read quality, and generally
-decodes to the most reads. If you have nearly infinite "free" compute, this isn't a bad option if you want
-to squeeze out every last read. It is also a good choice if your reads have lots of errors in them, either due
-to poor PCR or poor sequencing quality.
+The benefits of this approach are that the semi-global alignment is very flexible to read quality and it can be "reused"
+when calling the other decodable sections, since the alignment to the full library barcode schema was already done to
+find the library. However, this approach is "brute". If your DEL selection used 70 libraries, then for every read you
+will need to run 70 semi-global alignments, one per library. It also scales directly with the size of reads and number
+of libraries. This makes the full barcode demultiplexing the slowest of the four approaches
 
-Single primer demultiplexing
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-A more efficient method is to just align to a small, known (static) section of the barcode design that is shared among
-all or many libraries. Then you can located and align to this static section and, determine the library tags,
-and lookup which library matches that (see :ref:`barcode decoding <TODO>` for more info on how that lookup occurs). Then
-a final alignment between the whole read and the full barcode design of the called library can be performed
-to locate the other variable regions.
 
-This method is called `single` multiplexing mode in DELi. The reason it is refered to as primer here is because
-for most DELs, if you have a static region shared amoung many DELs, it is usually a primer (used for qPCR).
-However, any static section will suffice.
+.. _static-section-alignment::
 
-Currently, DELi will not let you choose which static region to use. Instead it picks the static region that is
-present in the most libraries, thus can eliminate the most work. Overhangs are not considered static for this
-purpose.
+Static section alignments
+^^^^^^^^^^^^^^^^^^^^^^^^^
+Rather than spending the resources to do full dynamic sequence alignments, it can be alot faster to just look
+for smaller static sections of the barcode to help align the read. Once the location of a static section is known in the
+read, DELi can use that as reference to build the full alignment. This is much faster than doing a full
+semi-global alignment, as it only needs to figure out how to map the decodable sections in between the static sections.
+Luckly this can be done once and stored for the full decode run, allowing for nearly instant alignment generation after
+the static section(s) are found.
 
-.. note::
-    For DELi to know that two libraries share the same static region, the static region must be defined
-    exactly the same in both library designs. This means the DNA tag *and* the section name must be the same
-    in both library designs.
+This is done by looking at the distance between the static sections and the other sections in the barcode design,
+and then uses the known location of the static sections used to find the library to guess where the other sections should be.
+For a single known static section this will just seek out the variable sections based on their expected distance from the
+known static section. For example, if the first building block section is known to be 15 bp ahead of the static section
+and is 11 bp long, it will grab the DNA sequence 15-25 bp ahead of the known static section alignment and assign that as
+the barcode sequence. However, if there are INDELS between these two section this could result in a misalignment.
 
-This method is far more efficient than the full barcode demultiplexing method, and in many cases can demultiplex
-in 1-2 alignments. However, if all your DELs share no static regions, this will not be any faster *or* better than
-just using the full barcode demultiplexing approach.
+With two known static sections on either side of the section in question, DELi can do a bit better.
+It can use the observed vs expected distance between the two known static sections to adjust the
+alignment of the section that fall between to account for INDELs. For example I could have the read
+and barcode schema of::
+
+AGCTAGCTGGGGAGCTAGACTAGCTAGCT
+AGCTAGCTJJJJNNNNNNNKKAGCTAGCT
+
+Where the N is the section we want and J and K are some other sections we don't care about. If three was an INDEL such that::
+
+AGCTAGCTGG-GAGCTAGACTAGCTAGCT
+AGCTAGCTJJJJNNNNNNNKKAGCTAGCT
+
+Then by looking at the distance between the two static sections (AGCTAGCT) DELi can see that there is a 1 bp deletion
+in the read between them. Therefore it can adjust the variable sections accordingly, so it would extract
+``NNNNK`` instead of ``NNNK``.
+
+DELi also supports a "wiggle" mode for static alignments, where the alignment span is extended by 1 bp to the right.
+This dramatically increases the ability to recover reads with INDELs during :ref:`barcode calling <barcode-calling>`.
+
+Under the hood, DELi uses the ``StaticSectionAligner`` class to handle this logic.
+
+.. _library-section-demulti:
+
+Library section demultiplexing
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Using static section alignment, you could instead just
+look for the each unique library section rather than align to each DELs barcode.
+Since all libraries must have unique library section barcodes this will still allow for determining the library.
+This is called ``library`` mode and is about ten times faster that using
+:ref:`full barcode demultiplexing <full-barcode-demulti>`.
+
+There are still downsides with ``library`` mode that is not easy to overcome. The library barcodes being so short is
+one. Searching for barcodes that are as small as 8-12bp has an increase risk of mismatches cause by SNPs or random chance.
+DELi has some extra bells and whistles to try and compensate (using the known size of the barcode to help it pick
+the best match for example), but it is still a problem. There is also
+the issue of scaling with the number of libraries. While the searches are faster, it would still be better if we
+could get away with doing less searches rather than one per library.
+
+.. _single-section-demulti:
+
+Single section demultiplexing
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Single section demultiplexing, called ``single`` in DELi, addressed both of the issues presented by the library section
+demultiplexing method. Instead of searching for the library barcode a static section is searched for instead to
+generate the static alignment. The main benefit here is that unlike
+library sections, which must be unique between each library (thus requiring the a single search per library) static
+sections can be shared among many library barcode designs. This is often the case, as DELs made by a single
+organization or vendor will often have the same primer sections that are static across all the DELs. If we used 50 DELs
+in our selection, but they all have the same primer (static) section, then we only need to do one search, not 50. In
+practice, this means we can group DELs based on having the same static section, and then only do a search per group
+rather than per library.
+
+Of course this causes a new issue: how to tell which library the read is from when the generated match could be for any
+of the libraries.
+All that is needed to fix this is to use the alignment to locate the library section (just like we would
+for any other section). Then we can use the :ref:`barcode calling module <barcode-calling>` to call the library section
+and determine which library this read is from. This requires a small tweak to the static alignment method, which instead
+will only do a partial alignment for just the library section, rather than the full barcode design. After we have the
+library a second and full alignment can be generated between the read and the full library barcode.
+
+Yet this tweak also causes a new issue: what if the libraries share a static section, but the distance between it and the library
+section is not the same. Then the partial library section only alignment will not work for all the DELs in this group.
+Instead, we need to further sub group the
+DELs. These sub groups are determined by the distance between the static section and the library tag. If the distance
+is the same, between DELs, they can be in the same subgroup. Otherwise they are in separate subgroups. Just like how
+one search must be made per group, one partial library alignment must be made per subgroup in a group.
+
+This might seem a bit too much to handle, having to group DELs based on various barcode schema compatibilities.
+Lucky for us DELi can do this on its own. Given a set of libraries it can find the set of static sections to use that
+will minimize the number of groups and subgroups (thus minimizing the number of searches needed). In practice, you
+can often speed up a decoding run about 20-40x by using ``single`` mode over ``library``. However, in cases where
+none of the libraries share any static sections, most of the benefits of this method are lost, and ``library`` mode
+might be a better choice, especially if the size of the static sections are small and library barcodes are larger.
+
+.. _flanking-section-demulti:
 
 Flanking primer demultiplexing
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-As mentioned above, DELs often share static regions that are primers used for qPCR. This only works if there is a
-primer on both sides "flanking" the whole barcode. Therefore you could align to both primers. This can help eliminate
-incorrect alignment from a single primer. This is because the single primer lacks the ability to determine any info
-about the distance between sections. However, with two primers flanking either side of the library section, you can
-make sure the distance between the primers roughly matches the expected distance for that library, which lets you
-rule out some libraries right away. It can also help with :ref:`static section alignment <static-section-alignment>`
-as it will be able to better detect and address INDELs that could shift the tag.
-
-Like with the single primer, DELi will pick the flanking static regions for you, and they don't have to be the
-primers, any two static regions that appear in many libraries on either side of the variable regions will work.
-
-Generally, this is not much more expensive than the single primer method, and can be more accurate in some cases.
-It is hard to say when it will be better and might be context dependent, so if you have the compute, it is worth
-trying both single and flanking to see which works best for your data.
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The last method extends the single section demultiplexing method by using two static sections instead of one.
+The benifits of this are discussed in the :ref:`static section alignment <static-section-alignment>` section, but the
+main takeaway is this further improves the your ability to over come INDELs, at the cost of a minor increase risk in
+:ref:`miscalling of barcodes <barcode-calling>`. DELi can also automatically determine which static sections to use as
+the flanking sections, so you don't have to worry about that either.
 
 Core demultiplexing algorithms
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-DELi's goal is not to reinvent the wheel, so it takes advantage of existing, well tested tools to perform
-alignment/search part of the demultiplexing. Currently, there is support for three different open source tools:
+To actually carry out the above demultiplexing approaches DELi uses existing tools to perform the alignment and searches
+As mentioned already, Biopython's `PairwiseAligner <https://biopython.org/docs/dev/Tutorial/chapter_pairwise.html>`_
+is used for :ref:`full barcode demultiplexing <full-barcode-demulti>` and can be used for the other approaches
+as well if you set `realign = True` (which will reject the search based alignment and replace it with a
+semi-global alignment).
 
-- `Biopython <https://biopython.org/docs/dev/Tutorial/chapter_pairwise.html>`_ PairwiseAligner
-- `Cutadapt <https://cutadapt.readthedocs.io/en/stable/>`_ Adapter search
-- `Regex <https://github.com/mrabarnett/mrab-regex>`_ fuzzy search
+For the search based approaches, DELi can either use Cutadapt's
+`Adapter search <https://cutadapt.readthedocs.io/en/stable/>`_ or the Regex packages
+`fuzzy search <https://github.com/mrabarnett/mrab-regex>`_
 
 .. note::
-    `regex` is not the same as `re` from the python standard library. It is a third party library that
-    supports more complex regular expression syntax (but is still computable with python `re`).
-
-All of these tools have different strengths and weaknesses. Biopython is very flexible, but slow.
-Cutadapt is very fast, but less flexible. Regex is middle of the road, giving good speed and flexibility.
-By default, DELi uses Regex for demultiplexing.
-
-.. _biopython::
-
-Biopython
-~~~~~~~~~
-This will use Biopython's PairwiseAligner to perform semi-global alignments between the read
-and the static region(s). Right now it uses a custom substitution matrix that treats `N` as a wildcard
-(0 score for match with anything). Gaps are penalized normally with opening as -2 and continuing as -1.
-Matches are scored as +1.
+    ``regex`` is not the same as ``re`` from the python standard library. It is a third party library that
+    supports more complex regular expression syntax (but is still compatible with python ``re``).
 
 Cutadapt
 ~~~~~~~~
-This will use Cutadapt's alignment algorithm to find the static region(s) in the read.
+This will use Cutadapt's alignment algorithm to find the static section(s) in the read.
 Cutadapt is a fantastically optimized tool for locating adapters in sequencing reads. However,
-adapters are meant to be at the ends of reads, while static regions could be anywhere in the read.
-Usually, primers are at the ends of reads so things work out okay, but if you have static regions
+adapters are meant to be at the ends of reads, while static sections could be anywhere in the read.
+Usually, primers are at the ends of reads so things work out okay, but if you have static sections
 in the middle of the read, Cutadapt might not be able to find them as well as other methods.
 This is because the alignment algorithm prioritizes finding matches at the ends of reads, and will
 pick them over matches in the middle of reads *even if* there match in the middel is better (less errors).
 This is not a bug but a feature of cutadapt, as it is designed for adapter trimming, not general sequence
 searching. However, it can cause strange behavior in DELi. Only use this approach if you are sure your static
-regions are at the ends of your reads (like primers). DELi will warn you if it detects static regions
+sections are at the ends of your reads (like primers). DELi will warn you if it detects static sections
 in the middle of reads when using Cutadapt.
 
 .. warning::
@@ -160,87 +197,66 @@ in the middle of reads when using Cutadapt.
 
 Regex
 ~~~~~
-This will conduct a fuzzy regular expression search for the static region(s) in the read. Unlike a normal
+This will conduct a fuzzy regular expression search for the static section(s) in the read. Unlike a normal
 regular expression which cannot handle insertion, deletion or substitution errors appearing arbitrarily in a
 specific section of the query, the `regex` library supports fuzzy searching. DELi will build out regex expressions
-that look like ``(?:(?P<primer1>AGCTAGCT)){e<=1}.{{10,20}}(?:(?P<primer2>CGTACGTA)){e<=1}``. While far more confusing
-looking than a sequence alignment, this approach is faster than a full semi-global alignment, and provide a solid
-foundation for :ref:`static section alignment <static-section-alignment>`
+that look like ``(?:(?P<primer1>AGCTAGCT)){e<=1}.{{10,20}}(?:(?P<primer2>CGTACGTA)){e<=1}``. While confusing to read,
+these queries are quick powerful and efficient. In nearly all cases, regex is faster at finding static sections in a
+given read than any other method.
 
-.. _alignments::
+Regex is the default and recommend method to use.
 
-Alignments
-^^^^^^^^^^
-After using the demultiplexing step to call the library, DELi needs to generate alignments between the read and the
-full barcode design of the called library. In DELi, alignments aren't full blown global or local alignments with scores,
-but rather they are simply a mapping between the barcode sections and the DNA sequence of the read that corresponds
-to that section (based on the alignment algorithm).
-This is needed to map the variable barcode regions to the read, so that
-the building block barcodes can be decoded. DELi implements two approaches to generate these alignments:
-semi-global alignments and static section alignments. There are some pretty big differences between these two approaches.
+.. _barcode-calling:
 
-.. note::
-    In both approaches, DELi will return several possible alignment depending on the settings.
+Barcode Calling
+---------------
+After the alignment is complete and we know which spans of the read contain which sections of the barcode, we can
+call the decodable sections to determine the final ID associated with the read. On the surface, this is pretty straight
+forward, as we just need to loop through each decodable section spans and look up its match from the available options
+provided. Yet is isn't so simple.
 
-Semi-global alignments
-~~~~~~~~~~~~~~~~~~~~~~
-This is the more traditional approach, where DELi uses :ref:`Biopython's PairwiseAligner <biopython>` to perform
-a semi-global alignment between the read and the full barcode design of the called library.
-This will generate an alignment that lines up the read and the barcode design as best as possible taking into
-account the overhangs and other static regions to better locate possible INDELs.
+First, looking for perfect matches leaves alot on the table. Depending on sequencing quality and
+number of decodable section as many as 30-40% of reads could have an error that would cause them to be uncallable if
+a perfect match was needed. For DELs this is especially wasteful, as the set of valid barcodes is often far smaller than
+the set of possible barcodes. This means even with a single error in the barcode we can be pretty confident about
+what the original barcode was and still call it correctly.
 
-This approach will completely ignore whatever initial alignment was generated to help call the library (unless
-a :ref:`full alignment was done already to call the library <full-barcode-demulti>`) and build a new one from
-scratch. It can be triggered by telling DELi `realign = True`. It is more expensive than the other approach, but
-can recover an addition 2-5% of reads in some cases, especially if there are a lot of INDELs in your reads.
+To address this DELi uses a hashmap based approach, where prior to decoding a list of each barcode and all its possible
+1-Levenshtein distance (1 INDEL or SNP) neighbors is generated and stored. This allows for O(1) lookup of the correct
+barcode even if there is an error in the read, as long as it is only 1 error away from a valid barcode. If there is
+a case where two of the valid barcodes are similar enough that they share a 1-Levenshtein distance neighbor
+(making it too ambiguous to know the correct barcode), DELi can detect this and correct all the read as non-decodable.
+This is the ``ambiguous`` mode in the error correcting settings.
 
-.. _static-section-alignment::
+There is one more "problem" to address. If you read the above sections about
+:ref:`library demultiplexing <library-demultiplexing>`, you will notice that the alignments generated are not
+guaranteed to be the correct size, or even just 1 bp larger. This would automatically cause the barcode calling to fail,
+as the hashmap does not cover that many Levenshtein edits. Worry not, DELi is designed to handle this, and in fact,
+it is a core feature in making barcode calling more robust.
 
-Static section alignments
-~~~~~~~~~~~~~~~~~~~~~~~~~
-This approach takes advantage of the initial alignment(s) generated during the demultiplexing step to call the
-library. Since those alignments already map the static regions of the barcode design to the read, DELi can use
-those as "anchor points" to build the full alignment. This is much faster than doing a full semi-global alignment,
-as it only needs to figure out how to map the variable regions in between the static regions.
+When DELi get asked to call a section. It is given the aligned span from the read. It will then sweep through all possible
+windows of the expected size, plus one smaller and one larger (to account for possible INDELs) for the section to try and
+find a match in the hashmap.
+There are several modes for this, but the default is a "greedy first perfect" which will pick the first window with a perfect
+(zero errors) match or pick the window that results in a match with the least number of errors (if no perfect match is found).
+This is still really fast, as
+the matching is an O(1) operation thanks to the hashmap callers. Using this DELi can recover reads with as many as 2-3
+INDELs with high accuracy.
 
-This is done by looking at the distance between the static regions and the other regions in the barcode design,
-and then uses the known location of the static regions used to find the library to guess where the other regions should be.
-For a single known static region this will just seek out the variable regions based on their expected distance from the
-known static region. For example, if the first building block section is known to be 15 bp ahead of the static region
-and is 11 bp long, it will grab the DNA sequence 15-25 bp ahead of the known static region alignment and assign that as
-the barcode sequence. However, if there are INDELS between these two section this could result in a misalignment.
-
-With two known static regions on either side of the section in question, DELi can do a bit better.
-It can use the observed vs expected distance between the two known static regions to adjust the
-alignment of the section that fall between to account for INDELs. For example I could have the read
-and barcode schema of::
-
-AGCTAGCTGGGGAGCTAGACTAGCTAGCT
-AGCTAGCTJJJJNNNNNNNKKAGCTAGCT
-
-Where the N is the region we want and J and K are some other regions we don't care about. If three was an INDEL such that::
-
-AGCTAGCTGG-GAGCTAGACTAGCTAGCT
-AGCTAGCTJJJJNNNNNNNKKAGCTAGCT
-
-Then by looking at the distance between the two static regions (AGCTAGCT) DELi can see that there is a 1 bp deletion
-in the read between them. Therefore it can adjust the variable regions accordingly, so it would extract
-``NNNNK`` instead of ``NNNK``. When calling the library barcode, `NNNNK` is only 1 levenshtein distance away from
-the expected barcode making it easy to fix, but ``NNNK`` is 2 distances away, making it much harder to correct.
-
-In cases where there might be more than one INDEL between two known static regions, (say it the above example had 2 more
-deletions and created ``JJNNNNK`` as the variable region) DELi will walk through all sequential sets of nucleotides
-that are of length equal and minus one to the expected length of the variable region to try and find a match.
-This is still far faster than a full semi-global alignment, but also still a bit more error prone.
+This also address another problem we have yet to address, alignment spans that overlap. If decodable barcode sections
+are close, and there are INDELs, it is possible for the alignments to overlap. By sweeping the windows, DELi can find
+an alignment that either avoids overlaps between matching windows (which would result in an impossible decode output
+since one base pair can't be claimed by two different sections) or allows DELi to fail when an non-resolvable
+overlap is detected. This is generally quite rare, but DELi is designed to handle it when it does happen.
 
 Barcode Decoding
 ----------------
 Once the read has been assigned to a specific library and an alignment(s) between the read and the library
 are created, then the sections can be decoded. This is pretty straight forward. DELi will loop through each alignment
-and try to decode the building block barcodes based on the mapped nucleotides for each variable region.
+and try to decode the building block barcodes based on the mapped nucleotides for each variable section.
 If it fails (because that barcode doesn't exist) it will try the next alignment and continue until it finds a valid
 decoding or runs out of alignments. Hashmap based :ref:`barcode calling <>` is used to allow for possible errors in the
-barcode regions when decoding while keep runtime as low as possible (O(1) in this case).
+barcode sections when decoding while keep runtime as low as possible (O(1) in this case).
 
 Once all the variable sections are called, DELi will then locate the UMI by both using the alignment to find
 where the UMI is located in the read *and* looking taking the closest aligned variable section to the UMI and
@@ -250,49 +266,57 @@ correction.
 
 This then produced a full decoded read, mapping it to a unique compound ID and associating it with a UMI.
 
-Wiggle
-^^^^^^
-DELi supports a "wiggle" mode when calling building blocks. This is a simple method to help recover
-reads that have insertions or deletions (INDELs) in the building block region of the barcode.
-When wiggle mode is enabled, after the initial alignment of the read to the barcode schema, DELi will
-extend the aligned region by 1 bp on each side, and then scan all possible chunks of the expected
-building block tag length, 1 smaller and 1 larger than expected length (in that order).
-If a match is found in any of these chunks, the building block is called.
 
-Turning on wiggle is recommended when not using a semi-global alignment during demultiplexing,
-as it can help recover reads lost to INDELs in regions outside of the sections of interest.
+UMI extraction
+--------------
+After the compound ID is decoded, the alignment is also used to extract the UMI sequence from the read.
+DELi *does not* use the alignment for this. Instead it uses the known distance between the UMI and the
+closest decoded section to find the UMI sequence. This is to adjust for INDELs that may have occurred in the read,
+since window scanning does not work on the UMI (there is nothing to call, the region is meant to be random).
 
+
+Decode Parallelization and Collection
+-------------------------------------
+The process of decoding a single read into a compound ID and UMI is embarrassingly parallel,
+as each read can be decoded independently of the others. This is why DELi's decoding algorithm does not
+implement any native multithreading or multiprocessing; it is easy (and way faster) to just run multiple processes of
+DELi on different chunks of the input FASTQ files.
+
+However, before count and UMI degeneration can occur, the decoded compounds need to be aggregated; we need to know
+how many time each compound showed up and with what UMIs. This process is not easily parallelizable, since all the
+data must be looked at in a single process (at some point). This is also the reason this process is sepatated from
+decoding. DELi can do this collection for you; it is just a
+massive groupby and count operation. Polars' streaming engine is used for this to keep the memory usage low.
 
 UMI Degeneration
 ----------------
-For any given compound ID, DELi will group all reads that share the same UMI together and count them as one.
-This is to correct for PCR amplification bias, where some molecules get amplified more than others.
-Right now DELi does not implement any advanced algorithm to account for errors in the UMI (like UMI clustering or
-UMI graphs [1]_). This is planned for future releases.
+Once the compounds are collected and counted, DELi can do UMI degeneration to correct for PCR amplification bias.
+Technically this is optional, but non-UMI corrected counts are not very useful due to all the noise introduced by
+PCR amplification bias. DELi implements two methods for UMI degeneration, :ref:`Exact <exact-umi-degeneration>` and
+:ref:`Clustered <clustered-umi-degeneration>`.
 
-
+.. _exact-umi-degeneration:
 
 Exact UMI Degeneration
 ^^^^^^^^^^^^^^^^^^^^^^
 This is the simplest method, where all reads with the same UMI are grouped together and their counts are summed.
 There is no room for error in the UMI. Given that even high end sequencers have error rates of about 1/100 base pairs,
 This is going to introduce some noise, as AACCTTGG and AACCTTG*A* will be counted as the **different** UMIs, even though,
-statistically speaking, the odds are far more likely one is a misread of the other. [*]_
+statistically speaking, the odds are far more likely one is a misread of the other.
 
-.. [*]_
-    To demonstrate this, say we have 100bp DNA barcode with a 10 bp UMI. on average 1 out of every 10 reads (10%) will have a single error
-    in the UMI, giving it a hamming distance on 1. Now, with 10bp UMIs, there are 1,048,576 possible UMIs, but for any given UMI, there
-    are only 30 other UMIs with a hamming distance of 1, or a 0.0029% chance of a read being misread as one of those. If we assume that the
-    chance there are far more possible UMIs that those actually in the DEL (Since DELs are synthesized at such low concentrations) it is 4 fold
-    more likely that two UMIs with hamming distance of 1 are just one single UMI (one has a misread) than it is to be two unique UMIs.
-    In practice these odds are even lower, as UMIs are often longer than 10bp.
+To demonstrate this, say we have 100bp DNA barcode with a 10 bp UMI. on average 1 out of every 10 reads (10%) will have a single error
+in the UMI, giving it a hamming distance on 1. Now, with 10bp UMIs, there are 1,048,576 possible UMIs, but for any given UMI, there
+are only 30 other UMIs with a hamming distance of 1, or a 0.0029% chance of a read being misread as one of those. If we assume that the
+chance there are far more possible UMIs that those actually in the DEL (Since DELs are synthesized at such low concentrations) it is 4 fold
+more likely that two UMIs with hamming distance of 1 are just one single UMI (one has a misread) than it is to be two unique UMIs.
+In practice these odds are even lower, as UMIs are often longer than 10bp.
+
+.. _clustered-umi-degeneration:
 
 Clustered UMI Degeneration
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
-To compensate for misreads and PCR errors during sequencing, DELi implements a "clustered" UMI degeneration method.
-It is similar the to clustering method outlined in . The major difference is that DELi uses
-a greedy approach, where the centroid of the cluster just the first UMI observed that didn't fit into an existing cluster.
-In Smith et al, the centroids are picked as the most common UMIs not already in a cluster.
+To compensate for misreads and PCR errors during sequencing that end up in the UMI section, DELi implements a
+"clustered" UMI degeneration method. It is an implementation of the "directional" method outlined in Smith et al [1]_.
 
 References
 ----------
