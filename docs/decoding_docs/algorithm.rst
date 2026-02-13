@@ -226,7 +226,8 @@ To address this DELi uses a hashmap based approach, where prior to decoding a li
 barcode even if there is an error in the read, as long as it is only 1 error away from a valid barcode. If there is
 a case where two of the valid barcodes are similar enough that they share a 1-Levenshtein distance neighbor
 (making it too ambiguous to know the correct barcode), DELi can detect this and correct all the read as non-decodable.
-This is the ``ambiguous`` mode in the error correcting settings.
+This is the ``ambiguous`` mode in the error correcting settings. You can read more about his in the
+:ref:`barcode calling documentation <barcode-calling-docs>`.
 
 There is one more "problem" to address. If you read the above sections about
 :ref:`library demultiplexing <library-demultiplexing>`, you will notice that the alignments generated are not
@@ -264,8 +265,7 @@ searching *n* bp away to find the UMI sequence. Both these (if different) are sa
 with the *n* bp away being the primary UMI call. Future updates will build upon this to do more advanced UMI
 correction.
 
-This then produced a full decoded read, mapping it to a unique compound ID and associating it with a UMI.
-
+This produces a full decoded read, mapping it to a unique compound ID and associating it with a UMI.
 
 UMI extraction
 --------------
