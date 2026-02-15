@@ -1,13 +1,12 @@
-======================
-Barcode  Calling
-======================
-DELi uses hashmaps (python dictionaries) to map DNA barcode sequences to their corresponding objects.
-There are generics in DELi, so it can map tags to any type of object, but in practice we only care
-about DELs and building blocks.
+.. _barcode-calling-docs:
 
+=========================
+Barcode  Calling Hashmaps
+=========================
+DELi uses hashmaps (python dictionaries) to map DNA barcode sequences to their corresponding objects.
 There are several ways to build these hashmaps. The simplest is to just map the exact sequence
 to the object. This works well when there are no errors in the reads. However, in practice there are often errors
-in the reads, especially in the building block region of the barcode. To mitigate this, DELi supports
+To mitigate this, DELi supports
 several error correction methods that can be used when building the hashmaps for building block calling.
 
 .. _error-correction-docs:
@@ -66,7 +65,9 @@ To give you an idea of scale, if my building block set 12 bp long sequences, the
 have a hamming distance of :math:`d` from the original is :math:`\sum_{n=1}^{d}3^n\binom{12}{n}`, where :math:`\binom{12}{n}`
 is the binomial coefficient (12 choose :math:`n`). For :math:`d=1` this is only 36, for :math:`d=2`
 it is 630, and for :math:`d=3` it is 6,570. So if we have a BB set of 5000 tags, that is ~30 million sequences in the
-hashmap for a cutoff distance of 3.
+hashmap for a cutoff distance of 3. There are only 20,000 possible 12bp sequences, so this map will have alot of
+collisions. In practice you only ever need a cutoff distance of 1 or 2 for hamming distance,
+so the hashmap will be much smaller and more manageable.
 
 Levenshtein Hashmap
 ~~~~~~~~~~~~~~~~~~~
@@ -105,28 +106,6 @@ ambiguous matches (meaning more than one valid sequence has the same minimum dis
 So, even if you built a BB set with tags of a Levenshtein distance of 3 from each other, you could using a hashmap with a distance cutoff
 of 2 and the asymmetrical mode enabled. This could help correct even more errors, at the cost of a longer initialization time to built
 the hashmap.
-
-Quaternary Hamming Decoder
-^^^^^^^^^^^^^^^^^^^^^^^^^^
-Hamming distance was invented in tandem with the Hamming code, a way to enable single bit error correction in binary data.
-Hamming codes require specific sequences of the bits, some holding data some holding parity bits (which are set based on the
-data bits and used to locate errors).
-When you generate a set of sequences at random and check if their hamming distance to all others in the set is
-at least 3, you cannot always guarantee that the same hamming code (order of bits) is the same for all sequences.
-
-However, you can just pick a hamming code and use it to generate a set of sequences that are guaranteed to have a hamming
-distance of 3 from each other *while* having the same order of bits. If this was done, you can then use a hamming decoder
-to decode the reads and correct single SNP errors in the building block region of the DEL DNA barcode.
-
-DELi implements a hamming decoder generalized from binary to quaternary space (the space of DNA sequences). If you know your
-library was designed this way, you can use the hamming decoder. You just need to make sure DELi is configured to use the
-your Hamming code (see :ref:`custom hamming docs <deli-custom-hamming-docs>`).
-
-.. note::
-    In practice, this is slower than the hashmap error correction, and far less likely to be needed, as
-    DELi has on of the few (if not the only) implementations of a quaternary hamming encoder. Odds are,
-    your tags were created at random, not with a hamming code. Also it is limited to a single SNP error correction,
-    which is not always sufficient for DELs with longer building block regions.
 
 .. _error-correction-methods-config:
 

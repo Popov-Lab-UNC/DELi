@@ -1,3 +1,5 @@
+.. _parallelization:
+
 =======================
 Parallelization in DELi
 =======================
