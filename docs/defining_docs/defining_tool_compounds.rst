@@ -67,7 +67,7 @@ An example schema looks something like this:
                 "tag":  "CCTTGGCACCCGAGA",
                 "overhang": "CTA"
             },
-            "compound_tag": {
+            "tool_compound_ref": {
                 "tag": "ATTCCAATCGCTGA",
                 "overhang": "ACG",
             "extra_tags": {
@@ -86,8 +86,9 @@ Tool Compound File FAQ
 ----------------------
 - **Q:** My tool compounds have the same library tag but different barcodes. Does DELi support this?
     **A:** Not directly. DELi will only allow for one tool compound with a given library tag.
+    DELi will fail if you try to include both.
     However, you can get around this by defining multiple tool compound files, each with a unique library tag
-    by include a region of the tag that varies between the two tool compounds.
+    by including a region of the tag that varies between the two tool compounds.
 
     In the case that one of your tool compounds is a perfect subset of another, DELi offers no way to resolve this conflict.
     In general, this a bad idea for your DEL experiment as well, hiccups in ligation or synthesis could lead to miscalls

@@ -4,42 +4,89 @@
 Selection Files
 ===============
 DEL selections are experiments, and like all experiments, they have all kinds of metadata and conditions that are
-associated with them.Some of this information is useful for DELi to know when processing the selection data.
+associated with them. Some of this information is useful for DELi to know when processing the selection data.
 To help streamline this DELi has a "selection file format" that allows you to easily enter information about your
-DEL selection. It is based on YAML and looks like this:
+DEL selection.
+
+.. _selection-file-format:
+
+Selection File Format
+---------------------
+The selection file format is a simple YAML file that contains at a bare minimum the following information:
+
+- **selection_id**: An identifier for the selection. This should be a short, descriptive name that identifies the selection
+  (preferably the same as any other experiment tracking you use).
+
+- **libraries**: A list of the libraries that were used in the selection.
+  They can be the name of libraries in the :ref:`DELi data directory <deli-data-dir-ref>` or the (full)
+  path to the library definition file for that library
+
+Any other sections are not (currently) used by DELi. But you can add whatever info you want. It can be a good way to
+track your experiments and keep all the relevant information in one place. For example, you might want to include
+information about the target protein, the selection conditions, or any other relevant details.
 
 .. code-block:: yaml
 
     selection_id: "EXAMPLE_SELECTION"
-    target_id: "Target1"
-    selection_condition: "200uL Library with 50pM Protein"
-    date_ran: "2025-03-30"
-    additional_info: "This is an example selection for DELi documentation."
 
     libraries:
         - "DEL004"
         - "DEL005"
 
-Below is a description of the fields in this file:
 
-- **selection_id**: An identifier for the selection. This should be a short, descriptive name that identifies the selection
-  (preferably the same as any other experiment tracking you use).
-- **target_id**: The identifier for the target protein or molecule that the selection is being performed against.
-  This should match the target ID used in any of your other traget tracking, or could be something like the Uniprot ID.
-- **selection_condition**: A description of the conditions under which the selection was performed.
-  This could include information about the library concentration, the target protein concentration, or any other relevant details.
-- **date_ran**: The date the selection was performed. This should be in ISO 8601 format (YYYY-MM-DD).
-- **additional_info**: Any additional information about the selection that you want to include.
-  This could include notes about the selection process, any issues that were encountered, or any other relevant details worth logging.
+.. _sequenced-selection-file-format:
 
-After this metadata/experiment information, you then list the libraries that were used in the selection.
-DELi will use the library information to help process the selection data, both in a the analysis module
-and the decoding module.
+Sequenced Selection File Format
+---------------------
+If your selection has been sequenced, you can store the location of the sequence data in the selection file as well.
+DELi calls this a "SequencedSelection" and when it is load will automatically set up readers to parse the FASTQ files.
+
+You just need to add a "sequence_files" section to the selection file with the paths to the FASTQ files. For example:
+
+.. code-block:: yaml
+
+    selection_id: "EXAMPLE_SELECTION"
+
+    libraries:
+        - "DEL004"
+        - "DEL005"
+
+    sequence_files:
+        - "path/to/selection1.fastq"
+        - "path/to/selection2.fastq"
 
 .. note::
-    You can use the full path to the :ref:`library JSON files <defining_libraries>`, or just the name of the library if it is in
-    the :ref:`DELi Data Directory <deli-data-dir-ref>`.
+    If you are using the sequence file to run a decoding job, it **must** be a sequenced selection file.
+    DELi needs to know where the sequence files are to run the decoding job.
 
-These selection files can also serve as a good way to track your experiments. While the list keys above are the
-only required ones, (except for ``additional_info``, which is optional), you can add any other keys you want
-to track to the file. DELi will ignore any keys that it does not recognize, so you can add as many as you want.
+.. _decode-settings-in-selection-file:
+
+Decode Settings in the Selection File
+---------------------
+In the case that you are using your selection file to run a :ref:`decoding job <running-decode-docs>`, you can also
+include the decoding settings in the selection file itself. You can add them under the "decode_settings" key. For example:
+
+.. code-block:: yaml
+
+    selection_id: "EXAMPLE_SELECTION"
+
+    libraries:
+        - "DEL004"
+        - "DEL005"
+
+    sequence_files:
+        - "path/to/selection1.fastq"
+        - "path/to/selection2.fastq"
+
+    decode_settings:
+        ignore_tool_compounds: true
+        demultiplexer_algorithm: "cutadapt"
+        demultiplexer_mode: "library"
+        realign: true
+        library_error_tolerance: 2
+        library_error_correction_mode_str: "levenshtein_dist:2,asymmetrical"
+        min_library_overlap: 8
+        revcomp: true
+        library_wiggle: true
+        wiggle: true
+        decode_matching_approach: "first_perfect"

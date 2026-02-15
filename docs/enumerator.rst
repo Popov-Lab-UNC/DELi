@@ -29,7 +29,7 @@ routes through the synthesis process. For example, when adding cycle 2, some
 building blocks might undergo a esterification reaction, while others might undergo
 an amide coupling. DELi allows you to specify these different routes by provide two
 different steps, one for the esterification and one for the amide coupling, and then
-specifying which building blocks (using :ref:`building block subsets <TODO>`)
+specifying which building blocks (using :ref:`building block subsets <defining_building_blocks>`)
 go through which step.
 
 There is also support for reaction priority, where you can specify a preferred
