@@ -988,7 +988,7 @@ def collect_decodes(ctx, decoded_reads, score_threshold, count_threshold, out_lo
         .with_columns(
             umi_counts=pl.col("umi").list.eval(pl.element().value_counts().struct.rename_fields(["k", "c"])),
         )
-        .sink_ndjson(out_path)
+        .sink_ndjson(out_path, compression="gzip" if compress else 'uncompressed')
     )
     logger.info(f"aggregated decoded sequences from {len(decoded_reads)} input files to {out_path}")
 
@@ -1008,7 +1008,7 @@ def count_compounds(ctx, collected_decodes, out_loc, cluster_umis, keep_raw_coun
     Count compounds from collected decoded file
 
     COLLECTED-DECODES is the path to the collected decodes NDJSON file
-    generated using `deli decode collect`
+    generated using `deli decode collect` (can be gzip compressed if .gz suffix is present).
 
     NOTE: "gzip" output format will generate a gzip compressed TSV file. Writing to output occurs in batches.
     """
