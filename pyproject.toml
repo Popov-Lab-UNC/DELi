@@ -1,8 +1,30 @@
 [project]
-name = "deli"
+name = "deli-chem"
 version = "1.0.0"
+description = "DNA encoded library sequence analysis software with custom library design support"
+readme = "README.md"
 authors = [
-    { name = "James Wellnitz", email = "wellnitz.james@gmail.com" }
+  { name = "James Wellnitz", email = "wellnitz.james@gmail.com" },
+  { name = "Brandon Novy" },
+  { name = "Travis Maxfield" },
+  { name = "Jason Lin" }
+]
+maintainers = [
+  { name = "James Wellnitz", email = "wellnitz.james@gmail.com" }
+]
+classifiers = [
+  "Natural Language :: English",
+  "Operating System :: OS Independent",
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "Topic :: Scientific/Engineering :: Bio-Informatics"
+]
+keywords = [
+  "DNA-encoded library",
+  "DEL",
+  "cheminformatics",
+  "bioinformatics",
+  "drug discovery"
 ]
 requires-python = ">=3.13"
 dependencies = [
@@ -25,10 +47,15 @@ dependencies = [
 requires = ["uv_build>=0.9.16,<0.10.0"]
 build-backend = "uv_build"
 
+[tool.uv.build-backend]
+module-name = "deli"
+
 [dependency-groups]
 dev = [
+    "fastavro>=1.12.1",
     "mypy>=1.19.1",
     "pre-commit>=4.5.1",
+    "pyarrow>=23.0.1",
     "pytest>=9.0.2",
     "ruff>=0.15.1",
 ]
@@ -36,3 +63,44 @@ docs = [
     "sphinx>=9.1.0",
     "sphinx-rtd-theme>=3.1.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/Popov-Lab-UNC/DELi"
+Repository = "https://github.com/Popov-Lab-UNC/DELi"
+Issues = "https://github.com/Popov-Lab-UNC/DELi/issues"
+
+[project.scripts]
+deli = "deli.cli:cli"
+
+[[tool.mypy.overrides]]
+module = ["untyped_package.*"]
+follow_untyped_imports = true
+
+[tool.mypy]
+files = ["src"]
+exclude = "src/deli/cli.py|tests"
+
+[tool.ruff]
+lint.select = [
+    "F",
+    "E",
+    "W",
+    "I001",
+    "I002",
+    "B",
+    "D"
+]
+lint.ignore = [
+    "D400",
+    "D401",
+    "D200"
+]
+src = ["src", "tests"]
+line-length = 120
+exclude = ["scripts/", "docs/", "tests/data/"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
+[tool.ruff.lint.isort]
+lines-after-imports = 2

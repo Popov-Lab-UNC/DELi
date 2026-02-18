@@ -67,7 +67,6 @@ class TestHammingHashCorrectors:
             ],
         )
 
-    @pytest.mark.unit
     def test_hamming3_1_hashmap_corrector(self, tagged_hamming3_bb_set):
         """Test HammingDistBarcodeCaller on a hamming 3 set with non-asym dist cutoff 3"""
         # set up the hamming 3 correctors
@@ -86,7 +85,6 @@ class TestHammingHashCorrectors:
         with pytest.raises(KeyError):
             hamming3_1_corrector._hash_map["AAAAAAAA"]  # not in set should fail
 
-    @pytest.mark.unit
     def test_hamming3_2_hashmap_corrector(self, tagged_hamming3_bb_set):
         """Test HammingDistBarcodeCaller on a hamming 3 set with asym dist cutoff 2"""
         # set up the hamming 3 correctors
@@ -114,7 +112,6 @@ class TestHammingHashCorrectors:
         with pytest.raises(KeyError):
             hamming3_2_corrector._hash_map["AAAAAAAA"]  # not in set should fail
 
-    @pytest.mark.unit
     def test_hamming5_1_hashmap_corrector(self, tagged_hamming5_bb_set):
         """Test HammingDistBarcodeCaller on a hamming 5 set with non-asym dist cutoff 1"""
         # set up the hamming 5 correctors
@@ -133,7 +130,6 @@ class TestHammingHashCorrectors:
         with pytest.raises(KeyError):
             hamming5_1_corrector._hash_map["AAAAAAAAAAA"]  # not in set should fail
 
-    @pytest.mark.unit
     def test_hamming5_2_hashmap_corrector(self, tagged_hamming5_bb_set):
         """Test HammingDistBarcodeCaller on a hamming 5 set with non-asym dist cutoff 2"""
         # set up the hamming 5 correctors
@@ -208,7 +204,6 @@ class TestLevenshteinHashCorrectors:
             ],
         )
 
-    @pytest.mark.unit
     def test_levenshtein3_1_hashmap_corrector(self, tagged_levenshtein3_bb_set):
         """Test LevenshteinDistBarcodeCaller on a Levenshtein 3 set with non-asym dist cutoff 3"""
         # set up the levenshtein 3 correctors
@@ -233,7 +228,6 @@ class TestLevenshteinHashCorrectors:
         with pytest.raises(KeyError):
             res = leven3_1_corrector._hash_map["AAAAAAAA"]  # not in set should fail
 
-    @pytest.mark.unit
     def test_levenshtein3_2_hashmap_corrector(self, tagged_levenshtein3_bb_set):
         """Test LevenshteinDistBarcodeCaller on a Levenshtein 3 set with asym dist cutoff 2"""
         # set up the levenshtein 3 correctors
@@ -277,7 +271,6 @@ class TestLevenshteinHashCorrectors:
         with pytest.raises(KeyError):
             leven3_2_corrector._hash_map["AAAAAAAA"]  # not in set should fail
 
-    @pytest.mark.unit
     def test_levenshtein5_1_hashmap_corrector(self, tagged_levenshtein5_bb_set):
         """Test LevenshteinDistBarcodeCaller on a Levenshtein 5 set with non-asym dist cutoff 1"""
         # set up the levenshtein 5 correctors
@@ -306,7 +299,6 @@ class TestLevenshteinHashCorrectors:
         with pytest.raises(KeyError):
             leven5_1_corrector._hash_map["AAAAAAAAAAAA"]  # not in set should fail
 
-    @pytest.mark.unit
     def test_levenshtein5_2_hashmap_corrector(self, tagged_levenshtein5_bb_set):
         """Test LevenshteinDistBarcodeCaller on a Levenshtein 5 set with non-asym dist cutoff 2"""
         # set up the levenshtein 5 correctors

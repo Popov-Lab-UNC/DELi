@@ -94,18 +94,17 @@ def _standardize_and_validate_output_loc(
     Path
         The validated (and possibly modified) output path.
     """
-
     logger = logging.getLogger("deli")
 
     def _communicate_error_and_exit(message: str):
-        """helper func to communicate error and exit"""
+        """Helper func to communicate error and exit"""
         click.echo()
         if logger:
             logger.error(message)
         sys.exit(1)
 
     def _communicate_warning(message: str):
-        """helper func to communicate warning"""
+        """Helper func to communicate warning"""
         click.echo(f"\nWARNING: {message}\n")
         if logger:
             logger.warning(message)
@@ -174,7 +173,6 @@ def _open_text_file(path: Path):
     file object
         The opened file object.
     """
-
     if path.suffix == ".gz":
         return gzip.open(path, "rt")
     else:
@@ -225,8 +223,9 @@ def _get_random_deli_quote() -> str:
     """
     Returns a random quote relating to delis.
 
-    Returns:
-        str: A random deli-related quote
+    Returns
+    -------
+    str
     """
     import random
 
@@ -453,7 +452,7 @@ def cli(ctx, debug, disable_logging, stream_logs, deli_data_dir, config_file, qu
     try:
         logger.debug(f"using DELi Data Directory at: '{deli_config.deli_data_dir}'")
     except DeliDataDirError:
-        logger.warning(f"DELi data directory is not set in configuration")
+        logger.warning("DELi data directory is not set in configuration")
 
     ctx.obj['quotes_enabled'] = quote
 
@@ -677,11 +676,14 @@ def click_validate_deli_data_dir(ctx, path):
         click.echo(e)  # don't need to rephrase this error
         total_issues += 1  # don't stop here, continue to check for other issues
 
-    for sub_dir_name, sub_dir_ext in zip(DELI_DATA_SUB_DIRS, DELI_DATA_EXTENSIONS):
+    for sub_dir_name, sub_dir_ext in zip(DELI_DATA_SUB_DIRS, DELI_DATA_EXTENSIONS, strict=True):
         click.echo(f"-------------------\nValidating sub-directory: '{sub_dir_name}'\n")
         sub_dir_path = _path / sub_dir_name
 
-        files = [file_path for file_path in sub_dir_path.rglob('*') if file_path.is_file() and (file_path.suffix == f".{sub_dir_ext}")]
+        files = [
+            file_path for file_path in sub_dir_path.rglob('*') if
+            file_path.is_file() and (file_path.suffix == f".{sub_dir_ext}")
+            ]
 
         file_name_path_map = defaultdict(list)
         for file_path in files:
@@ -750,13 +752,11 @@ def run_decode(
     the input sequences across N separate processes, the output files can be trivially
     combined and will be identical to a single process with all sequences.
 
-
     NOTE: Some outputs are generated on the fly, stopping a job mid run can result
     in partial output files.
 
     See the docs for a detailed description of output files generated.
-    See the `deli decode merge` command for more info on combining output files.
-
+    See the `deli decode collect` command for more info on combining output files.
     """
     from deli.decode.base import FailedDecodeAttempt
     from deli.decode.decoder import DecodingSettings, SelectionDecoder

@@ -1,3 +1,6 @@
+default_stages:
+  - pre-commit
+
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
@@ -19,6 +22,13 @@ repos:
         args: ["--config", "pyproject.toml"]
         exclude: "src/deli/cli.py"
 
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    # uv version.
+    rev: 0.10.4
+    hooks:
+      - id: uv-lock
+      - id: uv-export
+
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.19.1
     hooks:
@@ -31,7 +41,7 @@ repos:
     hooks:
       - id: pytest-unit
         name: pytest-unit
-        entry: poetry run pytest
+        entry: uv run pytest
         stages: [pre-push]
         language: system
         types: [python]

@@ -3,10 +3,9 @@
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional, Sequence
+from typing import Any, Optional, Self, Sequence
 
 import yaml
-from typing_extensions import Self
 
 from deli.dels.combinatorial import CombinatorialLibrary, DELibrary, DELibraryCollection
 from deli.dels.library import LibraryCollection

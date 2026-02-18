@@ -12,7 +12,6 @@ from deli.enumeration.enumerator import EnumeratedDELCompound
 pytestmark = pytest.mark.filterwarnings("ignore::deli.enumeration.reaction.ReactionWarning")
 
 
-@pytest.mark.unit
 def test_enumerator_load_from_file():
     """Test loading enumerator from file"""
     lib = CombinatorialLibrary.load("DEL006")
@@ -37,7 +36,6 @@ def missing_enumerator() -> DELibrary:
     return DELibrary.load("DEL005")
 
 
-@pytest.mark.unit
 def test_enumerate_from_library(del_library: DELibrary, tmpdir):
     """Test is enumerate from library object to file is working"""
     file_path = os.path.join(tmpdir, "enumerate_test.csv")
@@ -51,7 +49,6 @@ def test_enumerate_from_library(del_library: DELibrary, tmpdir):
     assert num_compounds == del_library.library_size
 
 
-@pytest.mark.unit
 def test_enumerator_enumerate(del_enumerator, missing_enumerator):
     """Test using the enumerator to enumerate a library"""
     compounds = del_enumerator.enumerate(use_tqdm=False)
@@ -66,7 +63,6 @@ def test_enumerator_enumerate(del_enumerator, missing_enumerator):
         missing_enumerator.enumerate(use_tqdm=False).__next__()
 
 
-@pytest.mark.unit
 def test_enumerator_enumerate_bb(del_enumerator):
     """Test using the enumerator to enumerate a single compound"""
     bb_ids = ["A003", "B001", "C001"]

@@ -53,7 +53,6 @@ def collected_file_path():
     return Path(__file__).parent / "data" / "collected_decodes.ndjson"
 
 
-@pytest.mark.functional
 def test_deli_config_init(monkeypatch, tmpdir, runner):
     """Testing the command `deli config init`"""
     # path the home directory to the temporary directory
@@ -86,7 +85,6 @@ def test_deli_config_init(monkeypatch, tmpdir, runner):
     _DeliConfig.load_config(custom_config_path)
 
 
-@pytest.mark.functional
 def test_deli_data_init(tmpdir, runner):
     """Testing the command `deli data init`"""
     os.chdir(tmpdir)
@@ -123,7 +121,6 @@ def test_deli_data_init(tmpdir, runner):
     assert result.exit_code == 1
 
 
-@pytest.mark.functional
 def test_deli_data_which(runner):
     """Test the CLI command `deli data which`"""
     result = runner.invoke(click_which_deli_data_dir, obj={"deli_config": get_deli_config()})
@@ -136,7 +133,6 @@ def test_deli_data_which(runner):
     assert result.exit_code == 1
 
 
-@pytest.mark.functional
 def test_deli_data_set(monkeypatch, tmpdir, runner):
     """Test the CLI command `deli data set`"""
     temp_home_path = Path(tmpdir)
@@ -240,7 +236,6 @@ def test_decode_run(tmpdir, runner, selection_file_path, fastq_file_path):
     assert (temp_home_path / "DecodeResults" / "TEST_failed_decoding.tsv").exists()
 
 
-@pytest.mark.functional
 def test_decode_collect(tmpdir, runner, decoded_file_path):
     """Test the command `deli decode collect`"""
     temp_home_path = Path(tmpdir)
@@ -283,7 +278,6 @@ def test_decode_collect(tmpdir, runner, decoded_file_path):
     assert not output_file.exists()
 
 
-@pytest.mark.functional
 def test_decode_count(tmpdir, runner, collected_file_path):
     """Test the command `deli decode count`"""
     import polars as pl
@@ -407,7 +401,6 @@ def test_decode_count(tmpdir, runner, collected_file_path):
     pl.read_avro(output_file)
 
 
-@pytest.mark.functional
 def test_validate_deli_data_dir(tmpdir, runner):
     """Test the validate_deli_data_dir function"""
     from test_deli_data_dir import build_invalid_deli_data_dir, build_valid_deli_data_dir
