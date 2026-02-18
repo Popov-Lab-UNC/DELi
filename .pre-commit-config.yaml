@@ -32,7 +32,7 @@ repos:
       - id: pytest-unit
         name: pytest-unit
         entry: poetry run pytest
-        stages: [push]
+        stages: [pre-push]
         language: system
         types: [python]
         pass_filenames: false
