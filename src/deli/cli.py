@@ -19,7 +19,7 @@ from tqdm import tqdm
 from deli import __version__
 from deli.configure import DeliDataDirError
 from deli.dels.combinatorial import CombinatorialLibrary
-from deli.selection import DELSelection, Selection, SequencedSelection
+from deli.selection import load_selection, Selection
 
 
 # Suppress RDKit warnings at module level
@@ -185,38 +185,7 @@ def _open_text_file(path: Path):
             msg = f"Cannot read file '{path}' as a text file; is this a valid text file?"
             logging.getLogger("deli").error(msg)
             click.echo(msg)
-
-
-def _load_any_selection(selection: os.PathLike) -> Selection:
-    """
-    Load in a selection file trying all known selection types
-
-    Notes
-    -----
-    Prefer SequencedSelection > DELSelection > Selection
-    """
-    logger = logging.getLogger("deli")
-    try:
-        try:
-            return SequencedSelection.from_yaml(selection)
-        except KeyError as e_:
-            if ("sequence_files" in str(e_)) or ("libraries" in str(e_)):
-                logger.debug("selection file lacks sequencing info")
-            else:
-                raise e_
-        try:
-            return DELSelection.from_yaml(selection)
-        except FileNotFoundError:
-            logger.debug(f"failed to load libraries from selection file '{selection}'")
-        except KeyError as e_:
-            if "libraries" not in str(e_):
-                raise e_
-            logger.debug("selection file lacks DEL info")
-        return Selection.from_yaml(selection)
-    except Exception as e_:
-        logger.exception(f"failed to parse selection from '{selection}': {e_}'")
-        click.echo(f"failed to parse selection file {selection}; is this a valid DELi selection YAML file?")
-        sys.exit(1)
+            sys.exit(1)
 
 
 def _get_random_deli_quote() -> str:
@@ -720,6 +689,7 @@ def decode_group(ctx):
 
 @decode_group.command(name="run")
 @click.argument("decode-file", type=click.Path(exists=True), required=True)
+@click.argument("sequence-files", type=click.Path(exists=True), nargs=-1, required=False)
 @click.option("--out-dir", "-o", type=click.Path(), required=False, default="./", help="Output directory to save results to")
 @click.option("--prefix", "-p", type=click.STRING, required=False, default="", help="Prefix for output files")
 @click.option("--show-tqdm", "-t", is_flag=True, help="Show tqdm progress")
@@ -733,6 +703,7 @@ def decode_group(ctx):
 def run_decode(
     ctx,
     decode_file,
+    sequence_files,
     out_dir,
     prefix,
     show_tqdm,
@@ -746,7 +717,12 @@ def run_decode(
     Convert DNA sequences into DEL compound identities
 
     DECODE-FILE is the path to a YAML configure file describing the DEL selection,
-    sequences, and decoding settings.
+    and decoding settings.
+    SEQUENCE-FILES are optional paths to sequencing files to decode
+
+    If SEQUENCE-FILES are not provided, will attempt to load sequencing files from the
+    DECODE-FILE; otherwise, the provided SEQUENCE-FILES will be used
+    (and DECODE-FILE sequence files ignored).
 
     DELi treats this process as "embarrassingly parallel"; if you were to split
     the input sequences across N separate processes, the output files can be trivially
@@ -761,7 +737,7 @@ def run_decode(
     from deli.decode.base import FailedDecodeAttempt
     from deli.decode.decoder import DecodingSettings, SelectionDecoder
     from deli.dna.io import get_reader
-    from deli.selection import SequencedSelection
+    from deli.selection import load_selection
 
     logger = ctx.obj["logger"]
 
@@ -771,7 +747,7 @@ def run_decode(
     logger.debug(f"using output directory at: '{out_dir_path}'")
 
     # load in the sequenced selection file (without chemical info)
-    selection: SequencedSelection = SequencedSelection.from_yaml(decode_file, load_chemical_info=False)
+    selection: Selection = load_selection(decode_file, load_chemical_info=False)
     logger.info(f"loaded selection '{selection.selection_id}' from '{decode_file}'")
     logger.debug(
         f"detected {len(selection.library_collection)} libraries: "
@@ -783,9 +759,21 @@ def run_decode(
             f"{[tool.compound_id for tool_lib in selection.tool_compounds for tool in tool_lib.compounds]}"
         )
 
-    # make sequence reader
-    reader = get_reader(selection.sequence_files)
-    logger.debug(f"detected {len(reader.sequence_files)} sequencing files: {reader.sequence_files}")
+    if not hasattr(selection, "sequence_reader"):
+        if len(sequence_files) == 0:
+            msg = (
+                f"No sequence files provided and no sequence files found in decode file '{decode_file}'; "
+                "cannot decode sequences without sequence files"
+            )
+            logger.error(msg)
+            click.echo(msg)
+            sys.exit(1)
+        else:
+            sequence_reader = get_reader(sequence_files)
+            logger.debug(f"using provided sequence files: {sequence_reader.sequence_files}")
+    else:
+        sequence_reader = selection.sequence_reader
+        logger.debug(f"using sequence files from decode file: {sequence_reader.sequence_files}")
 
     # deal with prefix
     if prefix is None or prefix == "":
@@ -849,7 +837,7 @@ def run_decode(
     prev_file = ""
     curr_seq_count = 0
     for i, (sequence_file, sequence_record) in tqdm(
-        enumerate(reader.iter_seqs_with_filenames()),
+        enumerate(sequence_reader.iter_seqs_with_filenames()),
         disable=not show_tqdm,
         desc=f"decoding reads for selection {selection.selection_id}",
     ):
@@ -1196,7 +1184,7 @@ def generate_report(ctx, decode_stats_file, decode_file, out_loc):
 
     selection_obj: Selection | None = None
     if decode_file is not None:
-        selection_obj = DELSelection.from_yaml(decode_file, load_chemical_info=False)
+        selection_obj = load_selection(decode_file, load_chemical_info=False)
         logger.debug(f"loaded selection '{selection_obj.selection_id}' from '{decode_file}'")
 
     overall_stats = DecodeStatistics()

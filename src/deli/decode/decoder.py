@@ -19,7 +19,7 @@ from deli.dels.compound import Compound, DELCompound
 from deli.dels.library import Library
 from deli.dels.tool_compound import TaggedToolCompound, ToolCompound
 from deli.enumeration.enumerator import EnumerationRunError
-from deli.selection import DELSelection
+from deli.selection import Selection
 
 from .barcode_calling import AmbiguousBarcodeCall, BarcodeCaller, FailedBarcodeLookup, ValidCall, get_barcode_caller
 from .base import FailedDecodeAttempt
@@ -1518,7 +1518,7 @@ class SelectionDecoder:
 
     Parameters
     ----------
-    selection: DELSelection
+    selection: Selection
         the selection with the DEL libraries to decode
     decode_settings: DecodingSettings | None, default = None
         the settings to use for decoding
@@ -1527,10 +1527,10 @@ class SelectionDecoder:
 
     def __init__(
         self,
-        selection: DELSelection,
+        selection: Selection,
         decode_settings: DecodingSettings | None = None,
     ):
-        self.selection: DELSelection = selection
+        self.selection: Selection = selection
         self.decode_settings: DecodingSettings = decode_settings if decode_settings is not None else DecodingSettings()
         self.decode_stats: DecodeStatistics = DecodeStatistics()
 

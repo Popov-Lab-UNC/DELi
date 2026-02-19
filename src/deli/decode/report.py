@@ -8,7 +8,7 @@ from typing import Optional
 import jinja2
 import plotly.graph_objects as go
 
-from deli.selection import DELSelection, Selection, SequencedSelection
+from deli.selection import Selection, SequencedSelection
 
 from .decoder import DecodeStatistics
 
@@ -111,10 +111,8 @@ def build_decoding_report(
         the decode run statistics to build the report for
     out_path: os.PathLike
         the path to save the report to
-    selection: DELSelection or SequencedSelection, optional
-        the selection to build the report for
-        if DEL selection provided will include selection and library info.
-        if sequenced selection is provided, will also include sequence file info.
+    selection: Selection, optional
+        the selection to build the report for.
         if no selection is provided, some fields will be marked as "NA"
         and some libraries info will be missing (like size of the library)
     """
@@ -125,7 +123,7 @@ def build_decoding_report(
     else:
         _out_path = Path(out_path)
 
-    if isinstance(selection, DELSelection):
+    if selection is not None:
         libraries_ = [(lib.library_id, str(lib.library_size)) for lib in selection.library_collection.libraries]
     else:
         libraries_ = [(library_id, "NA") for library_id in stats.num_seqs_decoded_per_lib.keys()]
@@ -156,8 +154,6 @@ def build_decoding_report(
 
     if selection is not None:
         jinja_data["selection"] = selection.selection_id
-        jinja_data["run_date"] = selection.get_run_date_as_str()
-        jinja_data["target"] = _default_to_NA(selection.selection_condition.target_id)
         if isinstance(selection, SequencedSelection):
             jinja_data["sequence_files"] = "- " + "<br>- ".join([str(f) for f in selection.sequence_files])
 
