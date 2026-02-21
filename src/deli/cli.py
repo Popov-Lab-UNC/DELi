@@ -987,7 +987,7 @@ def collect_decodes(ctx, decoded_reads, score_threshold, out_loc, compress):
 @click.option("--cluster-umis", "-u", is_flag=True, help="Cluster UMIs to determine final count")
 @click.option("--keep-raw-count", "-r", is_flag=True, help="Keep raw count in output")
 @click.option("--keep-dedup-count", "-d", is_flag=True, help="Keep deduplicated count in output; ignored unless --cluster-umis is used")
-@click.option("--output-format", "-f", type=click.Choice(["tsv", "gzip", "parquet", "avro"]), default="tsv", help="Output file format")
+@click.option("--output-format", "-f", type=click.Choice(["tsv", "gzip", "parquet"]), default="tsv", help="Output file format")
 @click.option("--use-tqdm", "-t", is_flag=True, help="Use tqdm to show progress")
 @click.pass_context
 @with_deli_quote
@@ -1013,14 +1013,6 @@ def count_compounds(ctx, collected_decodes, out_loc, cluster_umis, keep_raw_coun
             click.echo(msg)
             ctx.obj["logger"].error(msg)
             sys.exit(1)
-    elif output_format == "avro":
-        try:
-            import fastavro # noqa: F401
-        except ImportError:
-            msg = "fastavro is required for avro output; please install with 'pip install fastavro'"
-            click.echo(msg)
-            ctx.obj["logger"].error(msg)
-            sys.exit(1)
 
     logger = ctx.obj["logger"]
 
@@ -1031,8 +1023,6 @@ def count_compounds(ctx, collected_decodes, out_loc, cluster_umis, keep_raw_coun
         compress = True
     elif output_format == "parquet":
         output_format = "parquet"
-    elif output_format == "avro":
-        output_format = "avro"
     elif output_format == "tsv":
         output_format = "tsv"
     else:
@@ -1066,23 +1056,6 @@ def count_compounds(ctx, collected_decodes, out_loc, cluster_umis, keep_raw_coun
         if keep_dedup_count and cluster_umis:
             _header.append("dedup_count")
         out_file.write("\t".join(_header) + "\n")
-    elif output_format == "avro":
-        fields = [
-            {'name': 'library_id', 'type': 'string'},
-            {'name': 'bb_ids', 'type': 'string'},
-            {'name': 'count', 'type': 'int'},
-        ]
-        if keep_raw_count:
-            fields.append({'name': 'raw_count', 'type': ['int', 'null']})
-        if keep_dedup_count and cluster_umis:
-            fields.append({'name': 'dedup_count', 'type': ['int', 'null']})
-        schema = {
-            'type': 'record',
-            'name': 'CompoundCounts',
-            'fields': fields
-        }
-        out_file = open(out_loc, "wb")
-        writer = lambda x: fastavro.writer(out_file, schema, x)
     elif output_format == "parquet":
         fields = [
             pa.field("library_id", pa.string()),
@@ -1140,9 +1113,7 @@ def count_compounds(ctx, collected_decodes, out_loc, cluster_umis, keep_raw_coun
         writer(_batch)
 
     # close out files
-    if output_format == "avro":
-        out_file.close()
-    elif output_format == "parquet":
+    if output_format == "parquet":
         pq_writer.close()
     else:
         out_file.close()
@@ -1314,10 +1285,8 @@ def summarize_decoding(ctx, counted_compounds_file, decode_stats_file, out_loc):
         df = pl.scan_csv(counted_compounds_file_path, has_header=True, separator="\t", ignore_errors=True)
     elif file_type == ".parquet":
         df = pl.scan_parquet(counted_compounds_file_path)
-    elif file_type == ".avro":
-        df = pl.scan_avro(counted_compounds_file_path)
     else:
-        click.echo(f"unsupported file type '{file_type}' for counted compounds file; supported types are .tsv (can be compressed with .gz), .parquet, and .avro")
+        click.echo(f"unsupported file type '{file_type}' for counted compounds file; supported types are .tsv (can be compressed with .gz), .parquet")
         sys.exit(1)
 
     _res = (

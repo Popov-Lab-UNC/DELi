@@ -432,28 +432,6 @@ def test_decode_count(tmpdir, runner, collected_file_path):
     assert output_file.exists()
     pl.read_parquet(output_file)
 
-    # try avro format
-    output_file = temp_home_path / "count_results.avro"
-
-    result = runner.invoke(
-        count_compounds,
-        [
-            str(temp_home_path / "collected_decodes.ndjson"),
-            "--out-loc",
-            str(output_file),
-            "--output-format",
-            "avro",
-        ],
-        obj={
-            "deli_config": _DeliConfig.load_config(Path(__file__).parent / "data" / ".deli"),
-            "logger": logging.getLogger(),
-        },
-    )
-
-    assert result.exit_code == 0
-    assert output_file.exists()
-    pl.read_avro(output_file)
-
 
 def test_validate_deli_data_dir(tmpdir, runner):
     """Test the validate_deli_data_dir function"""
