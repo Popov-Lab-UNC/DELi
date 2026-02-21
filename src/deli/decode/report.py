@@ -10,7 +10,7 @@ import plotly.graph_objects as go
 
 from deli.selection import Selection, SequencedSelection
 
-from .decoder import DecodeStatistics
+from .stats import DecodeStatistics
 
 
 def _generate_calling_pie_chart(

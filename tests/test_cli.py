@@ -18,7 +18,10 @@ from deli.cli import (
     click_which_deli_data_dir,
     collect_decodes,
     count_compounds,
+    generate_report,
+    merge_stats,
     run_decode,
+    summarize_decoding,
 )
 from deli.configure import _DeliConfig, get_deli_config, set_deli_data_dir, validate_deli_data_dir
 
@@ -51,6 +54,57 @@ def decoded_file_path():
 def collected_file_path():
     """Path to the example fastq file"""
     return Path(__file__).parent / "data" / "collected_decodes.ndjson"
+
+
+@pytest.fixture()
+def mock_decode_stats_file(tmpdir):
+    """Create a mock decode statistics JSON file"""
+    import json
+
+    temp_home_path = Path(tmpdir)
+    stats_dir = temp_home_path / "stats"
+    stats_dir.mkdir(exist_ok=True)
+
+    mock_stats = {
+        "num_seqs_read": 1000,
+        "num_seqs_decoded_per_lib": {
+            "library_A": 800,
+            "library_B": 150,
+        },
+        "num_failed_too_short": 10,
+        "num_failed_too_long": 5,
+        "num_failed_alignment": 20,
+        "num_failed_library_call": 10,
+        "num_failed_building_block_call": 5,
+        "num_failed_ambiguous_building_block_call": 0,
+        "num_failed_umi": 0,
+    }
+
+    stats_file = stats_dir / "decode_statistics.json"
+    with open(stats_file, "w") as f:
+        json.dump(mock_stats, f, indent=4)
+
+    return stats_file
+
+
+@pytest.fixture()
+def mock_counted_decode_tsv(tmpdir):
+    """Create a mock counted decode compounds TSV file"""
+    temp_home_path = Path(tmpdir)
+
+    # Create a TSV file with mock counted compounds
+    counted_file = temp_home_path / "mock_counted_compounds.tsv"
+    with open(counted_file, "w") as f:
+        # Write header
+        f.write("library_id\tbb_ids\tcount\traw_count\n")
+        # Write sample data
+        f.write("library_A\tBB1,BB2,BB3\t100\t150\n")
+        f.write("library_A\tBB1,BB3,BB2\t50\t75\n")
+        f.write("library_A\tBB2,BB1,BB3\t75\t110\n")
+        f.write("library_B\tBB1,BB2,BB3\t30\t45\n")
+        f.write("library_B\tBB2,BB3,BB1\t20\t30\n")
+
+    return counted_file
 
 
 def test_deli_config_init(monkeypatch, tmpdir, runner):
@@ -428,3 +482,184 @@ def test_validate_deli_data_dir(tmpdir, runner):
     assert result.exit_code == 1
     assert "total issues found" in result.output
     assert "WARNING: Found multiple files with the same name" in result.output
+
+
+def test_decode_generate_report(tmpdir, runner, mock_decode_stats_file, selection_file_path):
+    """Test the command `deli decode report`"""
+    temp_home_path = Path(tmpdir)
+    os.chdir(temp_home_path)
+
+    # Test generating report with a single statistics file
+    output_report = temp_home_path / "test_report.html"
+    result = runner.invoke(
+        generate_report,
+        [
+            str(mock_decode_stats_file),
+            str(selection_file_path),
+            "--out-loc",
+            str(output_report),
+        ],
+        obj={
+            "deli_config": _DeliConfig.load_config(Path(__file__).parent / "data" / ".deli"),
+            "logger": logging.getLogger(),
+        },
+    )
+
+    assert result.exit_code == 0
+    assert output_report.exists()
+
+    # Test with directory as output (should create report in directory)
+    output_dir = temp_home_path / "reports"
+    output_dir.mkdir(exist_ok=True)
+    result = runner.invoke(
+        generate_report,
+        [
+            str(mock_decode_stats_file),
+            str(selection_file_path),
+            "--out-loc",
+            str(output_dir),
+        ],
+        obj={
+            "deli_config": _DeliConfig.load_config(Path(__file__).parent / "data" / ".deli"),
+            "logger": logging.getLogger(),
+        },
+    )
+
+    assert result.exit_code == 0
+    assert (output_dir / "decode_report.html").exists()
+
+
+def test_decode_merge_stats(tmpdir, runner, mock_decode_stats_file):
+    """Test the command `deli decode merge-stats`"""
+    import json
+
+    temp_home_path = Path(tmpdir)
+    os.chdir(temp_home_path)
+
+    stats_file_1 = mock_decode_stats_file
+
+    # Create a second copy of the stats file
+    stats_file_2 = stats_file_1.parent / "TEST2_decode_statistics.json"
+    shutil.copy2(stats_file_1, stats_file_2)
+
+    # Test merging statistics files
+    output_merged = temp_home_path / "merged_stats.json"
+    result = runner.invoke(
+        merge_stats,
+        [
+            str(stats_file_1),
+            str(stats_file_2),
+            "--out-loc",
+            str(output_merged),
+        ],
+        obj={
+            "deli_config": _DeliConfig.load_config(Path(__file__).parent / "data" / ".deli"),
+            "logger": logging.getLogger(),
+        },
+    )
+
+    assert result.exit_code == 0
+    assert output_merged.exists()
+
+    # Verify the merged file is valid JSON and can be loaded
+    with open(output_merged, "r") as f:
+        merged_data = json.load(f)
+        assert isinstance(merged_data, dict)
+
+    # Test with default output location
+    result = runner.invoke(
+        merge_stats,
+        [
+            str(stats_file_1),
+            str(stats_file_2),
+        ],
+        obj={
+            "deli_config": _DeliConfig.load_config(Path(__file__).parent / "data" / ".deli"),
+            "logger": logging.getLogger(),
+        },
+    )
+
+    assert result.exit_code == 0
+    assert (temp_home_path / "merged_decode_stats.json").exists()
+    import json
+
+    with open(output_merged, "r") as f:
+        merged_data = json.load(f)
+        assert isinstance(merged_data, dict)
+
+    # Test with default output location
+    result = runner.invoke(
+        merge_stats,
+        [
+            str(stats_file_1),
+            str(stats_file_2),
+        ],
+        obj={
+            "deli_config": _DeliConfig.load_config(Path(__file__).parent / "data" / ".deli"),
+            "logger": logging.getLogger(),
+        },
+    )
+
+    assert result.exit_code == 0
+    assert (temp_home_path / "merged_decode_stats.json").exists()
+
+
+def test_decode_summarize_decoding(tmpdir, runner, mock_decode_stats_file, mock_counted_decode_tsv):
+    """Test the command `deli decode summerize`"""
+    import json
+
+    temp_home_path = Path(tmpdir)
+    os.chdir(temp_home_path)
+
+    stats_file = mock_decode_stats_file
+    counted_file_tsv = mock_counted_decode_tsv
+
+    # Test summarize with TSV input
+    summary_output = temp_home_path / "decode_summary.json"
+    result = runner.invoke(
+        summarize_decoding,
+        [
+            str(counted_file_tsv),
+            str(stats_file),
+            "--out-loc",
+            str(summary_output),
+        ],
+        obj={
+            "deli_config": _DeliConfig.load_config(Path(__file__).parent / "data" / ".deli"),
+            "logger": logging.getLogger(),
+        },
+    )
+
+    assert result.exit_code == 0
+    assert summary_output.exists()
+
+    # Verify the summary file contains expected keys
+    with open(summary_output, "r") as f:
+        summary_data = json.load(f)
+        assert "total_seqs_read" in summary_data
+        assert summary_data["total_seqs_read"] == 1000
+        assert "seqs_decoded_per_lib" in summary_data
+        assert summary_data["seqs_decoded_per_lib"]["library_A"] == 800
+        assert summary_data["seqs_decoded_per_lib"]["library_B"] == 150
+        assert "compounds_decoded_per_lib" in summary_data
+        assert summary_data["compounds_decoded_per_lib"]["library_A"] == 3
+        assert summary_data["compounds_decoded_per_lib"]["library_B"] == 2
+        assert "molecules_decoded_per_lib" in summary_data
+        assert summary_data["molecules_decoded_per_lib"]["library_A"] == 225
+        assert summary_data["molecules_decoded_per_lib"]["library_B"] == 50
+
+    # Test with default output location
+    result = runner.invoke(
+        summarize_decoding,
+        [
+            str(counted_file_tsv),
+            str(stats_file),
+        ],
+        obj={
+            "deli_config": _DeliConfig.load_config(Path(__file__).parent / "data" / ".deli"),
+            "logger": logging.getLogger(),
+        },
+    )
+
+    assert result.exit_code == 0
+    assert (temp_home_path / "decode_summary.json").exists()

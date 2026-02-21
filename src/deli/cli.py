@@ -156,6 +156,8 @@ def _standardize_and_validate_output_loc(
                 msg = f"Output file '{path}' has extension '{suffix}' but expected '{extension}'"
                 _communicate_warning(msg)
 
+    path.parent.mkdir(parents=True, exist_ok=True)  # create parent directories if they don't exist
+
     return path
 
 
@@ -898,12 +900,11 @@ def run_decode(
 @decode_group.command(name="collect")
 @click.argument("decoded-reads", type=click.Path(exists=True), nargs=-1, required=True)
 @click.option("--score-threshold", "-s", type=click.INT, required=False, default=100, help="Reject decoded compounds above this score")
-@click.option("--count-threshold", "-c", type=click.INT, required=False, default=1, help="Minimum (dedup) count threshold for including compounds in output")
 @click.option("--out-loc", "-o", type=click.Path(), required=False, default="./aggregated_decodes.json", help="Output location to save aggregated decodes to; will add .json suffix if missing")
 @click.option("--compress", "-z", is_flag=True, help="Compress output with gzip")
 @click.pass_context
 @with_deli_quote
-def collect_decodes(ctx, decoded_reads, score_threshold, count_threshold, out_loc, compress):
+def collect_decodes(ctx, decoded_reads, score_threshold, out_loc, compress):
     """
     Collect decoded reads from decoded TSV file(s) into a JSON count format
 
@@ -972,7 +973,6 @@ def collect_decodes(ctx, decoded_reads, score_threshold, count_threshold, out_lo
         .filter(pl.col("overall_score") <= score_threshold)
         .group_by(["library_id", "bb_ids"])
         .agg(pl.col("umi"))
-        .filter(pl.col("umi").list.len() >= count_threshold)
         .with_columns(
             umi_counts=pl.col("umi").list.eval(pl.element().value_counts().struct.rename_fields(["k", "c"])),
         )
@@ -1168,7 +1168,7 @@ def generate_report(ctx, decode_stats_file, decode_file, out_loc):
 
     DECODE_STATS_FILE are the paths to the decoding statistics JSON files.
     """
-    from deli.decode.decoder import DecodeStatistics
+    from deli.decode.stats import DecodeStatistics
     from deli.decode.report import build_decoding_report
 
     logger = ctx.obj["logger"]
@@ -1210,6 +1210,133 @@ def generate_report(ctx, decode_stats_file, decode_file, out_loc):
     )
     logger.info(f"wrote decoding report to: '{out_loc_path}'")
 
+
+@decode_group.command(name="merge-stats")
+@click.argument("decode_stats_files", nargs=-1, type=click.Path(exists=True), required=True)
+@click.option("--out-loc", "-o", type=click.Path(), required=False, default="./merged_decode_stats.json", help="Output location to save merged stats to")
+@click.pass_context
+def merge_stats(ctx, decode_stats_files, out_loc):
+    """
+    Merge multiple decoding statistics files into a single file
+
+    DECODE_STATS_FILES are the paths to the decoding statistics JSON files to merge.
+
+    Output will be a single decoding statistics JSON file with the same format as the input files.
+    """
+    from deli.decode.stats import DecodeStatistics
+
+    out_loc_path = _standardize_and_validate_output_loc(
+        out_loc,
+        is_file=True,
+        can_exist=True,
+        overwrite=True,
+        extension=".json",
+        is_compressed=False,
+    )
+
+    overall_stats = DecodeStatistics()
+
+    for stats_file in decode_stats_files:
+        stats_path = Path(stats_file).absolute()
+        if not stats_path.exists():
+            click.echo(f"decoding statistics file '{stats_path}' does not exist")
+            sys.exit(1)
+        if not stats_path.is_file():
+            click.echo(f"decoding statistics file '{stats_path}' is not a file")
+            sys.exit(1)
+        try:
+            stats = DecodeStatistics.from_file(stats_path)
+        except Exception as e:
+            click.echo(
+                f"Failed to parse decoding statistics file '{stats_file}': {e}"
+            )
+            sys.exit(1)
+
+        overall_stats += stats
+
+    overall_stats.to_file(out_loc_path)
+
+
+@decode_group.command(name="summerize")
+@click.argument("counted_compounds_file", type=click.Path(exists=True, dir_okay=False), required=True)
+@click.argument("decode_stats_file", type=click.Path(exists=True, dir_okay=False), required=True)
+@click.option("--out-loc", "-o", type=click.Path(), required=False, default="./decode_summary.json", help="Output location to save summary to")
+@click.pass_context
+def summarize_decoding(ctx, counted_compounds_file, decode_stats_file, out_loc):
+    """
+    Generate a summary of decoding results from counted compounds and decoding statistics files
+
+    COUNTED_COMPOUNDS_FILE is the path to the counted compounds file generated using `deli decode count`.
+    DECODE_STATS_FILE is the path to the decoding statistics JSON file generated using `deli decode run` OR
+    `deli decode merge-stats` if multiple runs were collected to create the counted file.
+
+    Output will be a text file summarizing key decoding metrics, including total compounds, total counts,
+    and key statistics from the decoding report.
+    """
+    from deli.decode.stats import DecodeStatistics
+    import polars as pl
+    import json
+
+    out_loc_path = _standardize_and_validate_output_loc(
+        out_loc,
+        is_file=True,
+        can_exist=True,
+        overwrite=True,
+        extension=".json",
+        is_compressed=False,
+    )
+
+    # load decode statistics
+    try:
+        stats = DecodeStatistics.from_file(decode_stats_file)
+    except Exception as e:
+        click.echo(f"Failed to parse decoding statistics file '{decode_stats_file}': {e}'")
+        sys.exit(1)
+
+    counted_compounds_file_path = Path(counted_compounds_file).absolute()
+    if len(counted_compounds_file_path.suffixes) == 0:
+        click.echo(f"Counted compounds file '{counted_compounds_file}' does not have a file suffix; unsure how to read this file")
+        sys.exit(1)
+    file_type = counted_compounds_file_path.suffixes[0]
+
+    if file_type == ".tsv":
+        df = pl.scan_csv(counted_compounds_file_path, has_header=True, separator="\t", ignore_errors=True)
+    elif file_type == ".parquet":
+        df = pl.scan_parquet(counted_compounds_file_path)
+    elif file_type == ".avro":
+        df = pl.scan_avro(counted_compounds_file_path)
+    else:
+        click.echo(f"unsupported file type '{file_type}' for counted compounds file; supported types are .tsv (can be compressed with .gz), .parquet, and .avro")
+        sys.exit(1)
+
+    _res = (
+        df.select(["library_id", "count"])
+        .group_by("library_id")
+        .agg(pl.sum("count"))
+        .collect()
+        .to_dicts()
+    )
+    molecules_per_lib = {item["library_id"]: item["count"] for item in _res}
+    _res = (
+        df.select(["library_id", "raw_count"])
+        .group_by("library_id")
+        .len()
+        .collect()
+        .to_dicts()
+    )
+    compounds_per_lib = {item["library_id"]: item["len"] for item in _res}
+
+    with open(out_loc_path, "w") as out_file:
+        json.dump(
+            {
+                "total_seqs_read": stats.num_seqs_read,
+                "seqs_decoded_per_lib": stats.num_seqs_decoded_per_lib,
+                "compounds_decoded_per_lib": compounds_per_lib,
+                "molecules_decoded_per_lib": molecules_per_lib,
+            },
+            out_file,
+            indent=4,
+        )
 
 @cli.command(name="cubify")
 @click.argument("aggregated-compounds", type=click.Path(exists=True), required=True)
