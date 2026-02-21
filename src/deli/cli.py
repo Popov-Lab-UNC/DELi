@@ -690,7 +690,7 @@ def decode_group(ctx):
 
 
 @decode_group.command(name="run")
-@click.argument("decode-file", type=click.Path(exists=True), required=True)
+@click.argument("selection-file", type=click.Path(exists=True), required=True)
 @click.argument("sequence-files", type=click.Path(exists=True), nargs=-1, required=False)
 @click.option("--out-dir", "-o", type=click.Path(), required=False, default="./", help="Output directory to save results to")
 @click.option("--prefix", "-p", type=click.STRING, required=False, default="", help="Prefix for output files")
@@ -704,7 +704,7 @@ def decode_group(ctx):
 @with_deli_quote
 def run_decode(
     ctx,
-    decode_file,
+    selection_file,
     sequence_files,
     out_dir,
     prefix,
@@ -718,13 +718,13 @@ def run_decode(
     """
     Convert DNA sequences into DEL compound identities
 
-    DECODE-FILE is the path to a YAML configure file describing the DEL selection,
+    SELECTION-FILE is the path to a YAML configuration file describing the DEL selection
     and decoding settings.
     SEQUENCE-FILES are optional paths to sequencing files to decode
 
     If SEQUENCE-FILES are not provided, will attempt to load sequencing files from the
-    DECODE-FILE; otherwise, the provided SEQUENCE-FILES will be used
-    (and DECODE-FILE sequence files ignored).
+    SELECTION-FILE; otherwise, the provided SEQUENCE-FILES will be used
+    (and SELECTION-FILE sequence files ignored).
 
     DELi treats this process as "embarrassingly parallel"; if you were to split
     the input sequences across N separate processes, the output files can be trivially
@@ -749,8 +749,8 @@ def run_decode(
     logger.debug(f"using output directory at: '{out_dir_path}'")
 
     # load in the sequenced selection file (without chemical info)
-    selection: Selection = load_selection(decode_file, load_chemical_info=False)
-    logger.info(f"loaded selection '{selection.selection_id}' from '{decode_file}'")
+    selection: Selection = load_selection(selection_file, load_chemical_info=False)
+    logger.info(f"loaded selection '{selection.selection_id}' from '{selection_file}'")
     logger.debug(
         f"detected {len(selection.library_collection)} libraries: "
         f"{[lib.library_id for lib in selection.library_collection.libraries]}"
@@ -764,7 +764,7 @@ def run_decode(
     if not hasattr(selection, "sequence_reader"):
         if len(sequence_files) == 0:
             msg = (
-                f"No sequence files provided and no sequence files found in decode file '{decode_file}'; "
+                f"No sequence files provided and no sequence files found in selection file '{selection_file}'; "
                 "cannot decode sequences without sequence files"
             )
             logger.error(msg)
@@ -775,7 +775,7 @@ def run_decode(
             logger.debug(f"using provided sequence files: {sequence_reader.sequence_files}")
     else:
         sequence_reader = selection.sequence_reader
-        logger.debug(f"using sequence files from decode file: {sequence_reader.sequence_files}")
+        logger.debug(f"using sequence files from selection file: {sequence_reader.sequence_files}")
 
     # deal with prefix
     if prefix is None or prefix == "":
@@ -829,7 +829,7 @@ def run_decode(
         logger.info(f"writing failed decoding sequences to: '{failed_out_path}'")
 
     # load decode settings
-    decode_settings = DecodingSettings.from_file(decode_file)
+    decode_settings = DecodingSettings.from_file(selection_file)
     logger.debug(f"loaded decoding settings: {decode_settings}")
 
     # load in decoder
@@ -1153,11 +1153,11 @@ def count_compounds(ctx, collected_decodes, out_loc, cluster_umis, keep_raw_coun
 
 @decode_group.command(name="report")
 @click.argument("decode_stats_file", nargs=-1, type=click.Path(exists=True), required=True)
-@click.argument("decode_file", type=click.Path(exists=True), required=False, default=None)
+@click.argument("selection_file", type=click.Path(exists=True), required=False, default=None)
 @click.option("--out-loc", "-o", type=click.Path(), required=False, default="./decode_report.html", help="Output location to save report to")
 @click.pass_context
 @with_deli_quote
-def generate_report(ctx, decode_stats_file, decode_file, out_loc):
+def generate_report(ctx, decode_stats_file, selection_file, out_loc):
     """
     Generate an HTML decoding report from decoding statistics file(s)
 
@@ -1183,9 +1183,9 @@ def generate_report(ctx, decode_stats_file, decode_file, out_loc):
     out_loc_path.parent.mkdir(parents=True, exist_ok=True)
 
     selection_obj: Selection | None = None
-    if decode_file is not None:
-        selection_obj = load_selection(decode_file, load_chemical_info=False)
-        logger.debug(f"loaded selection '{selection_obj.selection_id}' from '{decode_file}'")
+    if selection_file is not None:
+        selection_obj = load_selection(selection_file, load_chemical_info=False)
+        logger.debug(f"loaded selection '{selection_obj.selection_id}' from '{selection_file}'")
 
     overall_stats = DecodeStatistics()
 
