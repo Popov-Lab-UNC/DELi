@@ -1212,14 +1212,17 @@ def generate_report(ctx, decode_stats_file, decode_file, out_loc):
 
 
 @decode_group.command(name="merge-stats")
-@click.argument("decode_stats_files", nargs=-1, type=click.Path(exists=True), required=True)
+@click.argument("decode-stats-files", nargs=-1, type=click.Path(exists=True), required=True)
+@click.option("-d", "--selection-file", type=click.Path(exists=True), required=False, default=None, help="Selection file used to generate statistic files")
 @click.option("--out-loc", "-o", type=click.Path(), required=False, default="./merged_decode_stats.json", help="Output location to save merged stats to")
 @click.pass_context
-def merge_stats(ctx, decode_stats_files, out_loc):
+def merge_stats(ctx, decode_stats_files, selection_file, out_loc):
     """
     Merge multiple decoding statistics files into a single file
 
-    DECODE_STATS_FILES are the paths to the decoding statistics JSON files to merge.
+    DECODE-STATS-FILES are the paths to the decoding statistics JSON files to merge.
+    Stat files should be for separate decoding runs for the same selection, such as from parallel decoding runs.
+    If selection-file is, will add any missing libraries from the selection to the merged stats with 0 counts
 
     Output will be a single decoding statistics JSON file with the same format as the input files.
     """
@@ -1253,6 +1256,14 @@ def merge_stats(ctx, decode_stats_files, out_loc):
             sys.exit(1)
 
         overall_stats += stats
+
+    if selection_file is not None:
+        try:
+            selection = load_selection(selection_file, load_chemical_info=False)
+        except Exception as e:
+            click.echo(f"Failed to load selection file '{selection_file}': {e}")
+            sys.exit(1)
+        overall_stats.add_missing_libraries_from_selection(selection)
 
     overall_stats.to_file(out_loc_path)
 
