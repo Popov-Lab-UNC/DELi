@@ -9,7 +9,6 @@ from deli.dels.building_block import BuildingBlockSet
 from deli.dels.combinatorial import DELibrary, DELibraryCollection, LibraryBuildError
 
 
-@pytest.mark.functional
 def test_load_library():
     """Test loading a DELibrary"""
     del_library = DELibrary.load("DEL004")
@@ -24,7 +23,6 @@ def test_load_library():
     assert del_library.barcode_schema is not None
 
 
-@pytest.mark.functional
 def test_load_invalid_library():
     """Test loading a DELibrary"""
     with pytest.raises(
@@ -33,7 +31,6 @@ def test_load_invalid_library():
         DELibrary.load("DEL004_invalid")
 
 
-@pytest.mark.functional
 def test_load_library_smiles():
     """Test loading a DELibrary with SMILES"""
     with warnings.catch_warnings():
@@ -52,7 +49,6 @@ def del_library2() -> DELibrary:
     return DELibrary.load("DEL005")
 
 
-@pytest.mark.unit
 def test_bb_set_iter(del_library1: DELibrary):
     """Test iterating over building block sets in a DELibrary"""
     bb_sets = list(del_library1.iter_bb_sets())
@@ -61,7 +57,6 @@ def test_bb_set_iter(del_library1: DELibrary):
     assert len([bb.bb_set_id for bb in bb_sets]) == 3
 
 
-@pytest.mark.unit
 def test_get_section_length(del_library1: DELibrary):
     """Test for getting observed_barcode section lengths"""
     assert del_library1.barcode_schema.get_section_length("umi") == 11
@@ -72,7 +67,6 @@ def test_get_section_length(del_library1: DELibrary):
         del_library1.barcode_schema.get_section_length("FAKE_SECTION")
 
 
-@pytest.mark.unit
 def test_iter_bb_barcode_sections_and_sets(del_library1: DELibrary):
     """Test iter_bb_barcode_sections_and_sets function"""
     bb_sets = list(del_library1.iter_bb_barcode_sections_and_sets())
@@ -85,7 +79,6 @@ def test_iter_bb_barcode_sections_and_sets(del_library1: DELibrary):
     )
 
 
-@pytest.mark.unit
 def test_create_library_pool(del_library1, del_library2):
     """Test creating a DELibraryCollection from multiple DELibraries"""
     with pytest.raises(KeyError, match="multiple libraries share identical `library_id`"):
@@ -102,7 +95,6 @@ def library_pool(del_library1, del_library2):
     return DELibraryCollection([del_library1, del_library2])
 
 
-@pytest.mark.unit
 def test_get_library_from_pool(library_pool):
     """Test creating a DELibraryCollection from multiple DELibraries"""
     with pytest.raises(KeyError, match="cannot find library with id"):

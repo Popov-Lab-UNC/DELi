@@ -2,9 +2,7 @@
 
 import abc
 import re
-from typing import Generic, Optional, TypeVar
-
-from typing_extensions import Self
+from typing import Generic, Optional, Self, TypeVar
 
 
 class BarcodeSchemaError(Exception):

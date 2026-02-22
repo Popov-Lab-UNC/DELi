@@ -485,8 +485,8 @@ class BarcodeAligner:
             open_gap_score=-2,
             extend_gap_score=-1,
             mode="global",
-            end_open_gap_score=0,
-            end_extend_gap_score=0,
+            open_end_gap_score=0,
+            extend_end_gap_score=0,
             substitution_matrix=matrix,
         )
         self.barcode_ref = barcode_schema.get_full_barcode()

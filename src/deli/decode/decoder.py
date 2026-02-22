@@ -2,7 +2,6 @@
 
 import abc
 import dataclasses
-import json
 import os
 from collections import defaultdict
 from dataclasses import asdict
@@ -12,6 +11,7 @@ from typing import Callable, Generic, Iterator, Literal, MutableSequence, Option
 from dnaio import SequenceRecord
 from Levenshtein import distance as levenshtein_distance
 
+from deli.decode.stats import DecodeStatistics
 from deli.dels.barcode import BarcodeSection
 from deli.dels.building_block import TaggedBuildingBlock
 from deli.dels.combinatorial import DELibrary
@@ -19,7 +19,7 @@ from deli.dels.compound import Compound, DELCompound
 from deli.dels.library import Library
 from deli.dels.tool_compound import TaggedToolCompound, ToolCompound
 from deli.enumeration.enumerator import EnumerationRunError
-from deli.selection import DELSelection
+from deli.selection import Selection
 
 from .barcode_calling import AmbiguousBarcodeCall, BarcodeCaller, FailedBarcodeLookup, ValidCall, get_barcode_caller
 from .base import FailedDecodeAttempt
@@ -33,147 +33,6 @@ from .library_demultiplex import (
 
 
 MAX_RETRIES = 50  # number of alignments to attempt before giving up
-
-
-class DecodeStatistics:
-    """
-    Track the statistics of the decoding run
-
-    Will count how many sequences are read in,
-    how many are decoded.
-    It Will also track the number of times decoding failed,
-    and for what reasons.
-
-    Attributes
-    ----------
-    num_seqs_read: int
-        the number of sequences read during decoding
-    num_seqs_decoded_per_lib: dict[str, int]
-        the number of sequences decoded per library
-    num_failed_too_short: int
-        the number of decoded failed because barcode read was too short
-    num_failed_too_long: int
-        the number of decoded failed because barcode read was too long
-    num_failed_alignment: int
-        the number of decoded failed because initial alignment failed
-    num_failed_library_call: int
-        the number of decoded failed because the library was not called
-    num_failed_building_block_call: int
-        the number of decoded failed because a building block was not called
-    num_failed_ambiguous_building_block_call: int
-        the number of decoded failed because a building block call was ambiguous
-    num_failed_umi: int
-        the number of decoded failed because UMI calling failed
-    """
-
-    def __init__(self):
-        """Initialize a DecodeStatistics object"""
-        self.num_seqs_read: int = 0
-        self.num_seqs_decoded_per_lib: defaultdict[str, int] = defaultdict(int)
-
-        # track the unique failures
-        self.num_failed_too_short: int = 0
-        self.num_failed_too_long: int = 0
-        self.num_failed_alignment: int = 0
-        self.num_failed_library_call: int = 0
-        self.num_failed_building_block_call: int = 0
-        self.num_failed_ambiguous_building_block_call: int = 0
-        self.num_failed_umi: int = 0
-
-    def __add__(self, other) -> "DecodeStatistics":
-        """Add two DecodeStatistics objects together"""
-        if not isinstance(other, DecodeStatistics):
-            raise TypeError(f"unsupported operand type(s) for +: {type(self)} and {type(other)}")
-        result = DecodeStatistics()
-        result.num_seqs_read = self.num_seqs_read + other.num_seqs_read
-        result.num_failed_too_short = self.num_failed_too_short + other.num_failed_too_short
-        result.num_failed_too_long = self.num_failed_too_long + other.num_failed_too_long
-        result.num_failed_library_call = self.num_failed_library_call + other.num_failed_library_call
-        result.num_failed_alignment = self.num_failed_alignment + other.num_failed_alignment
-        result.num_failed_building_block_call = (
-            self.num_failed_building_block_call + other.num_failed_building_block_call
-        )
-        result.num_failed_ambiguous_building_block_call = (
-            self.num_failed_ambiguous_building_block_call + other.num_failed_ambiguous_building_block_call
-        )
-        result.num_failed_umi = self.num_failed_umi + other.num_failed_umi
-
-        # Merge defaultdicts
-        result.num_seqs_decoded_per_lib = defaultdict(
-            int,
-            {
-                k: self.num_seqs_decoded_per_lib[k] + other.num_seqs_decoded_per_lib[k]
-                for k in set(self.num_seqs_decoded_per_lib) | set(other.num_seqs_decoded_per_lib)
-            },
-        )
-        return result
-
-    def __str__(self) -> str:
-        """Convert the statistic object to a string (new line separated)"""
-        return "\n".join([f"{key}={val}\n" for key, val in self.__dict__.items()])
-
-    def __repr__(self) -> str:
-        """Represent the statistic object as string ('; ' separated)"""
-        return "; ".join([f"{key}={val}\n" for key, val in self.__dict__.items()])
-
-    @property
-    def num_seqs_decoded(self) -> int:
-        """Number of sequences decoded successfully in total"""
-        return sum(self.num_seqs_decoded_per_lib.values())
-
-    def to_file(self, out_path: str | os.PathLike):
-        """
-        Write the statistics to a file
-
-        Notes
-        -----
-        Will be in JSON format
-
-        Parameters
-        ----------
-        out_path: str or os.PathLike
-            path to write the statistics to
-        """
-        with open(out_path, "w") as out_file:
-            json.dump(self.__dict__, out_file, indent=4)
-
-    @classmethod
-    def from_file(cls, path: str | os.PathLike) -> "DecodeStatistics":
-        """
-        Read in a Statistics Object from a file
-
-        Must be in JSON format
-
-        Parameters
-        ----------
-        path: str or os.PathLike
-            path to read the statistics from
-
-        Returns
-        -------
-        DecodeStatistics
-        """
-        result = cls()
-        data = json.load(open(path, "r"))
-
-        result.num_seqs_read = data.get("num_seqs_read", 0)
-
-        result.num_seqs_decoded_per_lib = defaultdict(
-            int,
-            {str(key): int(val) for key, val in data.get("num_seqs_decoded_per_lib", {}).items()},
-        )
-
-        # collect error info
-        result.num_failed_too_short = data.get("num_failed_too_short", 0)
-        result.num_failed_too_long = data.get("num_failed_too_long", 0)
-        result.num_failed_alignment = data.get("num_failed_alignment", 0)
-        result.num_failed_library_call = data.get("num_failed_library_call", 0)
-        result.num_failed_building_block_call = data.get("num_failed_building_block_call", 0)
-        result.num_failed_ambiguous_building_block_call = data.get("num_failed_ambiguous_building_block_call", 0)
-        result.num_failed_umi = data.get("num_failed_umi", 0)
-        return result
-
-
 C = TypeVar("C", bound="Compound")
 
 
@@ -1518,7 +1377,7 @@ class SelectionDecoder:
 
     Parameters
     ----------
-    selection: DELSelection
+    selection: Selection
         the selection with the DEL libraries to decode
     decode_settings: DecodingSettings | None, default = None
         the settings to use for decoding
@@ -1527,10 +1386,10 @@ class SelectionDecoder:
 
     def __init__(
         self,
-        selection: DELSelection,
+        selection: Selection,
         decode_settings: DecodingSettings | None = None,
     ):
-        self.selection: DELSelection = selection
+        self.selection: Selection = selection
         self.decode_settings: DecodingSettings = decode_settings if decode_settings is not None else DecodingSettings()
         self.decode_stats: DecodeStatistics = DecodeStatistics()
 

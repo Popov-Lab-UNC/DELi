@@ -19,7 +19,7 @@ from tqdm import tqdm
 from deli import __version__
 from deli.configure import DeliDataDirError
 from deli.dels.combinatorial import CombinatorialLibrary
-from deli.selection import DELSelection, Selection, SequencedSelection
+from deli.selection import load_selection, Selection
 
 
 # Suppress RDKit warnings at module level
@@ -94,18 +94,17 @@ def _standardize_and_validate_output_loc(
     Path
         The validated (and possibly modified) output path.
     """
-
     logger = logging.getLogger("deli")
 
     def _communicate_error_and_exit(message: str):
-        """helper func to communicate error and exit"""
+        """Helper func to communicate error and exit"""
         click.echo()
         if logger:
             logger.error(message)
         sys.exit(1)
 
     def _communicate_warning(message: str):
-        """helper func to communicate warning"""
+        """Helper func to communicate warning"""
         click.echo(f"\nWARNING: {message}\n")
         if logger:
             logger.warning(message)
@@ -157,6 +156,8 @@ def _standardize_and_validate_output_loc(
                 msg = f"Output file '{path}' has extension '{suffix}' but expected '{extension}'"
                 _communicate_warning(msg)
 
+    path.parent.mkdir(parents=True, exist_ok=True)  # create parent directories if they don't exist
+
     return path
 
 
@@ -174,7 +175,6 @@ def _open_text_file(path: Path):
     file object
         The opened file object.
     """
-
     if path.suffix == ".gz":
         return gzip.open(path, "rt")
     else:
@@ -187,46 +187,16 @@ def _open_text_file(path: Path):
             msg = f"Cannot read file '{path}' as a text file; is this a valid text file?"
             logging.getLogger("deli").error(msg)
             click.echo(msg)
-
-
-def _load_any_selection(selection: os.PathLike) -> Selection:
-    """
-    Load in a selection file trying all known selection types
-
-    Notes
-    -----
-    Prefer SequencedSelection > DELSelection > Selection
-    """
-    logger = logging.getLogger("deli")
-    try:
-        try:
-            return SequencedSelection.from_yaml(selection)
-        except KeyError as e_:
-            if ("sequence_files" in str(e_)) or ("libraries" in str(e_)):
-                logger.debug("selection file lacks sequencing info")
-            else:
-                raise e_
-        try:
-            return DELSelection.from_yaml(selection)
-        except FileNotFoundError:
-            logger.debug(f"failed to load libraries from selection file '{selection}'")
-        except KeyError as e_:
-            if "libraries" not in str(e_):
-                raise e_
-            logger.debug("selection file lacks DEL info")
-        return Selection.from_yaml(selection)
-    except Exception as e_:
-        logger.exception(f"failed to parse selection from '{selection}': {e_}'")
-        click.echo(f"failed to parse selection file {selection}; is this a valid DELi selection YAML file?")
-        sys.exit(1)
+            sys.exit(1)
 
 
 def _get_random_deli_quote() -> str:
     """
     Returns a random quote relating to delis.
 
-    Returns:
-        str: A random deli-related quote
+    Returns
+    -------
+    str
     """
     import random
 
@@ -453,7 +423,7 @@ def cli(ctx, debug, disable_logging, stream_logs, deli_data_dir, config_file, qu
     try:
         logger.debug(f"using DELi Data Directory at: '{deli_config.deli_data_dir}'")
     except DeliDataDirError:
-        logger.warning(f"DELi data directory is not set in configuration")
+        logger.warning("DELi data directory is not set in configuration")
 
     ctx.obj['quotes_enabled'] = quote
 
@@ -677,11 +647,14 @@ def click_validate_deli_data_dir(ctx, path):
         click.echo(e)  # don't need to rephrase this error
         total_issues += 1  # don't stop here, continue to check for other issues
 
-    for sub_dir_name, sub_dir_ext in zip(DELI_DATA_SUB_DIRS, DELI_DATA_EXTENSIONS):
+    for sub_dir_name, sub_dir_ext in zip(DELI_DATA_SUB_DIRS, DELI_DATA_EXTENSIONS, strict=True):
         click.echo(f"-------------------\nValidating sub-directory: '{sub_dir_name}'\n")
         sub_dir_path = _path / sub_dir_name
 
-        files = [file_path for file_path in sub_dir_path.rglob('*') if file_path.is_file() and (file_path.suffix == f".{sub_dir_ext}")]
+        files = [
+            file_path for file_path in sub_dir_path.rglob('*') if
+            file_path.is_file() and (file_path.suffix == f".{sub_dir_ext}")
+            ]
 
         file_name_path_map = defaultdict(list)
         for file_path in files:
@@ -717,7 +690,9 @@ def decode_group(ctx):
 
 
 @decode_group.command(name="run")
-@click.argument("decode-file", type=click.Path(exists=True), required=True)
+@click.argument("selection-file", type=click.Path(exists=True), required=True)
+@click.argument("sequence-files", type=click.Path(exists=True), nargs=-1, required=False)
+@click.option("--decode-settings-file", "-d", type=click.Path(exists=True), required=False, default=None, help="Path to YAML file describing decoding settings")
 @click.option("--out-dir", "-o", type=click.Path(), required=False, default="./", help="Output directory to save results to")
 @click.option("--prefix", "-p", type=click.STRING, required=False, default="", help="Prefix for output files")
 @click.option("--show-tqdm", "-t", is_flag=True, help="Show tqdm progress")
@@ -730,7 +705,9 @@ def decode_group(ctx):
 @with_deli_quote
 def run_decode(
     ctx,
-    decode_file,
+    selection_file,
+    sequence_files,
+    decode_settings_file,
     out_dir,
     prefix,
     show_tqdm,
@@ -743,25 +720,28 @@ def run_decode(
     """
     Convert DNA sequences into DEL compound identities
 
-    DECODE-FILE is the path to a YAML configure file describing the DEL selection,
-    sequences, and decoding settings.
+    SELECTION-FILE is the path to a YAML configuration file describing the DEL selection
+    and decoding settings.
+    SEQUENCE-FILES are optional paths to sequencing files to decode
+
+    If SEQUENCE-FILES are not provided, will attempt to load sequencing files from the
+    SELECTION-FILE; otherwise, the provided SEQUENCE-FILES will be used
+    (and SELECTION-FILE sequence files ignored).
 
     DELi treats this process as "embarrassingly parallel"; if you were to split
     the input sequences across N separate processes, the output files can be trivially
     combined and will be identical to a single process with all sequences.
 
-
     NOTE: Some outputs are generated on the fly, stopping a job mid run can result
     in partial output files.
 
     See the docs for a detailed description of output files generated.
-    See the `deli decode merge` command for more info on combining output files.
-
+    See the `deli decode collect` command for more info on combining output files.
     """
     from deli.decode.base import FailedDecodeAttempt
     from deli.decode.decoder import DecodingSettings, SelectionDecoder
     from deli.dna.io import get_reader
-    from deli.selection import SequencedSelection
+    from deli.selection import load_selection
 
     logger = ctx.obj["logger"]
 
@@ -771,8 +751,8 @@ def run_decode(
     logger.debug(f"using output directory at: '{out_dir_path}'")
 
     # load in the sequenced selection file (without chemical info)
-    selection: SequencedSelection = SequencedSelection.from_yaml(decode_file, load_chemical_info=False)
-    logger.info(f"loaded selection '{selection.selection_id}' from '{decode_file}'")
+    selection: Selection = load_selection(selection_file, load_chemical_info=False)
+    logger.info(f"loaded selection '{selection.selection_id}' from '{selection_file}'")
     logger.debug(
         f"detected {len(selection.library_collection)} libraries: "
         f"{[lib.library_id for lib in selection.library_collection.libraries]}"
@@ -783,9 +763,21 @@ def run_decode(
             f"{[tool.compound_id for tool_lib in selection.tool_compounds for tool in tool_lib.compounds]}"
         )
 
-    # make sequence reader
-    reader = get_reader(selection.sequence_files)
-    logger.debug(f"detected {len(reader.sequence_files)} sequencing files: {reader.sequence_files}")
+    if not hasattr(selection, "sequence_reader"):
+        if len(sequence_files) == 0:
+            msg = (
+                f"No sequence files provided and no sequence files found in selection file '{selection_file}'; "
+                "cannot decode sequences without sequence files"
+            )
+            logger.error(msg)
+            click.echo(msg)
+            sys.exit(1)
+        else:
+            sequence_reader = get_reader(sequence_files)
+            logger.debug(f"using provided sequence files: {sequence_reader.sequence_files}")
+    else:
+        sequence_reader = selection.sequence_reader
+        logger.debug(f"using sequence files from selection file: {sequence_reader.sequence_files}")
 
     # deal with prefix
     if prefix is None or prefix == "":
@@ -839,7 +831,23 @@ def run_decode(
         logger.info(f"writing failed decoding sequences to: '{failed_out_path}'")
 
     # load decode settings
-    decode_settings = DecodingSettings.from_file(decode_file)
+    decode_settings = None
+
+    try:
+        decode_settings = DecodingSettings.from_file(selection_file)
+        logger.info(f"loaded decoding settings from selection file: '{selection_file}'")
+    except Exception as e:
+        logger.debug(f"failed to load decoding settings from selection file '{selection_file}': {e}")
+
+    if decode_settings_file:
+        if decode_settings is not None:
+            logger.warning(
+                f"decoding settings found in both selection file '{selection_file}' and provided decode settings file '{decode_settings_file}'; "
+                f"using settings from provided decode settings file"
+            )
+        decode_settings = DecodingSettings.from_file(decode_settings_file)
+        logger.info(f"loaded decoding settings from: '{decode_settings_file}'")
+
     logger.debug(f"loaded decoding settings: {decode_settings}")
 
     # load in decoder
@@ -849,7 +857,7 @@ def run_decode(
     prev_file = ""
     curr_seq_count = 0
     for i, (sequence_file, sequence_record) in tqdm(
-        enumerate(reader.iter_seqs_with_filenames()),
+        enumerate(sequence_reader.iter_seqs_with_filenames()),
         disable=not show_tqdm,
         desc=f"decoding reads for selection {selection.selection_id}",
     ):
@@ -910,12 +918,11 @@ def run_decode(
 @decode_group.command(name="collect")
 @click.argument("decoded-reads", type=click.Path(exists=True), nargs=-1, required=True)
 @click.option("--score-threshold", "-s", type=click.INT, required=False, default=100, help="Reject decoded compounds above this score")
-@click.option("--count-threshold", "-c", type=click.INT, required=False, default=1, help="Minimum (dedup) count threshold for including compounds in output")
 @click.option("--out-loc", "-o", type=click.Path(), required=False, default="./aggregated_decodes.json", help="Output location to save aggregated decodes to; will add .json suffix if missing")
 @click.option("--compress", "-z", is_flag=True, help="Compress output with gzip")
 @click.pass_context
 @with_deli_quote
-def collect_decodes(ctx, decoded_reads, score_threshold, count_threshold, out_loc, compress):
+def collect_decodes(ctx, decoded_reads, score_threshold, out_loc, compress):
     """
     Collect decoded reads from decoded TSV file(s) into a JSON count format
 
@@ -984,11 +991,10 @@ def collect_decodes(ctx, decoded_reads, score_threshold, count_threshold, out_lo
         .filter(pl.col("overall_score") <= score_threshold)
         .group_by(["library_id", "bb_ids"])
         .agg(pl.col("umi"))
-        .filter(pl.col("umi").list.len() >= count_threshold)
         .with_columns(
             umi_counts=pl.col("umi").list.eval(pl.element().value_counts().struct.rename_fields(["k", "c"])),
         )
-        .sink_ndjson(out_path)
+        .sink_ndjson(out_path, compression="gzip" if compress else 'uncompressed')
     )
     logger.info(f"aggregated decoded sequences from {len(decoded_reads)} input files to {out_path}")
 
@@ -999,7 +1005,7 @@ def collect_decodes(ctx, decoded_reads, score_threshold, count_threshold, out_lo
 @click.option("--cluster-umis", "-u", is_flag=True, help="Cluster UMIs to determine final count")
 @click.option("--keep-raw-count", "-r", is_flag=True, help="Keep raw count in output")
 @click.option("--keep-dedup-count", "-d", is_flag=True, help="Keep deduplicated count in output; ignored unless --cluster-umis is used")
-@click.option("--output-format", "-f", type=click.Choice(["tsv", "gzip", "parquet", "avro"]), default="tsv", help="Output file format")
+@click.option("--output-format", "-f", type=click.Choice(["tsv", "gzip", "parquet"]), default="tsv", help="Output file format")
 @click.option("--use-tqdm", "-t", is_flag=True, help="Use tqdm to show progress")
 @click.pass_context
 @with_deli_quote
@@ -1008,7 +1014,7 @@ def count_compounds(ctx, collected_decodes, out_loc, cluster_umis, keep_raw_coun
     Count compounds from collected decoded file
 
     COLLECTED-DECODES is the path to the collected decodes NDJSON file
-    generated using `deli decode collect`
+    generated using `deli decode collect` (can be gzip compressed if .gz suffix is present).
 
     NOTE: "gzip" output format will generate a gzip compressed TSV file. Writing to output occurs in batches.
     """
@@ -1025,14 +1031,6 @@ def count_compounds(ctx, collected_decodes, out_loc, cluster_umis, keep_raw_coun
             click.echo(msg)
             ctx.obj["logger"].error(msg)
             sys.exit(1)
-    elif output_format == "avro":
-        try:
-            import fastavro # noqa: F401
-        except ImportError:
-            msg = "fastavro is required for avro output; please install with 'pip install fastavro'"
-            click.echo(msg)
-            ctx.obj["logger"].error(msg)
-            sys.exit(1)
 
     logger = ctx.obj["logger"]
 
@@ -1043,8 +1041,6 @@ def count_compounds(ctx, collected_decodes, out_loc, cluster_umis, keep_raw_coun
         compress = True
     elif output_format == "parquet":
         output_format = "parquet"
-    elif output_format == "avro":
-        output_format = "avro"
     elif output_format == "tsv":
         output_format = "tsv"
     else:
@@ -1078,23 +1074,6 @@ def count_compounds(ctx, collected_decodes, out_loc, cluster_umis, keep_raw_coun
         if keep_dedup_count and cluster_umis:
             _header.append("dedup_count")
         out_file.write("\t".join(_header) + "\n")
-    elif output_format == "avro":
-        fields = [
-            {'name': 'library_id', 'type': 'string'},
-            {'name': 'bb_ids', 'type': 'string'},
-            {'name': 'count', 'type': 'int'},
-        ]
-        if keep_raw_count:
-            fields.append({'name': 'raw_count', 'type': ['int', 'null']})
-        if keep_dedup_count and cluster_umis:
-            fields.append({'name': 'dedup_count', 'type': ['int', 'null']})
-        schema = {
-            'type': 'record',
-            'name': 'CompoundCounts',
-            'fields': fields
-        }
-        out_file = open(out_loc, "wb")
-        writer = lambda x: fastavro.writer(out_file, schema, x)
     elif output_format == "parquet":
         fields = [
             pa.field("library_id", pa.string()),
@@ -1152,9 +1131,7 @@ def count_compounds(ctx, collected_decodes, out_loc, cluster_umis, keep_raw_coun
         writer(_batch)
 
     # close out files
-    if output_format == "avro":
-        out_file.close()
-    elif output_format == "parquet":
+    if output_format == "parquet":
         pq_writer.close()
     else:
         out_file.close()
@@ -1165,11 +1142,11 @@ def count_compounds(ctx, collected_decodes, out_loc, cluster_umis, keep_raw_coun
 
 @decode_group.command(name="report")
 @click.argument("decode_stats_file", nargs=-1, type=click.Path(exists=True), required=True)
-@click.argument("decode_file", type=click.Path(exists=True), required=False, default=None)
+@click.argument("selection_file", type=click.Path(exists=True), required=False, default=None)
 @click.option("--out-loc", "-o", type=click.Path(), required=False, default="./decode_report.html", help="Output location to save report to")
 @click.pass_context
 @with_deli_quote
-def generate_report(ctx, decode_stats_file, decode_file, out_loc):
+def generate_report(ctx, decode_stats_file, selection_file, out_loc):
     """
     Generate an HTML decoding report from decoding statistics file(s)
 
@@ -1180,7 +1157,7 @@ def generate_report(ctx, decode_stats_file, decode_file, out_loc):
 
     DECODE_STATS_FILE are the paths to the decoding statistics JSON files.
     """
-    from deli.decode.decoder import DecodeStatistics
+    from deli.decode.stats import DecodeStatistics
     from deli.decode.report import build_decoding_report
 
     logger = ctx.obj["logger"]
@@ -1195,9 +1172,9 @@ def generate_report(ctx, decode_stats_file, decode_file, out_loc):
     out_loc_path.parent.mkdir(parents=True, exist_ok=True)
 
     selection_obj: Selection | None = None
-    if decode_file is not None:
-        selection_obj = DELSelection.from_yaml(decode_file, load_chemical_info=False)
-        logger.debug(f"loaded selection '{selection_obj.selection_id}' from '{decode_file}'")
+    if selection_file is not None:
+        selection_obj = load_selection(selection_file, load_chemical_info=False)
+        logger.debug(f"loaded selection '{selection_obj.selection_id}' from '{selection_file}'")
 
     overall_stats = DecodeStatistics()
 
@@ -1222,6 +1199,145 @@ def generate_report(ctx, decode_stats_file, decode_file, out_loc):
     )
     logger.info(f"wrote decoding report to: '{out_loc_path}'")
 
+
+@decode_group.command(name="merge-stats")
+@click.argument("decode-stats-files", nargs=-1, type=click.Path(exists=True), required=True)
+@click.option("-s", "--selection-file", type=click.Path(exists=True), required=False, default=None, help="Selection file used to generate statistic files")
+@click.option("--out-loc", "-o", type=click.Path(), required=False, default="./merged_decode_stats.json", help="Output location to save merged stats to")
+@click.pass_context
+def merge_stats(ctx, decode_stats_files, selection_file, out_loc):
+    """
+    Merge multiple decoding statistics files into a single file
+
+    DECODE-STATS-FILES are the paths to the decoding statistics JSON files to merge.
+    Stats files should be for separate decoding runs for the same selection, such as from parallel decoding runs.
+    If selection-file is, will add any missing libraries from the selection to the merged stats with 0 counts
+
+    Output will be a single decoding statistics JSON file with the same format as the input files.
+    """
+    from deli.decode.stats import DecodeStatistics
+
+    out_loc_path = _standardize_and_validate_output_loc(
+        out_loc,
+        is_file=True,
+        can_exist=True,
+        overwrite=True,
+        extension=".json",
+        is_compressed=False,
+    )
+
+    overall_stats = DecodeStatistics()
+
+    for stats_file in decode_stats_files:
+        stats_path = Path(stats_file).absolute()
+        if not stats_path.exists():
+            click.echo(f"decoding statistics file '{stats_path}' does not exist")
+            sys.exit(1)
+        if not stats_path.is_file():
+            click.echo(f"decoding statistics file '{stats_path}' is not a file")
+            sys.exit(1)
+        try:
+            stats = DecodeStatistics.from_file(stats_path)
+        except Exception as e:
+            click.echo(
+                f"Failed to parse decoding statistics file '{stats_file}': {e}"
+            )
+            sys.exit(1)
+
+        overall_stats += stats
+
+    if selection_file is not None:
+        try:
+            selection = load_selection(selection_file, load_chemical_info=False)
+        except Exception as e:
+            click.echo(f"Failed to load selection file '{selection_file}': {e}")
+            sys.exit(1)
+        updated_stats = overall_stats.with_libraries(selection.library_collection.libraries)
+        if updated_stats is not None:
+            overall_stats = updated_stats
+
+    overall_stats.to_file(out_loc_path)
+
+
+
+@decode_group.command(name="summarize")
+@click.argument("counted_compounds_file", type=click.Path(exists=True, dir_okay=False), required=True)
+@click.argument("decode_stats_file", type=click.Path(exists=True, dir_okay=False), required=True)
+@click.option("--out-loc", "-o", type=click.Path(), required=False, default="./decode_summary.json", help="Output location to save summary to")
+@click.pass_context
+def summarize_decoding(ctx, counted_compounds_file, decode_stats_file, out_loc):
+    """
+    Generate a summary of decoding results from counted compounds and decoding statistics files
+
+    COUNTED_COMPOUNDS_FILE is the path to the counted compounds file generated using `deli decode count`.
+    DECODE_STATS_FILE is the path to the decoding statistics JSON file generated using `deli decode run` OR
+    `deli decode merge-stats` if multiple runs were collected to create the counted file.
+
+    Output will be a text file summarizing key decoding metrics, including total compounds, total counts,
+    and key statistics from the decoding report.
+    """
+    from deli.decode.stats import DecodeStatistics
+    import polars as pl
+    import json
+
+    out_loc_path = _standardize_and_validate_output_loc(
+        out_loc,
+        is_file=True,
+        can_exist=True,
+        overwrite=True,
+        extension=".json",
+        is_compressed=False,
+    )
+
+    # load decode statistics
+    try:
+        stats = DecodeStatistics.from_file(decode_stats_file)
+    except Exception as e:
+        click.echo(f"Failed to parse decoding statistics file '{decode_stats_file}': {e}'")
+        sys.exit(1)
+
+    counted_compounds_file_path = Path(counted_compounds_file).absolute()
+    if len(counted_compounds_file_path.suffixes) == 0:
+        click.echo(f"Counted compounds file '{counted_compounds_file}' does not have a file suffix; unsure how to read this file")
+        sys.exit(1)
+    file_type = counted_compounds_file_path.suffixes[0]
+
+    if file_type == ".tsv":
+        df = pl.scan_csv(counted_compounds_file_path, has_header=True, separator="\t", ignore_errors=True)
+    elif file_type == ".parquet":
+        df = pl.scan_parquet(counted_compounds_file_path)
+    else:
+        click.echo(f"unsupported file type '{file_type}' for counted compounds file; supported types are .tsv (can be compressed with .gz), .parquet")
+        sys.exit(1)
+
+    _res = (
+        df.select(["library_id", "count"])
+        .group_by("library_id")
+        .agg(pl.sum("count"))
+        .collect()
+        .to_dicts()
+    )
+    molecules_per_lib = {item["library_id"]: item["count"] for item in _res}
+    _res = (
+        df.select(["library_id", "raw_count"])
+        .group_by("library_id")
+        .len()
+        .collect()
+        .to_dicts()
+    )
+    compounds_per_lib = {item["library_id"]: item["len"] for item in _res}
+
+    with open(out_loc_path, "w") as out_file:
+        json.dump(
+            {
+                "total_seqs_read": stats.num_seqs_read,
+                "seqs_decoded_per_lib": stats.num_seqs_decoded_per_lib,
+                "compounds_decoded_per_lib": compounds_per_lib,
+                "molecules_decoded_per_lib": molecules_per_lib,
+            },
+            out_file,
+            indent=4,
+        )
 
 @cli.command(name="cubify")
 @click.argument("aggregated-compounds", type=click.Path(exists=True), required=True)

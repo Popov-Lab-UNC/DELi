@@ -1,78 +1,14 @@
 """handles DEL selection information"""
 
 import os
-from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional, Sequence
+from typing import Optional, Sequence
 
 import yaml
-from typing_extensions import Self
 
-from deli.dels.combinatorial import CombinatorialLibrary, DELibrary, DELibraryCollection
-from deli.dels.library import LibraryCollection
-from deli.dels.tool_compound import TaggedToolCompound, ToolCompound
+from deli.dels.combinatorial import DELibrary, DELibraryCollection
+from deli.dels.tool_compound import TaggedToolCompound
 from deli.dna.io import SequenceReader, get_reader
-
-
-class SectionCondition:
-    """Represents a selection condition for a DEL selection"""
-
-    def __init__(
-        self,
-        target_id: str | None = None,
-        selection_condition: str | None = None,
-        additional_info: str | None = None,
-    ):
-        """
-        Initialize a SelectionCondition object.
-
-        Parameters
-        ----------
-        target_id: str | None
-            the target id for the selection, defaults to None if not provided
-        selection_condition: str | None
-            the selection condition, defaults to None if not provided
-        additional_info: str | None
-            any additional information about the selection, defaults to None if not provided
-        """
-        self.target_id = target_id or "Unknown"
-        self.selection_condition = selection_condition or "Unknown"
-        self.additional_info = additional_info or ""
-
-    @classmethod
-    def from_dict(cls, data: dict):
-        """
-        Create a SelectionCondition object from a dictionary.
-
-        Parameters
-        ----------
-        data: dict
-            the dictionary containing selection condition data
-
-        Returns
-        -------
-        Selection
-            the Selection object created from the dictionary
-        """
-        return cls(
-            target_id=data.get("target_id"),
-            selection_condition=data.get("selection_condition"),
-            additional_info=data.get("additional_info"),
-        )
-
-    def to_dict(self) -> dict:
-        """
-        Convert the Selection object to a dictionary.
-
-        Returns
-        -------
-        dict
-        """
-        return {
-            "target_id": self.target_id,
-            "selection_condition": self.selection_condition,
-            "additional_info": self.additional_info,
-        }
 
 
 class Selection:
@@ -80,265 +16,57 @@ class Selection:
 
     def __init__(
         self,
-        library_collection: LibraryCollection,
-        tool_compounds: Optional[Sequence[ToolCompound]] = None,
-        date_ran: datetime | None = None,
-        target_id: str | None = None,
-        selection_condition: str | None = None,
-        selection_id: str | None = None,
-        additional_info: str | None = None,
-    ):
-        """
-        Initialize a Selection object.
-
-        Parameters
-        ----------
-        library_collection: LibraryCollection
-            the library collection used in the selection
-        tool_compounds: Sequence[ToolCompound] | None
-            the tool compound libraries used in the selection, defaults to None if not provided
-        date_ran: datetime | None
-            the date the selection was run, defaults to now if None
-        target_id: str | None
-            the target id for the selection, defaults to None if not provided
-        selection_condition: str | None
-            the selection condition, defaults to None if not provided
-        selection_id: str | None
-            the unique id for this selection, defaults to None if not provided
-        additional_info: str | None
-            any additional information about the selection, defaults to None if not provided
-        """
-        self.library_collection: LibraryCollection = library_collection
-        self.tool_compounds: Sequence[ToolCompound] = tool_compounds if tool_compounds else []
-        self.selection_id = selection_id if selection_id else "Unknown"
-        self.date_ran = date_ran
-
-        self.selection_condition = SectionCondition(
-            target_id=target_id,
-            selection_condition=selection_condition,
-            additional_info=additional_info,
-        )
-
-    @classmethod
-    def from_dict(cls, data: dict, load_chemical_info: bool = True) -> Self:
-        """
-        Create a Selection object from a dictionary.
-
-        Parameters
-        ----------
-        data: dict
-            the dictionary containing selection data
-        load_chemical_info: bool, default = True
-            Whether to load any present chemical information for libraries and tool compounds in selection.
-
-        Returns
-        -------
-        Selection
-            the Selection object created from the dictionary
-        """
-        lib_collection = LibraryCollection(
-            [CombinatorialLibrary.load(lib, load_chemical_info=load_chemical_info) for lib in data["libraries"]]
-        )
-        tool_compounds = [
-            ToolCompound.load(tc, load_smiles=load_chemical_info) for tc in data.get("tool_compounds", [])
-        ]
-
-        return cls(
-            library_collection=lib_collection,
-            tool_compounds=tool_compounds,
-            date_ran=datetime.fromisoformat(data["date_ran"]) if data.get("date_ran") is not None else None,
-            target_id=data.get("target_id"),
-            selection_condition=data.get("selection_condition"),
-            selection_id=data.get("selection_id"),
-            additional_info=data.get("additional_info"),
-        )
-
-    @classmethod
-    def from_yaml(cls, path: str | os.PathLike, load_chemical_info: bool = True) -> Self:
-        """
-        Create a Selection object from a YAML file
-
-        Parameters
-        ----------
-        path: str | os.PathLike
-            the path to the YAML file containing selection data
-        load_chemical_info: bool, default = True
-            Whether to load chemical information for libraries and tool compounds if present.
-            Disabling this can speed up loading time and save memory if chemical info is not needed.
-
-        Returns
-        -------
-        Selection
-        """
-        data = yaml.safe_load(open(path, "r"))
-        return cls.from_dict(data, load_chemical_info=load_chemical_info)
-
-    def to_json_str(self) -> dict:
-        """
-        Convert the Selection object to a dictionary of JSON serializable objects.
-
-        Returns
-        -------
-        dict
-        """
-        _data: dict[str, Any] = {
-            "date_ran": self.get_run_date_as_str(),
-            "target_id": self.selection_condition.target_id,
-            "selection_condition": self.selection_condition,
-            "selection_id": self.selection_id,
-            "additional_info": self.selection_condition.additional_info,
-            "libraries": [lib.library_id for lib in self.library_collection.libraries],
-            "tool_compounds": [tc.compound_id for tc in self.tool_compounds],
-        }
-        return _data
-
-    def get_run_date_as_str(self) -> str:
-        """
-        Get the date the selection was run as a string
-
-        Returns
-        -------
-        str
-            the date the selection was run in ISO format, or "Unknown" if not set
-        """
-        return self.date_ran.isoformat() if self.date_ran is not None else "Unknown"
-
-
-class DELSelection(Selection):
-    """Represents a selection made with a DEL collection"""
-
-    def __init__(
-        self,
+        selection_id: str,
         library_collection: DELibraryCollection,
         tool_compounds: Optional[Sequence[TaggedToolCompound]] = None,
-        date_ran: Optional[datetime] = None,
-        target_id: Optional[str] = None,
-        selection_condition: Optional[str] = None,
-        selection_id: Optional[str] = None,
-        additional_info: Optional[str] = None,
     ):
         """
         Initialize a Selection object.
 
         Parameters
         ----------
+        selection_id: str
+            the unique id for this selection; uniqueness is not programmatically enforced
+            but recommended for tracking selections
         library_collection: DELibraryCollection
-            the library collection used in the selection
-        tool_compounds: Sequence[TaggedToolCompound] | None
-            the tool compound libraries used in the selection, defaults to None if not provided
-        date_ran: datetime | None
-            the date the selection was run, defaults to now if None
-        target_id: str | None
-            the target id for the selection, defaults to None if not provided
-        selection_condition: str | None
-            the selection condition, defaults to None if not provided
-        selection_id: str | None
-            the unique id for this selection, defaults to None if not provided
-        additional_info: str | None
-            any additional information about the selection, defaults to None if not provided
+            the DEL collection used in the selection
+        tool_compounds: Sequence[TaggedToolCompound], optional
+            the tagged tool compound libraries used in the selection
         """
-        super().__init__(
-            library_collection=library_collection,
-            tool_compounds=tool_compounds,
-            date_ran=date_ran,
-            target_id=target_id,
-            selection_condition=selection_condition,
-            selection_id=selection_id,
-            additional_info=additional_info,
-        )
-        self.library_collection: DELibraryCollection = library_collection  # for type checking
+        self.library_collection: DELibraryCollection = library_collection
         self.tool_compounds: Sequence[TaggedToolCompound] = tool_compounds if tool_compounds else []
-
-    @classmethod
-    def from_dict(cls, data: dict, load_chemical_info: bool = False) -> "DELSelection":
-        """
-        Create a DELSelection object from a dictionary.
-
-        Parameters
-        ----------
-        data: dict
-            the dictionary containing selection data
-        load_chemical_info: bool, default = False
-            Whether to load any present chemical information for libraries and tool compounds in selection.
-
-        Returns
-        -------
-        DELSelection
-            the Selection object created from the dictionary
-        """
-        lib_collection = DELibraryCollection(
-            [DELibrary.load(lib, load_chemical_info=load_chemical_info) for lib in data["libraries"]]
-        )
-        tool_compounds = [
-            TaggedToolCompound.load(tc, load_smiles=load_chemical_info) for tc in data.get("tool_compounds", [])
-        ]
-
-        return cls(
-            library_collection=lib_collection,
-            tool_compounds=tool_compounds,
-            date_ran=datetime.fromisoformat(data["date_ran"]),
-            target_id=data.get("target_id"),
-            selection_condition=data.get("selection_condition"),
-            selection_id=data.get("selection_id"),
-            additional_info=data.get("additional_info"),
-        )
-
-    def to_json_str(self) -> dict:
-        """
-        Convert the Selection object to a dictionary.
-
-        Returns
-        -------
-        dict
-        """
-        _data = super().to_json_str()
-        return _data
+        self.selection_id = selection_id
 
 
-class SequencedSelection(DELSelection):
+class SequencedSelection(Selection):
     """
     Represents a selection made with a DEL collection that has been sequenced
 
     Parameters
     ----------
+    selection_id: str
+        the unique id for this selection; unqiueness is not programmatically enforced
+        but recommended for tracking selections
     library_collection: DELibraryCollection
         the library collection used in the selection
     sequence_reader: SequenceReader
         the list of barcode files for the selection
-    tool_compounds: Sequence[TaggedToolCompoundLibrary] | None
-        the tool compound libraries used in the selection, defaults to None if not provided
-    date_ran: datetime | None
-        the date the selection was run, defaults to now if None
-    target_id: str | None
-        the target id for the selection, defaults to None if not provided
-    selection_condition: str | None
-        the selection condition, defaults to None if not provided
-    selection_id: str | None
-        the unique id for this selection, defaults to None if not provided
-    additional_info: str | None
-        any additional information about the selection, defaults to None if not provided
+    tool_compounds: Sequence[TaggedToolCompoundLibrary], optional
+        the tagged tool compound libraries used in the selection
     """
 
     def __init__(
         self,
+        selection_id: str,
         library_collection: DELibraryCollection,
         sequence_reader: SequenceReader,
         tool_compounds: Optional[Sequence[TaggedToolCompound]] = None,
-        date_ran: Optional[datetime] = None,
-        target_id: Optional[str] = None,
-        selection_condition: Optional[str] = None,
-        selection_id: Optional[str] = None,
-        additional_info: Optional[str] = None,
     ):
         """Initialize a Selection object."""
         super().__init__(
+            selection_id=selection_id,
             library_collection=library_collection,
             tool_compounds=tool_compounds,
-            date_ran=date_ran,
-            target_id=target_id,
-            selection_condition=selection_condition,
-            selection_id=selection_id,
-            additional_info=additional_info,
         )
         self.sequence_reader: SequenceReader = sequence_reader
 
@@ -347,50 +75,57 @@ class SequencedSelection(DELSelection):
         """The sequence files associated with this selection"""
         return self.sequence_reader.get_sequence_files()
 
-    @classmethod
-    def from_dict(cls, data: dict, load_chemical_info: bool = True) -> "SequencedSelection":
-        """
-        Create a Selection object from a dictionary.
 
-        Parameters
-        ----------
-        data: dict
-            the dictionary containing selection data
-        load_chemical_info: bool, default = True
-            Whether to load any present chemical information for libraries and tool compounds in selection.
+def load_selection(path: os.PathLike, load_chemical_info: bool = True) -> Selection:
+    """
+    Load a Selection object from a YAML file.
 
-        Returns
-        -------
-        Selection
-            the Selection object created from the dictionary
-        """
-        lib_collection = DELibraryCollection(
-            [DELibrary.load(lib, load_chemical_info=load_chemical_info) for lib in data["libraries"]]
-        )
-        tool_compounds = [
-            TaggedToolCompound.load(tc, load_smiles=load_chemical_info) for tc in data.get("tool_compounds", [])
-        ]
+    See the Selection file docs for info on the expected YAML format.
+    Will load as a `SequencedSelection` if "sequence_files" key is present in the YAML,
+    otherwise loads as a `Selection`.
+
+    Notes
+    -----
+    If the selection file is missing an ID, the ID will be generated as the file hash.
+    This will not be saved anywhere, but may be used in naming output files related to
+    the selection. It is recommended to provide an ID in the selection file to avoid
+    confusion.
+
+    Parameters
+    ----------
+    path: os.PathLike
+        the path to the YAML file containing the selection data
+    load_chemical_info: bool, default = True
+        Whether to load any present chemical information for libraries and tool compounds in selection.
+
+    Returns
+    -------
+    Selection
+        the loaded Selection object
+    """
+    data = yaml.safe_load(open(path, "r"))
+
+    lib_collection = DELibraryCollection(
+        [DELibrary.load(lib, load_chemical_info=load_chemical_info) for lib in data["libraries"]]
+    )
+    tool_compounds = [
+        TaggedToolCompound.load(tc, load_smiles=load_chemical_info) for tc in data.get("tool_compounds", [])
+    ]
+
+    if "selection_id" not in data:
+        data["selection_id"] = str(hash(str(data)))
+
+    if "sequence_files" in data:
         sequence_reader = get_reader(data["sequence_files"])
-
-        return cls(
+        return SequencedSelection(
+            selection_id=data["selection_id"],
             library_collection=lib_collection,
             sequence_reader=sequence_reader,
             tool_compounds=tool_compounds,
-            date_ran=datetime.fromisoformat(data["date_ran"]),
-            target_id=data.get("target_id"),
-            selection_condition=data.get("selection_condition"),
-            selection_id=data.get("selection_id"),
-            additional_info=data.get("additional_info"),
         )
-
-    def to_json_str(self) -> dict:
-        """
-        Convert the Selection object to a dictionary.
-
-        Returns
-        -------
-        dict
-        """
-        _data = super().to_json_str()
-        _data["sequence_files"] = self.sequence_files
-        return _data
+    else:
+        return Selection(
+            selection_id=data["selection_id"],
+            library_collection=lib_collection,
+            tool_compounds=tool_compounds,
+        )

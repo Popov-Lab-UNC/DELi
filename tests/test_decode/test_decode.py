@@ -14,10 +14,10 @@ from deli.decode.base import FailedDecodeAttempt
 from deli.decode.decoder import (
     DecodedDELCompound,
     DecodedToolCompound,
-    DecodeStatistics,
     DecodingSettings,
     SelectionDecoder,
 )
+from deli.decode.stats import DecodeStatistics
 from deli.dels.barcode import DELBarcodeSchema, VariableBarcodeSection
 from deli.dels.building_block import TaggedBuildingBlock, TaggedBuildingBlockSet
 from deli.dels.combinatorial import DELibrary

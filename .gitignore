@@ -3,6 +3,7 @@ deli.log
 # ignore IDE files
 .idea
 .venv
+.vscode
 
 # ignore Python cache
 __pycache__/
@@ -12,6 +13,17 @@ __pycache__/
 # ignore poetry
 .poetry
 
+# ignore caches
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
 # ignore test results
 ./test-results/
 ./tests/test-results/
+
+# ignore my_todos.md
+my_todos.md
+
+# ignore dist
+dist/
