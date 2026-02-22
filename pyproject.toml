@@ -54,7 +54,6 @@ module-name = "deli"
 
 [dependency-groups]
 dev = [
-    "fastavro>=1.12.1",
     "mypy>=1.19.1",
     "pre-commit>=4.5.1",
     "pyarrow>=23.0.1",
