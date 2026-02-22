@@ -1,6 +1,6 @@
 [project]
 name = "deli-chem"
-version = "1.0.0"
+version = "0.2.0"
 description = "DNA encoded library sequence analysis software with custom library design support"
 readme = "README.md"
 authors = [
