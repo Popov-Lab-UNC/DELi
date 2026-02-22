@@ -21,11 +21,14 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Poetry
-        run: pip install poetry
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+          enable-cache: true
 
       - name: Install dependencies
-        run: poetry install --with docs
+        run: uv sync --group docs
 
       - name: Build docs
-        run: poetry run sphinx-build docs docs/_build/html
+        run: uv run sphinx-build docs docs/_build/html

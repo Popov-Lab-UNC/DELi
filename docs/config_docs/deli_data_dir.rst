@@ -24,6 +24,8 @@ A valid DELi Data Directory must have the following sub folders:
 
 * ``libraries``
 * ``building_blocks``
+* ``reactions``
+* ``tool_compounds``
 
 Additional files and folders can be added, but these DELi will ignore these.
 You can create an empty DELi Data Directory by just creating a directory with the

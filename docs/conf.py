@@ -1,13 +1,68 @@
 """configurations for sphinx documentation"""
 
+from pathlib import Path
+
+# Try to read the project version from pyproject.toml (PEP 621). Use the
+# stdlib `tomllib` when available (Python 3.11+). If not available, fall
+# back to the external `toml` package if present. If both fail, fall back
+# to `importlib.metadata` which requires the package to be installed.
+try:
+    import tomllib as _toml
+except Exception:  # pragma: no cover - optional dependency fallback
+    try:
+        import toml as _toml  # type: ignore
+    except Exception:
+        _toml = None  # type: ignore
+
+_pyproject_path = Path(__file__).resolve().parents[1] / "pyproject.toml"
+version = None
+if _toml is not None and _pyproject_path.exists():
+    try:
+        with _pyproject_path.open("rb") as _f:
+            _data = _toml.load(_f)
+        version = _data.get("project", {}).get("version")
+    except Exception:
+        version = None
+
+if not version:
+    # Final fallback to importlib.metadata (package must be installed).
+    from importlib.metadata import version as _get_version
+
+    try:
+        # If the installed distribution name differs from the import name
+        # (e.g. distribution `deli-chem` but package imports as `deli`), try
+        # to resolve the distribution name that provides the `deli` top-level
+        # package using `packages_distributions()` when available. Also try
+        # common distribution name candidates.
+        dist_candidates = []
+        try:
+            from importlib.metadata import packages_distributions
+
+            dist_candidates = packages_distributions().get("deli", [])
+        except Exception:
+            dist_candidates = []
+
+        dist_candidates.extend(["deli", "deli-chem"])
+
+        version = None
+        for _dist in dist_candidates:
+            try:
+                version = _get_version(_dist)
+                break
+            except Exception:
+                continue
+
+        if not version:
+            version = "0.0.0"
+    except Exception:
+        version = "0.0.0"
+
+release = version
+
 # Project information
 project = "DELi"
 copyright = "2025, James Wellnitz"
 author = "James Wellnitz"
-
-# The full version, including alpha/beta/rc tags
-release = "0.1.1"
-version = release
 
 # Add any Sphinx extension module names here, as strings
 extensions = [

@@ -7,7 +7,7 @@ from Levenshtein import distance as levenshtein_distance
 
 def get_min_levenshtein_distance(items: list[str]) -> int:
     """
-    get the minimum Levenshtein distance between any pair of items
+    Get the minimum Levenshtein distance between any pair of items
 
     Parameters
     ----------

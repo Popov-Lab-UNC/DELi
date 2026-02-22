@@ -3,6 +3,10 @@
 Defining Hamming Codes
 ======================
 
+.. warning::
+    Direct hamming code design is both an advanced topic and also something that is not well supported by
+    the new version of DELi. It is best to ignore this unless you really really think you need it.
+
 Most modern DEL libraries utilize a hamming encoded scheme to enable fixing of single base
 pair misreads during sequencing (or during PCR) of the selection. This is most common in
 the building block sections, helping to recover as many as 10% of reads to valid calls.

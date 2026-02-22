@@ -49,4 +49,3 @@ jobs:
             echo "No changes to docs/requirements-docs.txt"
           fi
         shell: bash
-
