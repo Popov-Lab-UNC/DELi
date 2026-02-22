@@ -692,6 +692,7 @@ def decode_group(ctx):
 @decode_group.command(name="run")
 @click.argument("selection-file", type=click.Path(exists=True), required=True)
 @click.argument("sequence-files", type=click.Path(exists=True), nargs=-1, required=False)
+@click.option("--decode-settings-file", "-d", type=click.Path(exists=True), required=False, default=None, help="Path to YAML file describing decoding settings")
 @click.option("--out-dir", "-o", type=click.Path(), required=False, default="./", help="Output directory to save results to")
 @click.option("--prefix", "-p", type=click.STRING, required=False, default="", help="Prefix for output files")
 @click.option("--show-tqdm", "-t", is_flag=True, help="Show tqdm progress")
@@ -706,6 +707,7 @@ def run_decode(
     ctx,
     selection_file,
     sequence_files,
+    decode_settings_file,
     out_dir,
     prefix,
     show_tqdm,
@@ -829,7 +831,23 @@ def run_decode(
         logger.info(f"writing failed decoding sequences to: '{failed_out_path}'")
 
     # load decode settings
-    decode_settings = DecodingSettings.from_file(selection_file)
+    decode_settings = None
+
+    try:
+        decode_settings = DecodingSettings.from_file(selection_file)
+        logger.info(f"loaded decoding settings from selection file: '{selection_file}'")
+    except Exception as e:
+        logger.debug(f"failed to load decoding settings from selection file '{selection_file}': {e}")
+
+    if decode_settings_file:
+        if decode_settings is not None:
+            logger.warning(
+                f"decoding settings found in both selection file '{selection_file}' and provided decode settings file '{decode_settings_file}'; "
+                f"using settings from provided decode settings file"
+            )
+        decode_settings = DecodingSettings.from_file(decode_settings_file)
+        logger.info(f"loaded decoding settings from: '{decode_settings_file}'")
+
     logger.debug(f"loaded decoding settings: {decode_settings}")
 
     # load in decoder
