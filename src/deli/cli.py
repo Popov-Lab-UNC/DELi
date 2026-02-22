@@ -1210,7 +1210,7 @@ def merge_stats(ctx, decode_stats_files, selection_file, out_loc):
     Merge multiple decoding statistics files into a single file
 
     DECODE-STATS-FILES are the paths to the decoding statistics JSON files to merge.
-    Stat files should be for separate decoding runs for the same selection, such as from parallel decoding runs.
+    Stats files should be for separate decoding runs for the same selection, such as from parallel decoding runs.
     If selection-file is, will add any missing libraries from the selection to the merged stats with 0 counts
 
     Output will be a single decoding statistics JSON file with the same format as the input files.
@@ -1252,12 +1252,15 @@ def merge_stats(ctx, decode_stats_files, selection_file, out_loc):
         except Exception as e:
             click.echo(f"Failed to load selection file '{selection_file}': {e}")
             sys.exit(1)
-        overall_stats.add_missing_libraries_from_selection(selection)
+        updated_stats = overall_stats.with_libraries(selection.library_collection.libraries)
+        if updated_stats is not None:
+            overall_stats = updated_stats
 
     overall_stats.to_file(out_loc_path)
 
 
-@decode_group.command(name="summerize")
+
+@decode_group.command(name="summarize")
 @click.argument("counted_compounds_file", type=click.Path(exists=True, dir_okay=False), required=True)
 @click.argument("decode_stats_file", type=click.Path(exists=True, dir_okay=False), required=True)
 @click.option("--out-loc", "-o", type=click.Path(), required=False, default="./decode_summary.json", help="Output location to save summary to")

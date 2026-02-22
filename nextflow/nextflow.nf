@@ -178,7 +178,7 @@ process CountChunk {
         --output-format parquet \
         --cluster-umis \
         --keep-raw-count \
-        --keep-dedup-count \
+        --keep-dedup-count
     """
 }
 
@@ -200,14 +200,14 @@ process CollectCountChunks {
     #!/usr/bin/env python
 
     import polars as pl
-    files = sorted([f for f in '${counted_files.split(' ')}' if f.strip()])
-    pl.scan_parquet(files).sink_parquet("${prefix}_counts.${output_format}")
+    files = sorted([f for f in "${counted_files}".split() if f.strip()])
+    pl.scan_parquet(files).sink_parquet("${prefix}_counts.parquet")
     """
 }
 
-process SummerizeDecodeRun {
+process SummarizeDecodeRun {
     /*
-     * Summerize the decode run by merging the decode statistics with the final counts to produce a final stats JSON file
+     * Summarize the decode run by merging the decode statistics with the final counts to produce a final stats JSON file
      */
     publishDir "${params.out_dir}", mode: 'move'
 
@@ -253,16 +253,25 @@ process WriteDecodeReport {
 // ============================================================================
 
 workflow {
+    // Validate potentially user-controlled path parameters to prevent shell injection
+    def safePathPattern = ~/^[\w.\-\/]+$/
+    if (params.deli_data_dir && !(params.deli_data_dir ==~ safePathPattern)) {
+        error("Invalid characters in --deli_data_dir parameter")
+    }
+    if (params.config_file && !(params.config_file ==~ safePathPattern)) {
+        error("Invalid characters in --config_file parameter")
+    }
+
     // Build deli CLI arguments
     def deli_args = ""
     if (params.debug) {
         deli_args += " --debug"
     }
     if (params.deli_data_dir) {
-        deli_args += " --deli-data-dir ${params.deli_data_dir}"
+        deli_args += " --deli-data-dir '${params.deli_data_dir}'"
     }
     if (params.config_file) {
-        deli_args += " --config-file ${params.config_file}"
+        deli_args += " --config-file '${params.config_file}'"
     }
 
     extract = ExtractSequenceFiles(selection_file_path)
@@ -308,7 +317,7 @@ workflow {
         Channel.value(deli_args)
     )
 
-    collected_counts = MergeCountedFiles(
+    collected_counts = CollectCountChunks(
         counts.counted.collect(),
         prefix_ch
     )

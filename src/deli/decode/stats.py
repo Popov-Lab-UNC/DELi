@@ -12,12 +12,12 @@ class DecodeStatistics:
     """
     Track the statistics of the decoding run
 
-    This includes information about nubmer of sequences attempted, number of sequences decoded,
+    This includes information about number of sequences attempted, number of sequences decoded,
     failures during decoding, and number of sequences/compounds decoded per library.
 
     Note: only `num_seqs_decoded_per_lib` will be tracked during decoding.
     Both `num_compounds_decoded_per_lib` and `num_molecules_decoded_per_lib` can only
-    be porperly calculated after collection and counting, which happen separately from raw
+    be properly calculated after collection and counting, which happen separately from raw
     sequence decoding.
 
     Attributes
@@ -229,9 +229,9 @@ class DecodeSummary:
 
     def __post_init__(self):
         """Precompute the calculation of total sequences, compounds, and molecules decoded for easier access later"""
-        self.num_seqs_decoded = sum(self.seqs_decoded_per_lib.values())
-        self.num_compounds_decoded = sum(self.compounds_decoded_per_lib.values())
-        self.num_molecules_decoded = sum(self.molecules_decoded_per_lib.values())
+        object.__setattr__(self, "num_seqs_decoded", sum(self.seqs_decoded_per_lib.values()))
+        object.__setattr__(self, "num_compounds_decoded", sum(self.compounds_decoded_per_lib.values()))
+        object.__setattr__(self, "num_molecules_decoded", sum(self.molecules_decoded_per_lib.values()))
 
     def with_libraries(self, libraries: list[Library]) -> "DecodeSummary":
         """

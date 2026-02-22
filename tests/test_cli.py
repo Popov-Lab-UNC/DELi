@@ -579,11 +579,11 @@ def test_decode_merge_stats(tmpdir, runner, mock_decode_stats_file):
     )
 
     assert result.exit_code == 0
-    assert (temp_home_path / "merged_decode_stats.json").exists()
+    assert (temp_home_path / "merged_decode_stats.json").is_file()
 
 
 def test_decode_summarize_decoding(tmpdir, runner, mock_decode_stats_file, mock_counted_decode_tsv):
-    """Test the command `deli decode summerize`"""
+    """Test the command `deli decode summarize`"""
     import json
 
     temp_home_path = Path(tmpdir)
