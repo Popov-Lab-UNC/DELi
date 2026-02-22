@@ -1184,7 +1184,7 @@ def generate_report(ctx, decode_stats_file, selection_file, out_loc):
 
 @decode_group.command(name="merge-stats")
 @click.argument("decode-stats-files", nargs=-1, type=click.Path(exists=True), required=True)
-@click.option("-d", "--selection-file", type=click.Path(exists=True), required=False, default=None, help="Selection file used to generate statistic files")
+@click.option("-s", "--selection-file", type=click.Path(exists=True), required=False, default=None, help="Selection file used to generate statistic files")
 @click.option("--out-loc", "-o", type=click.Path(), required=False, default="./merged_decode_stats.json", help="Output location to save merged stats to")
 @click.pass_context
 def merge_stats(ctx, decode_stats_files, selection_file, out_loc):

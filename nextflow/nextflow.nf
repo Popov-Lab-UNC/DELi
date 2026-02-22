@@ -1,160 +1,321 @@
 #!/usr/bin/env nextflow
 
-params.decode_run
-params.out_dir = "${launchDir}"
-params.prefix = ""
+/*
+ * DELi Decoding Workflow
+ *
+ * This workflow:
+ * 1. Chunks FASTQ files from a selection configuration
+ * 2. Runs decoding in parallel on all chunks with --split-by-lib
+ * 3. Collects decoded sequences per library into NDJSON format
+ * 4. Counts compounds per library asynchronously
+ * 5. Optionally merges final results
+ */
+
+nextflow.enable.dsl = 2
+
+// ============================================================================
+// PARAMETERS
+// ============================================================================
+
+params.selection_file = null // Required: path to selection YAML file
+params.out_dir = "${launchDir}/decode_results"
+params.prefix = "" // Empty string will use selection_id
+params.chunk_size = 1_000_000 // Split FASTQ at this many reads per chunk
+params.deli_data_dir = null
+params.config_file = null
 params.debug = false
-params.chunk_size = 1000000
-params.save_failed = false
-params.enumerate_smiles = false
-params.include_bb_smi = false
-params.save_counter = false
 
+// ============================================================================
+// VALIDATION & SETUP
+// ============================================================================
 
-// this determines the selection id from the decode file
-process GetSelectionIDPrefix {
+if (!params.selection_file) {
+    error("--selection_file is required")
+}
+
+selection_file_path = file(params.selection_file)
+if (!selection_file_path.exists()) {
+    error("Selection file not found: ${params.selection_file}")
+}
+
+// ============================================================================
+// PROCESSES
+// ============================================================================
+
+process ExtractSequenceFiles {
+    /*
+     * Extract sequence files, selection_id, and libraries from selection YAML
+     * Outputs:
+     * - selection_id: The selection ID from the selection config
+     * - libraries: Newline-separated list of library IDs
+     * - files: Newline-separated list of sequence file paths
+     */
+
+    input:
+    path selection_file
+
     output:
-    stdout
+    path "selection_id.txt", emit: selection_id
+    path "files.txt", emit: files
 
     script:
     """
     #!/usr/bin/env python
-
     import yaml
-    with open('${params.decode_run}', 'r') as f:
-        data = yaml.safe_load(f)
-    selection_id = data.get('selection_id', None)
-    prefix = "${params.prefix}" + "_" + selection_id if selection_id else "Unknown"
-    if prefix.startswith("_"):
-        prefix = prefix[1:]
-    print(prefix)
+
+    with open("${selection_file}") as f:
+        config = yaml.safe_load(f)
+
+    # Write selection_id
+    selection_id = config.get('selection_id', 'unknown')
+    with open('selection_id.txt', 'w') as f:
+        f.write(selection_id + '\n')
+
+    # Write sequence files
+    sequence_files = config.get('sequence_files', [])
+    with open('files.txt', 'w') as f:
+        if isinstance(sequence_files, list):
+            f.write('\n'.join(sequence_files) + '\n')
+        else:
+            f.write(sequence_files + '\n')
     """
 }
 
-
-process ValidateInputParams {
-    output:
-    val true, emit: has_umi // Placeholder, replace with actual validation logic
-    val "pass", emit: exit_condition // Placeholder, replace with actual exit condition logic
-
-    script:
-    """
-    echo "TODO"
-
-    """
-}
-
-
-process CheckValidationExitCondition {
-    input:
-    val exit_condition
-
-    when:
-    exit_condition != "pass"
-
-    script:
-    """
-    # Custom error logic here
-    if [[ ${exit_condition} == "missing_reactions" ]]; then
-        echo "Critical error: Requested SMILES enumeration but some libraries lack reaction information"
-        exit 1
-    elif [[ ${exit_condition} == "missing_bb_smiles" ]]; then
-        echo "Critical error: Building block SMILES required but some libraries lack building block SMILES"
-        exit 1
-    fi
-    """
-}
-
-
-process Decode {
-    publishDir "$params.out_dir/decode_logs/", mode: 'move', pattern: "*.log"
+process DecodeChunk {
+    /*
+     * Run deli decode run on a chunk of FASTQ
+     * Outputs one TSV file per chunk (no split-by-lib)
+     */
+    tag "${fastq_chunk.simplename}"
 
     input:
-    path fastq_file
+    path fastq_chunk
+    path selection_file
+    val prefix
+    val deli_args
 
     output:
-    path '*_counter_subjob.json.gz', emit: counters
-    path '*_decode_statistics_subjob.json', emit: decode_stats
-    path '*.log', emit: log
-    path '*_decode_failed.tsv', emit: failed, optional: true
-
-    script:
+    path "${prefix}_${fastq_chunk.simplename}_decoded.tsv", emit: decoded_tsv
+    path "${prefix}_${fastq_chunk.simplename}_decode_statistics.json", emit: decode_stats
+    path "deli.log", emit: deli_log
     """
-    python ${workflow.projectDir}/decode.py --decode_file ${params.decode_run} --fastq_file ${fastq_file} ${params.debug ? '--debug ' : ''}${params.save_failed ? '--save-failed ' : ''}
+    mkdir -p decoded_output
+
+    deli ${deli_args} decode run \
+        "${selection_file}" \
+        "${fastq_chunk}" \
+        --out-dir ./ \
+        --prefix "${prefix}_${fastq_chunk.simplename}" \
+        --skip-report \
+        --exclude-score
     """
 }
 
-process MergeResultsUMI {
-    publishDir "$params.out_dir/", mode: 'move'
+process MergeDecodeStatistics {
+    /*
+     * Merge decode statistics JSON files from all chunks into a single JSON file with aggregated stats
+     */
+    publishDir "${params.out_dir}", mode: 'copy'
 
     input:
-    path "*_counter_subjob.json.gz"
-    path "*_decode_statistics_subjob.json"
+    path("*_decode_statistics.json", arity: '1..*')
+    path selection_file
+    val prefix
+    val deli_args
 
     output:
-    path "*_cube.csv"
-    path "*_decode_report.html"
-    path "*_decode_statistics.json"
-    path "*_counter.json", optional: true
+    path "${prefix}_decode_stats.json", emit: ndjson
 
-    script:
     """
-    python ${workflow.projectDir}/merge_umi.py --decode_file ${params.decode_run} ${params.enumerate_smiles ? '--enumerate_smiles ' : ''}${params.include_bb_smi ? '--include_bb_smi ' : ''}${params.save_counter ? '--save_counter ' : ''}--counters *_counter_subjob.json.gz
+    deli ${deli_args} decode merge-stats \
+        "${*_decode_statistics.json}" \
+        --selection-file "${selection_file}" \
+        --out-loc "${prefix}_decode_stats.json"
     """
 }
 
-
-process MergeFailedDecodes {
-    publishDir "$params.out_dir/", mode: 'move'
+process CollectDecodeChunks {
+    /*
+     * Collect all chunk decode outputs files into a single collected NDJSON file
+     */
 
     input:
-    path "*_decode_failed.tsv"
+    path("*_decoded.tsv", arity: '1..*')
+    val prefix
+    val deli_args
+
+    output:
+    path "${prefix}_collected.ndjson", emit: ndjson
+
+    """
+    # Run deli decode collect on all TSV files
+    deli ${deli_args} decode collect \
+        ${*_decoded.tsv} \
+        --out-loc "${prefix}_collected.ndjson"
+    """
+}
+
+process CountChunk {
+    /*
+     * Count compounds from a chunk of the collected NDJSON file
+     * Input file contains up to 500,000 NDJSON lines
+     */
+    tag "${ndjson_chunk.simplename}"
+
+    input:
+    path (*.ndjson, arity: '1..*')
+    val prefix
+    val deli_args
+
+    output:
+    path "${ndjson_chunk.simplename}_counted.parquet", emit: counted
+
+    script:
+    """
+    deli ${deli_args} decode count \
+        "${ndjson_chunk}" \
+        --out-loc "${ndjson_chunk.simplename}_counted.parquet" \
+        --output-format parquet \
+        --cluster-umis \
+        --keep-raw-count \
+        --keep-dedup-count \
+    """
+}
+
+process CollectCountChunks {
+    /*
+     * Merge counted files from all chunks
+     */
+    publishDir "${params.out_dir}", mode: 'copy'
+
+    input:
+    path counted_files
     val prefix
 
     output:
-    path "*_failed_decodes.tsv"
-
-    script:
-    """
-    awk 'FNR==1 && NR!=1{next;}{print}' *_decode_failed.tsv > ${prefix}_failed_decodes.tsv
-    """
-}
-
-
-process ExtractSequenceFiles {
-    output:
-    path "sequence_files.txt"
+    path "${prefix}_counts.parquet", emit: merged_counts
 
     script:
     """
     #!/usr/bin/env python
 
-    import yaml
-    with open('${params.decode_run}', 'r') as f:
-        data = yaml.safe_load(f)
-    sequence_files = data.get('sequence_files', [])
-    with open('sequence_files.txt', 'w') as out_f:
-        out_f.write('\\n'.join(sequence_files))
+    import polars as pl
+    files = sorted([f for f in '${counted_files.split(' ')}' if f.strip()])
+    pl.scan_parquet(files).sink_parquet("${prefix}_counts.${output_format}")
     """
 }
 
+process SummerizeDecodeRun {
+    /*
+     * Summerize the decode run by merging the decode statistics with the final counts to produce a final stats JSON file
+     */
+    publishDir "${params.out_dir}", mode: 'move'
+
+    input:
+    path merged_counts
+    path decode_stats
+    val prefix
+
+    output:
+    path "${prefix}_final_stats.json", emit: final_stats
+
+    script:
+    """
+    deli ${deli_args} decode summerize \
+        "${merged_counts}" \
+        "${decode_stats}" \
+        --out-loc "${prefix}_decode_summary.json"
+    """
+}
+
+process WriteDecodeReport {
+    /*
+     * Generate the decoding HTML report
+     */
+
+    input:
+    path final_stats
+    val prefix
+
+    output:
+    path "${prefix}_decode_report.html", emit: report
+
+    script:
+    """
+    deli ${deli_args} decode report \
+        "${final_stats}" \
+        --out-loc "${prefix}_decode_report.html"
+    """
+}
+
+// ============================================================================
+// WORKFLOW
+// ============================================================================
+
 workflow {
-    PrefixChannel = GetSelectionIDPrefix().map( {it.trim()} )
+    // Build deli CLI arguments
+    def deli_args = ""
+    if (params.debug) {
+        deli_args += " --debug"
+    }
+    if (params.deli_data_dir) {
+        deli_args += " --deli-data-dir ${params.deli_data_dir}"
+    }
+    if (params.config_file) {
+        deli_args += " --config-file ${params.config_file}"
+    }
 
-    ValidateInputParams()
-    CheckValidationExitCondition(ValidateInputParams.out.exit_condition)
+    extract = ExtractSequenceFiles(selection_file_path)
+    def final_prefix = params.prefix ?: null
 
-    sequence_files = ExtractSequenceFiles().splitText().map{ file(it.trim()) }
-    chunk_sequence_files = sequence_files.splitFastq( by: params.chunk_size, file: true )
+    prefix_ch = extract.selection_id
+        .splitText()
+        .map { it.trim() }
+        .map { final_prefix ?: it }
 
-    Decode(chunk_sequence_files)
+    fastq_chunks = extract.files
+        .splitText()
+        .map { it.trim() }
+        .map { file(it) }
+        .splitFastq(by: params.chunk_size)
 
-    if( ValidateInputParams.out.has_umi )
-        MergeResultsUMI(Decode.out.counters.collect(), Decode.out.decode_stats.collect())
-    else
-        error "UMI information is required for this workflow. Please check your input parameters."
+    decoded = DecodeChunk(fastq_chunks, selection_file_path, prefix_ch, Channel.value(deli_args))
 
-    if ( params.save_failed )
-        MergeFailedDecodes(Decode.out.failed.collect(), PrefixChannel)
+    collected_decodes = CollectAllChunks(
+        decoded.decoded_tsv.collect(),
+        prefix_ch,
+        Channel.value(deli_args)
+    )
 
+    merged_stats = MergeDecodeStatistics(
+        decoded.decode_stats.collect(),
+        selection_file_path,
+        prefix_ch,
+        Channel.value(deli_args)
+    )
+
+    WriteDecodeReport(
+        merged_stats.final_stats,
+        prefix_ch
+    )
+
+    count_chunks = collected_decodes.ndjson
+        .splitText(by: 500_000)
+
+    counts = CountChunk(
+        count_chunks,
+        prefix_ch,
+        Channel.value(deli_args)
+    )
+
+    collected_counts = MergeCountedFiles(
+        counts.counted.collect(),
+        prefix_ch
+    )
+
+    SummerizeDecodeRun(
+        collected_counts.merged_counts,
+        merged_stats.decode_stats,
+        prefix_ch
+    )
 }
