@@ -3,9 +3,10 @@ name = "deli-chem"
 version = "0.2.0"
 description = "DNA encoded library sequence analysis software with custom library design support"
 readme = "README.md"
+license = "MIT"
 authors = [
   { name = "James Wellnitz", email = "wellnitz.james@gmail.com" },
-  { name = "Brandon Novy" },
+  { name = "Brandon Novy", email = "novy@unc.edu" },
   { name = "Travis Maxfield" },
   { name = "Jason Lin" }
 ]
@@ -17,7 +18,8 @@ classifiers = [
   "Operating System :: OS Independent",
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Science/Research",
-  "Topic :: Scientific/Engineering :: Bio-Informatics"
+  "Topic :: Scientific/Engineering :: Bio-Informatics",
+  "License :: OSI Approved :: MIT License"
 ]
 keywords = [
   "DNA-encoded library",

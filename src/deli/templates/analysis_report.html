@@ -1,286 +1,605 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DEL Analysis Report</title>
     <style>
+        :root {
+            --primary-color: #2c3e50;
+            --secondary-color: #3498db;
+            --accent-color: #e74c3c;
+            --bg-color: #f4f6f7;
+            --text-color: #333;
+            --light-text: #666;
+            --border-color: #ddd;
+            --card-bg: #fff;
+            --sidebar-width: 280px;
+            --header-height: 60px;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
         body {
-            font-family: "Roboto", Arial, sans-serif;
+            font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
             line-height: 1.6;
+            color: var(--text-color);
+            background-color: var(--bg-color);
             margin: 0;
-            padding: 0;
-            color: #333;
-            background-color: #f8f9fa;
+            display: flex;
+            min-height: 100vh;
         }
-        header {
-            background-color: #007bff;
-            color: white;
-            padding: 20px 10px;
-            text-align: center;
-        }
-        section {
+
+        /* Sidebar */
+        #sidebar {
+            width: var(--sidebar-width);
+            background-color: var(--primary-color);
+            color: #ecf0f1;
+            position: fixed;
+            height: 100vh;
+            overflow-y: auto;
             padding: 20px;
-            margin: 20px auto;
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-            max-width: 900px;
+            left: 0;
+            top: 0;
+            z-index: 1000;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease;
         }
-        h1, h2 {
-            font-weight: 600;
+        
+        #sidebar.collapsed {
+            transform: translateX(calc(-1 * var(--sidebar-width) + 70px));
+        }
+        
+        #sidebar-toggle {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            z-index: 1001;
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(10px);
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 8px 10px;
+            cursor: pointer;
+            border-radius: 6px;
+            font-size: 14px;
+            line-height: 1;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 32px;
+            min-height: 32px;
+        }
+        
+        #sidebar-toggle:hover {
+            background: rgba(255, 255, 255, 0.25);
+            border-color: rgba(255, 255, 255, 0.3);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            transform: scale(1.05);
+        }
+        
+        #sidebar-toggle:active {
+            transform: scale(0.95);
+            box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+        }
+        
+        #toggle-icon {
+            display: block;
+            transition: all 0.3s ease;
+            font-weight: bold;
+        }
+        
+        #sidebar.collapsed ~ #main {
+            margin-left: 70px;
+            max-width: calc(100% - 70px);
+        }
+
+        #sidebar h2 {
+            color: #fff;
+            font-size: 1.2rem;
+            margin-top: 0;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        #sidebar.collapsed h2,
+        #sidebar.collapsed ul {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        #sidebar ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        #sidebar li {
             margin-bottom: 10px;
         }
-        img {
-            max-width: 100%;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            margin-top: 10px;
+
+        #sidebar a {
+            color: #bdc3c7;
+            text-decoration: none;
+            display: block;
+            padding: 8px 10px;
+            border-radius: 4px;
+            transition: background 0.3s, color 0.3s;
         }
-        .summary p {
-            margin: 10px 0;
+
+        #sidebar a:hover {
+            background-color: rgba(255,255,255,0.1);
+            color: #fff;
         }
-        footer {
-            text-align: center;
-            padding: 10px;
-            background-color: #007bff;
-            color: white;
-            margin-top: 20px;
+
+        /* Main Content */
+        #main {
+            margin-left: var(--sidebar-width);
+            flex: 1;
+            padding: 40px;
+            max-width: calc(100% - var(--sidebar-width));
         }
-        ul {
-            padding-left: 20px;
+
+        header {
+            margin-bottom: 40px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid var(--border-color);
         }
-        .grid-container {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 20px;
-            justify-content: center;
+
+        h1 {
+            font-size: 2.5rem;
+            color: var(--primary-color);
+            margin: 0;
         }
-        .grid-item {
-            flex: 1 1 calc(33.333% - 20px);
-            max-width: calc(33.333% - 20px);
-            text-align: center;
-        }
-        .grid-item img {
-            max-width: 100%;
-            height: auto;
-            border-radius: 8px;
-        }
-        .placeholder {
-            color: #888;
+
+        .date {
+            color: var(--light-text);
             font-style: italic;
         }
+
+        /* Sections */
+        section {
+            background: var(--card-bg);
+            border-radius: 8px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            scroll-margin-top: 20px; /* For anchor scrolling */
+        }
+
+        h2 {
+            color: var(--primary-color);
+            border-bottom: 2px solid var(--secondary-color);
+            padding-bottom: 10px;
+            margin-top: 0;
+        }
+
+        /* Tables */
         table {
             width: 100%;
             border-collapse: collapse;
-            margin-bottom: 20px;
+            margin: 20px 0;
+            font-size: 0.95rem;
         }
-        table, th, td {
-            border: 1px solid #ddd;
-        }
+
         th, td {
-            padding: 8px;
+            padding: 12px 15px;
+            border-bottom: 1px solid var(--border-color);
             text-align: left;
         }
+
         th {
-            background-color: #f2f2f2;
+            background-color: #f8f9fa;
+            font-weight: 600;
+            color: var(--primary-color);
         }
 
-        /* Flexbox for side-by-side sections */
-        .side-by-side {
-            display: flex;
-            justify-content: space-between;
+        tr:hover {
+            background-color: #f1f1f1;
+        }
+
+        /* Lists */
+        ul.data-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        ul.data-list li {
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+        }
+        
+        ul.data-list li:last-child {
+            border-bottom: none;
+        }
+
+        /* Grid for Figures */
+        .figure-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
             gap: 20px;
-            max-width: 900px; /* Ensures the total width of side-by-side sections doesn't exceed this */
-            margin: 0 auto; /* Centers the content */
-        }
-        .side-by-side section {
-            flex: 1;
-            min-width: 0;
-            box-sizing: border-box; /* Includes padding and borders in the width calculation */
+            margin-top: 20px;
         }
 
-        /* Flexbox for disynthon plots */
-        .disynthon-inline {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 15px;
-            justify-content: center; /* Center the plots */
-            align-items: center; /* Center vertically */
-        }
-
-        .plot {
-            flex: 1 1 auto; /* Allows flexible resizing */
-            max-width: calc(33.333% - 15px); /* Ensures 3 items per row */
+        .figure-item {
+            background: #fff;
+            border: 1px solid #eee;
+            border-radius: 8px;
+            padding: 10px;
             text-align: center;
+            transition: transform 0.2s;
         }
 
-        .plot img {
+        .figure-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .figure-item img {
             max-width: 100%;
             height: auto;
-            border-radius: 8px;
+            border-radius: 4px;
+            cursor: zoom-in;
         }
 
-        /* Style for a single plot to behave like a normal picture (centered) */
-        .single-plot {
-            display: block;
-            margin: 0 auto;
+        .caption {
+            margin-top: 10px;
+            font-size: 0.85rem;
+            color: var(--light-text);
+            word-wrap: break-word;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            body {
+                flex-direction: column;
+            }
+            #sidebar {
+                width: 100%;
+                height: auto;
+                position: relative;
+                padding: 10px;
+                transform: none !important;
+            }
+            #sidebar.collapsed {
+                transform: none !important;
+            }
+            #sidebar-toggle {
+                display: none;
+            }
+            #main {
+                margin-left: 0 !important;
+                max-width: 100%;
+                padding: 20px;
+            }
+            .figure-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .placeholder {
+            color: var(--light-text);
+            font-style: italic;
+            text-align: center;
+            padding: 20px;
+            background: #f9f9f9;
+            border-radius: 4px;
+        }
+        
+        .side-by-side-container {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .side-by-side-container > div {
+            flex: 1;
+            min-width: 300px;
+        }
+
+        /* HTML Content Wrapper */
+        .html-content-wrapper {
+            border: 1px solid #eee;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        
+        .svg-container {
+            width: 100%;
+            height: auto;
+        }
+        .svg-container svg {
             width: 100%;
             height: auto;
         }
     </style>
 </head>
 <body>
-    <header>
-        <h1>DEL Analysis Report</h1>
-    </header>
 
-    <!-- Experiment Information Section -->
-    <section>
-        <h2>Experiment Overview</h2>
-        {% if experiment_info %}
-        <table>
-            <thead>
-                <tr>
-                    <th>Experiment Name</th>
-                    <th>Experiment Index</th>
-                    <th>Control Columns</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for experiment in experiment_info %}
-                <tr>
-                    <td>{{ experiment.name }}</td>
-                    <td>{{ experiment.index }}</td>
-                    <td>{{ experiment.control_columns }}</td>
-                </tr>
+    <nav id="sidebar">
+        <button id="sidebar-toggle" aria-label="Toggle sidebar" title="Toggle sidebar">
+            <span id="toggle-icon">◀</span>
+        </button>
+        <h2>Report Contents</h2>
+        <ul>
+            <li><a href="#experiment-overview">Experiment Overview</a></li>
+            <li><a href="#sampling-depth">Sampling Depth</a></li>
+            {% if trisynthon_plots %}<li><a href="#trisynthon">Trisynthon Overlap</a></li>{% endif %}
+            {% if disynthon_plots %}<li><a href="#disynthon">Disynthon Overlap</a></li>{% endif %}
+            {% if top_disynthons_plots %}<li><a href="#top-disynthon">Top Disynthon Enrichment</a></li>{% endif %}
+            <li><a href="#top-hits">Top Hit Compounds</a></li>
+            {% if monosynthon_chemical_space_plots %}<li><a href="#monosynthon-space">Monosynthon Space</a></li>{% endif %}
+            {% if ml_fingerprints_to_RF_plots %}<li><a href="#ml-rf">ML Fingerprints (RF)</a></li>{% endif %}
+            {% if ml_fingerprints_to_clf_plots %}<li><a href="#ml-clf">Classifiers</a></li>{% endif %}
+            {% if gnn_classifier_plots %}<li><a href="#gnn">GNN Classifiers</a></li>{% endif %}
+        </ul>
+    </nav>
+
+    <main id="main">
+        <header>
+            <h1>DEL Analysis Report</h1>
+            <div class="date">Generated on {{ now_date if now_date else "Today" }}</div>
+        </header>
+
+        <!-- Experiment Information Section -->
+        <section id="experiment-overview">
+            <h2>Experiment Overview</h2>
+            {% if experiment_info %}
+            <div style="overflow-x: auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Experiment Name</th>
+                            <th>Experiment Index</th>
+                            <th>Control Columns</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for experiment in experiment_info %}
+                        <tr>
+                            <td>{{ experiment.name }}</td>
+                            <td>{{ experiment.index }}</td>
+                            <td>{{ experiment.control_columns }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="placeholder">No experiment information available.</p>
+            {% endif %}
+        </section>
+
+        <!-- Side-by-side Sampling Depth Sections -->
+        <section id="sampling-depth">
+            <div class="side-by-side-container">
+                <div>
+                    <h2>Sampling Depth</h2>
+                    {% if sampling_depth_only %}
+                    <ul class="data-list">
+                        {% for item in sampling_depth_only %}
+                        <li>{{ item }}</li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <p class="placeholder">No sampling depth data.</p>
+                    {% endif %}
+                </div>
+
+                <div>
+                    <h2>Sampling Depth Minimum</h2>
+                    {% if sampling_depth_values %}
+                    <ul class="data-list">
+                        {% for value in sampling_depth_values %}
+                        <li>{{ value }}</li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <p class="placeholder">No sampling depth values.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </section>
+
+        <!-- Trisynthon Overlap Section -->
+        {% if trisynthon_plots %}
+        <section id="trisynthon">
+            <h2>Trisynthon Overlap</h2>
+            <div class="figure-grid">
+                {% for plot in trisynthon_plots %}
+                <div class="figure-item">
+                    {% if plot.type == 'svg' %}
+                        <div class="svg-container">{{ plot.data|safe }}</div>
+                    {% else %}
+                        <img src="data:image/png;base64,{{ plot.data }}" alt="{{ plot.name }}">
+                    {% endif %}
+                    <div class="caption">{{ plot.name }}</div>
+                </div>
                 {% endfor %}
-            </tbody>
-        </table>
-        {% else %}
-        <p class="placeholder">No experiment information available.</p>
+            </div>
+        </section>
         {% endif %}
-    </section>
 
-    <!-- Side-by-side Sampling Depth Sections -->
-    <div class="side-by-side">
-        <!-- Sampling Depth Section -->
-        <section>
-            <h2>Sampling Depth</h2>
-            {% if sampling_depth_only %}
-            <ul>
-                {% for item in sampling_depth_only %}
-                <li>{{ item }}</li>
+        <!-- Disynthon Overlap Section -->
+        {% if disynthon_plots %}
+        <section id="disynthon">
+            <h2>Disynthon Overlap</h2>
+            <div class="figure-grid">
+                {% for plot in disynthon_plots %}
+                <div class="figure-item">
+                    {% if plot.type == 'svg' %}
+                        <div class="svg-container">{{ plot.data|safe }}</div>
+                    {% else %}
+                        <img src="data:image/png;base64,{{ plot.data }}" alt="{{ plot.name }}">
+                    {% endif %}
+                    <div class="caption">{{ plot.name }}</div>
+                </div>
                 {% endfor %}
-            </ul>
+            </div>
+        </section>
+        {% endif %}
+
+        <!-- Top Disynthon Overlap Section -->
+        {% if top_disynthons_plots %}
+        <section id="top-disynthon">
+            <h2>Top Disynthon Enrichment</h2>
+            <div class="figure-grid">
+                {% for plot in top_disynthons_plots %}
+                <div class="figure-item">
+                    {% if plot.type == 'svg' %}
+                        <div class="svg-container">{{ plot.data|safe }}</div>
+                    {% else %}
+                        <img src="data:image/png;base64,{{ plot.data }}" alt="{{ plot.name }}">
+                    {% endif %}
+                    <div class="caption">{{ plot.name }}</div>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+
+        <!-- Top Hit Compound Plots Section -->
+        <section id="top-hits">
+            <h2>Top Hit Compound Plots</h2>
+            {% if top_hits_plots %}
+            <div class="figure-grid">
+                {% for plot in top_hits_plots %}
+                <div class="figure-item">
+                    {% if plot.type == 'svg' %}
+                        <div class="svg-container">{{ plot.data|safe }}</div>
+                    {% else %}
+                        <img src="data:image/png;base64,{{ plot.data }}" alt="{{ plot.name }}">
+                    {% endif %}
+                    <div class="caption">{{ plot.name }}</div>
+                </div>
+                {% endfor %}
+            </div>
             {% else %}
-            <p class="placeholder">No sampling depth dictionary available.</p>
+            <p class="placeholder">No top hit compound plots available.</p>
             {% endif %}
         </section>
 
-        <!-- Sampling Depth Minimum Section -->
-        <section>
-            <h2>Sampling Depth Minimum</h2>
-            {% if sampling_depth_values %}
-            <ul>
-                {% for value in sampling_depth_values %}
-                <li>{{ value }}</li>
+        <!-- Monosynthon Feature Space Section -->
+        {% if monosynthon_chemical_space_plots %}
+        <section id="monosynthon-space">
+            <h2>Monosynthon Feature Space</h2>
+            <div style="display: flex; flex-direction: column; gap: 30px; align-items: center;">
+                {% for plot in monosynthon_chemical_space_plots %}
+                <div class="figure-item" style="width: 100%; max-width: 900px; margin: 0 auto;">
+                    {% if plot.type == 'html' %}
+                        <div class="html-content-wrapper" style="height: 650px; overflow: hidden; border: 1px solid #eee; border-radius: 8px; background: white;">
+                            <iframe srcdoc="{{ plot.content|e }}" style="width: 100%; height: 100%; border: none;" title="{{ plot.name }}"></iframe>
+                        </div>
+                    {% elif plot.type == 'svg' %}
+                        <div class="svg-container">{{ plot.data|safe }}</div>
+                    {% else %}
+                        <img src="data:image/png;base64,{{ plot.data }}" alt="{{ plot.name }}">
+                    {% endif %}
+                    <div class="caption" style="text-align: center; margin-top: 10px;">{{ plot.name }}</div>
+                </div>
                 {% endfor %}
-            </ul>
-            {% else %}
-            <p class="placeholder">No sampling depth values available.</p>
-            {% endif %}
+            </div>
         </section>
-    </div>
+        {% endif %}
 
-    <!-- Trisynthon Overlap Section -->
-    {% if trisynthon_plots %}
-    <section>
-        <h2>Trisynthon Overlap</h2>
-        {% for plot in trisynthon_plots %}
-        <img src="data:image/png;base64,{{ plot }}" alt="Trisynthon Plot" class="single-plot">
-        {% endfor %}
-    </section>
-    {% endif %}
+        <!-- ML Fingerprints to Regression Section -->
+        {% if ml_fingerprints_to_RF_plots %}
+        <section id="ml-rf">
+            <h2>ML Fingerprints to Regression</h2>
+            <div class="figure-grid">
+                {% for plot in ml_fingerprints_to_RF_plots %}
+                <div class="figure-item">
+                    {% if plot.type == 'svg' %}
+                        <div class="svg-container">{{ plot.data|safe }}</div>
+                    {% else %}
+                        <img src="data:image/png;base64,{{ plot.data }}" alt="{{ plot.name }}">
+                    {% endif %}
+                    <div class="caption">{{ plot.name }}</div>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
 
+        <!-- Classifier Plots Section -->
+        {% if ml_fingerprints_to_clf_plots %}
+        <section id="ml-clf">
+            <h2>Classifier Plots</h2>
+            <div class="figure-grid">
+                {% for plot in ml_fingerprints_to_clf_plots %}
+                <div class="figure-item">
+                    {% if plot.type == 'svg' %}
+                        <div class="svg-container">{{ plot.data|safe }}</div>
+                    {% else %}
+                        <img src="data:image/png;base64,{{ plot.data }}" alt="{{ plot.name }}">
+                    {% endif %}
+                    <div class="caption">{{ plot.name }}</div>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
 
-    <!-- Disynthon Overlap Section -->
-    {% if disynthon_plots %}
-    <section>
-        <h2>Disynthon Overlap</h2>
-        {% for plot in disynthon_plots %}
-        <img src="data:image/png;base64,{{ plot }}" alt="Disynthon Plot" class="single-plot">
-        {% endfor %}
-    </section>
-    {% endif %}
+        <!-- MPNN Classifier Plots Section -->
+        {% if gnn_classifier_plots %}
+        <section id="gnn">
+            <h2>GNN Classifier Plots</h2>
+            <div class="figure-grid">
+                {% for plot in gnn_classifier_plots %}
+                <div class="figure-item">
+                    {% if plot.type == 'svg' %}
+                        <div class="svg-container">{{ plot.data|safe }}</div>
+                    {% else %}
+                        <img src="data:image/png;base64,{{ plot.data }}" alt="{{ plot.name }}">
+                    {% endif %}
+                    <div class="caption">{{ plot.name }}</div>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
 
-    <!-- Top Disynthon Overlap Section -->
-    {% if top_disynthons_plots %}
-    <section>
-        <h2>Top Disynthon Enrichment</h2>
-        {% for plot in top_disynthons_plots %}
-        <img src="data:image/png;base64,{{ plot }}" alt="Top Disynthon Enrichment Plot" class="single-plot">
-        {% endfor %}
-    </section>
-    {% endif %}
+        <footer>
+            <p>DEL Analysis Report &copy; {{ now_year if now_year else "2025" }} | Generated by DELi</p>
+        </footer>
+    </main>
 
-    <!-- Top Hit Compound Plots Section -->
-    {% if top_hits_plots %}
-    <section>
-        <h2>Top Hit Compound Plots</h2>
-        {% for plot in top_hits_plots %}
-        <img src="data:image/png;base64,{{ plot }}" alt="Top Hit Compound Plot" class="single-plot">
-        {% endfor %}
-    </section>
-    {% else %}
-    <section>
-        <h2>Top Hit Compound Plots</h2>
-        <p class="placeholder">No top hit compound plots available.</p>
-    </section>
-    {% endif %}
-
-    <!-- Monosynthon Feature Space Section -->
-    {% if monosynthon_chemical_space_plots %}
-    <section>
-        <h2>Monosynthon Feature Space</h2>
-        {% for plot in monosynthon_chemical_space_plots %}
-        <div style="margin: 20px 0;">
-            {{ plot|safe }}
-        </div>
-        {% endfor %}
-    </section>
-    {% endif %}
-
-    <!-- ML Fingerprints to Regression Section -->
-    {% if ml_fingerprints_to_RF_plots %}
-    <section>
-        <h2>ML Fingerprints to Regression</h2>
-        {% for plot in ml_fingerprints_to_RF_plots %}
-        <img src="data:image/png;base64,{{ plot }}" alt="ML Fingerprints to Regression Plot" class="single-plot">
-        {% endfor %}
-    </section>
-    {% endif %}
-
-    <!-- Classifier Plots Section -->
-    {% if ml_fingerprints_to_clf_plots %}
-    <section>
-        <h2>Classifier Plots</h2>
-        {% for plot in ml_fingerprints_to_clf_plots %}
-        <img src="data:image/png;base64,{{ plot }}" alt="Classifier Plot" class="single-plot">
-        {% endfor %}
-    </section>
-    {% endif %}
-
-    <!-- MPNN Classifier Plots Section -->
-    {% if gnn_classifier_plots %}
-    <section>
-        <h2>GNN Classifier Plots</h2>
-        {% for plot in gnn_classifier_plots %}
-        <img src="data:image/png;base64,{{ plot }}" alt="GNN Classifier Plot" class="single-plot">
-        {% endfor %}
-    </section>
-    {% endif %}
-
-    <footer>
-        <p>DEL Analysis Report &copy; 2024</p>
-    </footer>
+    <script>
+        // Sidebar toggle functionality
+        const sidebar = document.getElementById('sidebar');
+        const sidebarToggle = document.getElementById('sidebar-toggle');
+        const toggleIcon = document.getElementById('toggle-icon');
+        const main = document.getElementById('main');
+        
+        // Check for saved state in localStorage
+        const isCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
+        if (isCollapsed) {
+            sidebar.classList.add('collapsed');
+            toggleIcon.textContent = '▶';
+        }
+        
+        sidebarToggle.addEventListener('click', function() {
+            sidebar.classList.toggle('collapsed');
+            const collapsed = sidebar.classList.contains('collapsed');
+            toggleIcon.textContent = collapsed ? '▶' : '◀';
+            localStorage.setItem('sidebarCollapsed', collapsed);
+        });
+        
+        // Optional: Simple lightbox script could go here
+        document.querySelectorAll('.figure-item img').forEach(img => {
+            img.onclick = function() {
+                // Simple new tab open for full size
+                var w = window.open("");
+                w.document.write(img.outerHTML);
+            }
+        });
+    </script>
 </body>
 </html>
