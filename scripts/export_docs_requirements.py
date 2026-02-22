@@ -9,18 +9,22 @@ Usage:
 This script prefers the PEP 621 `dependency-groups.docs` table, falling back to
 `project.optional-dependencies.docs` if present.
 """
+
 import argparse
 import pathlib
 import sys
 
+
 # Prefer stdlib tomllib (3.11+), fall back to tomli package for older runners
 try:
     import tomllib  # Python 3.11+
+
     def loads_toml(s: str):
         return tomllib.loads(s)
 except Exception:
     try:
         import tomli
+
         def loads_toml(s: str):
             return tomli.loads(s)
     except Exception:
@@ -29,6 +33,7 @@ except Exception:
 
 
 def main():
+    """run the script"""
     parser = argparse.ArgumentParser(description="Export docs dependency group to a requirements file.")
     parser.add_argument("--pyproject", default="pyproject.toml", help="Path to pyproject.toml")
     parser.add_argument("--output", default="docs/requirements-docs.txt", help="Output requirements file")
@@ -73,5 +78,5 @@ def main():
     print(f"Wrote {len(lines)} requirement(s) to {out_path}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

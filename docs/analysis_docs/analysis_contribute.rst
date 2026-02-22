@@ -1,7 +1,7 @@
 Contributing to DELi Analysis
 =============================
 
-The best entry point for contributing to DELi analysis is to review the methods available 
+The best entry point for contributing to DELi analysis is to review the methods available
 in `cube_class.py`. If you find a method that would be ideal to add into automated analysis/
 report generation, follow these steps:
 
@@ -23,5 +23,5 @@ report generation, follow these steps:
 - Useful for debugging and rapid prototyping of new analysis features
 
 **Custom Reports:**
-Users interested in generating custom reports can provide their own `.html` template to 
+Users interested in generating custom reports can provide their own `.html` template to
 be used with DELi interfacing with Jinja2.

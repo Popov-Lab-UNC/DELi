@@ -15,4 +15,7 @@ yours cannot, please open an issue on the DELi GitHub repository to add support)
 
     defining_libraries
     defining_building_blocks
+    defining_enumerators
+    defining_reactions
+    defining_tool_compounds
     defining_hamming

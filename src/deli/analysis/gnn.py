@@ -8,20 +8,23 @@ from tqdm import tqdm
 
 # --- GNN code implemented from itakigawa's resources on GitHub ---
 
+
 # Define the convolution layer based on the architecture (GIN or GAT)
-def MyConv(node_dim, edge_dim, arch='GIN'):
+def MyConv(node_dim, edge_dim, arch="GIN"):
     """Creates a graph convolutional layer based on the chosen architecture."""
-    if arch == 'GIN':
+    if arch == "GIN":
         h = nn.Sequential(nn.Linear(node_dim, node_dim, bias=True))
         return GINEConv(h, edge_dim=edge_dim)
-    elif arch == 'GAT':
+    elif arch == "GAT":
         return GATv2Conv(node_dim, node_dim, edge_dim=edge_dim)
     else:
         raise ValueError(f"Unknown architecture: {arch}")
 
+
 class MyGNN(nn.Module):
     """Stacked GNN layers with activation."""
-    def __init__(self, node_dim, edge_dim, arch='GIN', num_layers=3):
+
+    def __init__(self, node_dim, edge_dim, arch="GIN", num_layers=3):
         super().__init__()
         self.convs = nn.ModuleList([MyConv(node_dim, edge_dim, arch) for _ in range(num_layers)])
 
@@ -34,14 +37,15 @@ class MyGNN(nn.Module):
 
 class Final_Network(nn.Module):
     """Full GNN-based classifier with feature encoding and prediction head."""
-    def __init__(self, node_dim, edge_dim, arch='GIN', num_layers=3, encoding='onehot'):
+
+    def __init__(self, node_dim, edge_dim, arch="GIN", num_layers=3, encoding="onehot"):
         super().__init__()
 
         self.encoding = encoding
 
-        if encoding != 'onehot':
-            self.atom_encoder = nn.Embedding(num_embeddings=118+1, embedding_dim=64)
-            self.bond_encoder = nn.Embedding(num_embeddings=21+1, embedding_dim=8)
+        if encoding != "onehot":
+            self.atom_encoder = nn.Embedding(num_embeddings=118 + 1, embedding_dim=64)
+            self.bond_encoder = nn.Embedding(num_embeddings=21 + 1, embedding_dim=8)
             node_dim = (node_dim - 1) + 64
             edge_dim = (edge_dim - 1) + 8
         else:
@@ -58,12 +62,12 @@ class Final_Network(nn.Module):
             nn.ReLU(),
             nn.BatchNorm1d(embed_dim),
             nn.Dropout(p=0.5),
-            nn.Linear(embed_dim, 2)
+            nn.Linear(embed_dim, 2),
         )
 
     def forward(self, x, edge_index, edge_attr, batch):
         """Forward pass through encoding, GNN, and prediction head."""
-        if self.encoding == 'onehot':
+        if self.encoding == "onehot":
             x0 = F.one_hot(x[:, 0].to(torch.int64), num_classes=118 + 1)
             edge_attr0 = F.one_hot(edge_attr[:, 0].to(torch.int64), num_classes=21 + 1)
         else:
@@ -86,22 +90,23 @@ class Final_Network(nn.Module):
 def atom_feature(atom):
     return [atom.GetAtomicNum(), atom.GetDegree(), atom.GetNumImplicitHs(), atom.GetIsAromatic()]
 
+
 def bond_feature(bond):
     return [bond.GetBondTypeAsDouble(), bond.GetStereo()]
 
 
 # Function to convert SMILES to PyG data format
-def smi_to_pyg(smi, y, encoding='embedding'):
+def smi_to_pyg(smi, y, encoding="embedding"):
     mol = Chem.MolFromSmiles(smi)
     if mol is None:
         return None
 
     id_pairs = [(b.GetBeginAtomIdx(), b.GetEndAtomIdx()) for b in mol.GetBonds()]
     atom_pairs = [z for (i, j) in id_pairs for z in [(i, j), (j, i)]]
-    
+
     bonds = [mol.GetBondBetweenAtoms(i, j) for (i, j) in atom_pairs]
 
-    if encoding == 'onehot':
+    if encoding == "onehot":
         atom_features = [[a.GetAtomicNum()] for a in mol.GetAtoms()]
         bond_features = [[b.GetBondTypeAsDouble()] for b in bonds]
     else:
@@ -114,12 +119,16 @@ def smi_to_pyg(smi, y, encoding='embedding'):
         edge_attr=torch.LongTensor(bond_features).unsqueeze(1),
         y=torch.LongTensor([y]),
         mol=mol,
-        smiles=smi
+        smiles=smi,
     )
 
+
 class MyDataset(Dataset):
-    def __init__(self, smiles, response, encoding='embedding'):
-        mols = [smi_to_pyg(smi, y, encoding) for smi, y in tqdm(zip(smiles, response), total=len(smiles))]
+    def __init__(self, smiles, response, encoding="embedding"):
+        mols = [
+            smi_to_pyg(smi, y, encoding)
+            for smi, y in tqdm(zip(smiles, response), total=len(smiles))
+        ]
         self.X = [m for m in mols if m]
 
     def __getitem__(self, idx):

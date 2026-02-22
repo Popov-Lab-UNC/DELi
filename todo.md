@@ -4,20 +4,23 @@ There are plenty new features and modules we would like to add to DELi.
 Below is a *rough* outline of which features we hope to add and when we think they might get done
 
 2025 Q4
-- [ ] Non-uniform reactions for library enumeration
-- [ ] Adding `reactions` to the DELi data directory to support better reaction management/readability
+- [x] Non-uniform reactions for library enumeration
+- [x] Adding `reactions` to the DELi data directory to support better reaction management/readability
+- [x] Improved logging and configuration for decoding module
+- [x] Support for tool compounds
+- [x] Support for Null building blocks
+
+2026 Q1/2
 - [ ] Support for any filesystem using `fsspec`
 - [ ] UMI clustering
-- [ ] Support for Null building blocks and tool compounds
+- [ ] Example nextflow pipelines for decoding in parallel
 
-2026 Q1
+2026 Q3/4
+- [ ] Addition of DEL design module for compounds (not just tags)
 - [ ] Overhaul of analysis module, specifically the code class to be more generalizable to all file inputs (will result in a major version bump)
 - [ ] Additional analysis and enrichment metrics surrounding disynthons
 - [ ] Enhanced ML methods for analysis
 - [ ] Support for clustering DELs using ``bblean``
-
-2026 Q2
-- [ ] Addition of DEL design module for compounds (not just tags)
 
 The future
 - [ ] More support for parallelization

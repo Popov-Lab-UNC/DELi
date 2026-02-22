@@ -1,22 +1,10 @@
-"""observed_seq alignment functions"""
+"""observed_barcode alignment functions"""
 
-from .align import (
-    Aligner,
-    HybridSemiGlobalAligner,
-    HybridSemiGlobalAlignment,
-    SemiGlobalAligner,
-    SemiGlobalAlignment,
-)
-from .io import SequenceDirectoryReader, SequenceGlobReader, SequenceReader
+from .io import MultiFileSequenceReader, SequenceDirectoryReader, SequenceReader
 
 
 __all__ = [
-    "Aligner",
-    "SemiGlobalAligner",
-    "SemiGlobalAlignment",
-    "HybridSemiGlobalAligner",
-    "HybridSemiGlobalAlignment",
     "SequenceReader",
     "SequenceDirectoryReader",
-    "SequenceGlobReader",
+    "MultiFileSequenceReader",
 ]
