@@ -62,7 +62,7 @@ Merges all parquet count files from chunked counting into a single final count m
 **Outputs:**
 - Final counts parquet file
 
-### SummerizeDecodeRun
+### SummarizeDecodeRun
 Combines final counts with decode statistics to produce comprehensive summary statistics.
 
 **Resources:** 4 GB memory, 1 CPU
@@ -198,7 +198,6 @@ The workflow generates the following output files in the specified output direct
 ## Requirements
 
 - Nextflow >= 21.04.0
-- Python 3.7+ with pyyaml, polars, and pandasfor data processing
 - DELi package installed and available in PATH
 - For HPC/AWS: appropriate cluster/cloud credentials and access
 

@@ -124,11 +124,11 @@ process MergeDecodeStatistics {
     val deli_args
 
     output:
-    path "${prefix}_decode_stats.json", emit: ndjson
+    path "${prefix}_decode_stats.json", emit: merged_stats
 
     """
     deli ${deli_args} decode merge-stats \
-        "${*_decode_statistics.json}" \
+        *_decode_statistics.json \
         --selection-file "${selection_file}" \
         --out-loc "${prefix}_decode_stats.json"
     """
@@ -150,7 +150,7 @@ process CollectDecodeChunks {
     """
     # Run deli decode collect on all TSV files
     deli ${deli_args} decode collect \
-        ${*_decoded.tsv} \
+        *_decoded.tsv \
         --out-loc "${prefix}_collected.ndjson"
     """
 }
@@ -163,7 +163,7 @@ process CountChunk {
     tag "${ndjson_chunk.simplename}"
 
     input:
-    path (*.ndjson, arity: '1..*')
+    path ("*.ndjson", arity: '1..*')
     val prefix
     val deli_args
 
@@ -207,7 +207,7 @@ process CollectCountChunks {
 
 process SummarizeDecodeRun {
     /*
-     * Summarize the decode run by merging the decode statistics with the final counts to produce a final stats JSON file
+     * Summarize the decode run by merging the decode statistics with the final counts to produce a final decode summary JSON file
      */
     publishDir "${params.out_dir}", mode: 'move'
 
@@ -221,7 +221,7 @@ process SummarizeDecodeRun {
 
     script:
     """
-    deli ${deli_args} decode summerize \
+    deli ${deli_args} decode summarize \
         "${merged_counts}" \
         "${decode_stats}" \
         --out-loc "${prefix}_decode_summary.json"
@@ -290,7 +290,7 @@ workflow {
 
     decoded = DecodeChunk(fastq_chunks, selection_file_path, prefix_ch, Channel.value(deli_args))
 
-    collected_decodes = CollectAllChunks(
+    collected_decodes = CollectDecodeChunks(
         decoded.decoded_tsv.collect(),
         prefix_ch,
         Channel.value(deli_args)
@@ -304,7 +304,7 @@ workflow {
     )
 
     WriteDecodeReport(
-        merged_stats.final_stats,
+        merged_stats.merged_stats,
         prefix_ch
     )
 
@@ -322,7 +322,7 @@ workflow {
         prefix_ch
     )
 
-    SummerizeDecodeRun(
+    SummarizeDecodeRun(
         collected_counts.merged_counts,
         merged_stats.decode_stats,
         prefix_ch

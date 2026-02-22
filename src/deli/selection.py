@@ -26,7 +26,7 @@ class Selection:
         Parameters
         ----------
         selection_id: str
-            the unique id for this selection; unqiueness is not programmatically enforced
+            the unique id for this selection; uniqueness is not programmatically enforced
             but recommended for tracking selections
         library_collection: DELibraryCollection
             the DEL collection used in the selection
