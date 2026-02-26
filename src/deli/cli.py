@@ -1142,7 +1142,7 @@ def count_compounds(ctx, collected_decodes, out_loc, cluster_umis, keep_raw_coun
 
 @decode_group.command(name="report")
 @click.argument("decode_stats_file", nargs=-1, type=click.Path(exists=True), required=True)
-@click.option("--selection-file", "-s", type=click.Path(exists=True), required=False, default=None, help="Selection file used to generate the report; fills in libraries with 0 reads if provided")
+@click.option("--selection-file", "-s", type=click.Path(exists=True), required=False, default=None, help="Selection file used to generate the report")
 @click.option("--out-loc", "-o", type=click.Path(), required=False, default="./decode_report.html", help="Output location to save report to")
 @click.pass_context
 @with_deli_quote
