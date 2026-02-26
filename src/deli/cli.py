@@ -1067,7 +1067,7 @@ def count_compounds(ctx, collected_decodes, out_loc, cluster_umis, keep_raw_coun
             out_file = open(out_loc, "w")
         else:
             out_file = gzip.open(out_loc, "wt")
-        writer = lambda x: out_file.write("\n".join(["\t".join([str(val) for val in rd.values()]).strip() for rd in x]))
+        writer = lambda x: out_file.write("\n".join(["\t".join([str(val) for val in rd.values()]).strip() for rd in x]) + "\n")
         _header = ["library_id", "bb_ids", "count"]
         if keep_raw_count:
             _header.append("raw_count")
@@ -1142,7 +1142,7 @@ def count_compounds(ctx, collected_decodes, out_loc, cluster_umis, keep_raw_coun
 
 @decode_group.command(name="report")
 @click.argument("decode_stats_file", nargs=-1, type=click.Path(exists=True), required=True)
-@click.argument("selection_file", type=click.Path(exists=True), required=False, default=None)
+@click.option("--selection-file", "-s", type=click.Path(exists=True), required=False, default=None, help="Selection file used to generate the report; fills in libraries with 0 reads if provided")
 @click.option("--out-loc", "-o", type=click.Path(), required=False, default="./decode_report.html", help="Output location to save report to")
 @click.pass_context
 @with_deli_quote
