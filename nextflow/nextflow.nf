@@ -69,15 +69,15 @@ process ExtractSequenceFiles {
     # Write selection_id
     selection_id = config.get('selection_id', 'unknown')
     with open('selection_id.txt', 'w') as f:
-        f.write(selection_id + '\n')
+        f.write(selection_id + '\\n')
 
     # Write sequence files
     sequence_files = config.get('sequence_files', [])
     with open('files.txt', 'w') as f:
         if isinstance(sequence_files, list):
-            f.write('\n'.join(sequence_files) + '\n')
+            f.write('\\n'.join(sequence_files) + '\\n')
         else:
-            f.write(sequence_files + '\n')
+            f.write(sequence_files + '\\n')
     """
 }
 
