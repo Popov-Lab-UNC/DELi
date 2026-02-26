@@ -106,8 +106,7 @@ process DecodeChunk {
         "${fastq_chunk}" \
         --out-dir ./ \
         --prefix "${prefix}_${fastq_chunk.simplename}" \
-        --skip-report \
-        --exclude-score
+        --skip-report
     """
 }
 
