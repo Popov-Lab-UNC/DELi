@@ -285,7 +285,7 @@ workflow {
         .splitText()
         .map { it.trim() }
         .map { file(it) }
-        .splitFastq(by: params.chunk_size)
+        .splitFastq(by: params.chunk_size, file: true)
 
     decoded = DecodeChunk(fastq_chunks, selection_file_path, prefix_ch, Channel.value(deli_args))
 
@@ -323,7 +323,7 @@ workflow {
 
     SummarizeDecodeRun(
         collected_counts.merged_counts,
-        merged_stats.decode_stats,
+        merged_stats.merged_stats,
         prefix_ch
     )
 }
