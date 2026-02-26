@@ -86,7 +86,7 @@ process DecodeChunk {
      * Run deli decode run on a chunk of FASTQ
      * Outputs one TSV file per chunk (no split-by-lib)
      */
-    tag "${fastq_chunk.simplename}"
+    tag "${fastq_chunk.simpleName}"
 
     input:
     path fastq_chunk
@@ -95,8 +95,8 @@ process DecodeChunk {
     val deli_args
 
     output:
-    path "${prefix}_${fastq_chunk.simplename}_decoded.tsv", emit: decoded_tsv
-    path "${prefix}_${fastq_chunk.simplename}_decode_statistics.json", emit: decode_stats
+    path "${prefix}_${fastq_chunk.simpleName}_decoded.tsv", emit: decoded_tsv
+    path "${prefix}_${fastq_chunk.simpleName}_decode_statistics.json", emit: decode_stats
     path "deli.log", emit: deli_log
     """
     mkdir -p decoded_output
@@ -105,7 +105,7 @@ process DecodeChunk {
         "${selection_file}" \
         "${fastq_chunk}" \
         --out-dir ./ \
-        --prefix "${prefix}_${fastq_chunk.simplename}" \
+        --prefix "${prefix}_${fastq_chunk.simpleName}" \
         --skip-report
     """
 }
@@ -214,6 +214,7 @@ process SummarizeDecodeRun {
     path merged_counts
     path decode_stats
     val prefix
+    val deli_args
 
     output:
     path "${prefix}_final_stats.json", emit: final_stats
@@ -235,6 +236,7 @@ process WriteDecodeReport {
     input:
     path final_stats
     val prefix
+    val deli_args
 
     output:
     path "${prefix}_decode_report.html", emit: report
@@ -304,7 +306,8 @@ workflow {
 
     WriteDecodeReport(
         merged_stats.merged_stats,
-        prefix_ch
+        prefix_ch,
+        Channel.value(deli_args)
     )
 
     count_chunks = collected_decodes.ndjson
@@ -324,6 +327,7 @@ workflow {
     SummarizeDecodeRun(
         collected_counts.merged_counts,
         merged_stats.merged_stats,
-        prefix_ch
+        prefix_ch,
+        Channel.value(deli_args)
     )
 }
