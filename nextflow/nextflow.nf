@@ -69,15 +69,15 @@ process ExtractSequenceFiles {
     # Write selection_id
     selection_id = config.get('selection_id', 'unknown')
     with open('selection_id.txt', 'w') as f:
-        f.write(selection_id + '\n')
+        f.write(selection_id + '\\n')
 
     # Write sequence files
     sequence_files = config.get('sequence_files', [])
     with open('files.txt', 'w') as f:
         if isinstance(sequence_files, list):
-            f.write('\n'.join(sequence_files) + '\n')
+            f.write('\\n'.join(sequence_files) + '\\n')
         else:
-            f.write(sequence_files + '\n')
+            f.write(sequence_files + '\\n')
     """
 }
 
@@ -86,7 +86,7 @@ process DecodeChunk {
      * Run deli decode run on a chunk of FASTQ
      * Outputs one TSV file per chunk (no split-by-lib)
      */
-    tag "${fastq_chunk.simplename}"
+    tag "${fastq_chunk.simpleName}"
 
     input:
     path fastq_chunk
@@ -95,8 +95,8 @@ process DecodeChunk {
     val deli_args
 
     output:
-    path "${prefix}_${fastq_chunk.simplename}_decoded.tsv", emit: decoded_tsv
-    path "${prefix}_${fastq_chunk.simplename}_decode_statistics.json", emit: decode_stats
+    path "${prefix}_${fastq_chunk.simpleName}_decoded.tsv", emit: decoded_tsv
+    path "${prefix}_${fastq_chunk.simpleName}_decode_statistics.json", emit: decode_stats
     path "deli.log", emit: deli_log
     """
     mkdir -p decoded_output
@@ -105,9 +105,8 @@ process DecodeChunk {
         "${selection_file}" \
         "${fastq_chunk}" \
         --out-dir ./ \
-        --prefix "${prefix}_${fastq_chunk.simplename}" \
-        --skip-report \
-        --exclude-score
+        --prefix "${prefix}_${fastq_chunk.simpleName}" \
+        --skip-report
     """
 }
 
@@ -160,21 +159,22 @@ process CountChunk {
      * Count compounds from a chunk of the collected NDJSON file
      * Input file contains up to 500,000 NDJSON lines
      */
-    tag "${ndjson_chunk.simplename}"
+    tag "${ndjson_chunk.simpleName}"
 
     input:
-    path ("*.ndjson", arity: '1..*')
+    path ndjson_chunk
     val prefix
     val deli_args
 
     output:
-    path "${ndjson_chunk.simplename}_counted.parquet", emit: counted
+    path "${ndjson_chunk.simpleName}_counted.parquet", emit: counted
 
     script:
+    def chunk_name = ndjson_chunk.simpleName
     """
     deli ${deli_args} decode count \
         "${ndjson_chunk}" \
-        --out-loc "${ndjson_chunk.simplename}_counted.parquet" \
+        --out-loc "${chunk_name}_counted.parquet" \
         --output-format parquet \
         --cluster-umis \
         --keep-raw-count \
@@ -215,9 +215,10 @@ process SummarizeDecodeRun {
     path merged_counts
     path decode_stats
     val prefix
+    val deli_args
 
     output:
-    path "${prefix}_final_stats.json", emit: final_stats
+    path "${prefix}_decode_summary.json", emit: final_stats
 
     script:
     """
@@ -235,7 +236,9 @@ process WriteDecodeReport {
 
     input:
     path final_stats
+    path selection_file
     val prefix
+    val deli_args
 
     output:
     path "${prefix}_decode_report.html", emit: report
@@ -244,6 +247,7 @@ process WriteDecodeReport {
     """
     deli ${deli_args} decode report \
         "${final_stats}" \
+        --selection-file "${selection_file}" \
         --out-loc "${prefix}_decode_report.html"
     """
 }
@@ -286,7 +290,7 @@ workflow {
         .splitText()
         .map { it.trim() }
         .map { file(it) }
-        .splitFastq(by: params.chunk_size)
+        .splitFastq(by: params.chunk_size, file: true)
 
     decoded = DecodeChunk(fastq_chunks, selection_file_path, prefix_ch, Channel.value(deli_args))
 
@@ -305,11 +309,13 @@ workflow {
 
     WriteDecodeReport(
         merged_stats.merged_stats,
-        prefix_ch
+        selection_file_path,
+        prefix_ch,
+        Channel.value(deli_args)
     )
 
     count_chunks = collected_decodes.ndjson
-        .splitText(by: 500_000)
+        .splitText(by: 500_000, file: true)
 
     counts = CountChunk(
         count_chunks,
@@ -324,7 +330,8 @@ workflow {
 
     SummarizeDecodeRun(
         collected_counts.merged_counts,
-        merged_stats.decode_stats,
-        prefix_ch
+        merged_stats.merged_stats,
+        prefix_ch,
+        Channel.value(deli_args)
     )
 }
