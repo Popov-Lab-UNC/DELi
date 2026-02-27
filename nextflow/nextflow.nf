@@ -235,6 +235,7 @@ process WriteDecodeReport {
 
     input:
     path final_stats
+    path selection_file
     val prefix
     val deli_args
 
@@ -245,6 +246,7 @@ process WriteDecodeReport {
     """
     deli ${deli_args} decode report \
         "${final_stats}" \
+        --selection-file "${selection_file}" \
         --out-loc "${prefix}_decode_report.html"
     """
 }
@@ -306,6 +308,7 @@ workflow {
 
     WriteDecodeReport(
         merged_stats.merged_stats,
+        selection_file_path,
         prefix_ch,
         Channel.value(deli_args)
     )
