@@ -218,7 +218,7 @@ process SummarizeDecodeRun {
     val deli_args
 
     output:
-    path "${prefix}_final_stats.json", emit: final_stats
+    path "${prefix}_decode_summary.json", emit: final_stats
 
     script:
     """
