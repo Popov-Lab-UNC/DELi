@@ -159,21 +159,22 @@ process CountChunk {
      * Count compounds from a chunk of the collected NDJSON file
      * Input file contains up to 500,000 NDJSON lines
      */
-    tag "${ndjson_chunk.simplename}"
+    tag "${ndjson_chunk.simpleName}"
 
     input:
-    path ("*.ndjson", arity: '1..*')
+    path ndjson_chunk
     val prefix
     val deli_args
 
     output:
-    path "${ndjson_chunk.simplename}_counted.parquet", emit: counted
+    path "${ndjson_chunk.simpleName}_counted.parquet", emit: counted
 
     script:
+    def chunk_name = ndjson_chunk.simpleName
     """
     deli ${deli_args} decode count \
         "${ndjson_chunk}" \
-        --out-loc "${ndjson_chunk.simplename}_counted.parquet" \
+        --out-loc "${chunk_name}_counted.parquet" \
         --output-format parquet \
         --cluster-umis \
         --keep-raw-count \
@@ -314,7 +315,7 @@ workflow {
     )
 
     count_chunks = collected_decodes.ndjson
-        .splitText(by: 500_000)
+        .splitText(by: 500_000, file: true)
 
     counts = CountChunk(
         count_chunks,
