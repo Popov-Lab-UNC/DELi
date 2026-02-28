@@ -4,6 +4,7 @@ import json
 import os
 from collections.abc import Iterator
 from functools import reduce
+from itertools import accumulate
 from operator import mul
 from pathlib import Path
 from typing import Any, Literal, Optional, Sequence, TypeVar, no_type_check, overload
@@ -251,6 +252,8 @@ class CombinatorialLibrary(Library[DELCompound], DeliDataLoadable):
 
         self._enumerator = enumerator
         self._can_enumerate = (self._enumerator is not None) and self.building_blocks_have_smi()
+
+        self._bb_set_strides = [1, *list(accumulate([len(bb_set) + 1 for bb_set in self.bb_sets[:-1]], mul))]
 
         ### VALIDATION ###
 
@@ -617,6 +620,43 @@ class CombinatorialLibrary(Library[DELCompound], DeliDataLoadable):
             if tool_compound.compound_id == compound_id:
                 return tool_compound
         raise KeyError(f"tool compound id '{compound_id}' not found in library '{self.library_id}'")
+
+    def get_compound_numeric_id(self, bbs: list[BuildingBlock | str]) -> int:
+        """
+        Given the building blocks, return the library specific numeric ID of the compound in the library.
+
+        Accepts either building block objects or building block ids.
+        Order of the the building blocks should be the same as the order of synthesis
+        (i.e. the order of the building block sets in the library object).
+
+        Notes
+        -----
+        This ID is not garunteed to be stable if a user changes the order of the building blocks.
+        Only use this ID if your use case does not alter.
+
+        Parameters
+        ----------
+        bbs: list[BuildingBlock | str]
+            the building blocks that make up the compound, or their corresponding building block ids
+
+        Returns
+        -------
+        int
+            the numeric ID of the library
+
+        Raises
+        ------
+        ValueError
+            not enough or too many building blocks provided
+        """
+        if len(bbs) != self.num_cycles:
+            raise ValueError(f"library has {self.num_cycles} cycles; got {len(bbs)} building blocks")
+        _bb_ids: list[str] = [bb if isinstance(bb, str) else bb.bb_id for bb in bbs]
+        _bb_idxs: list[int] = [
+            bb_set.get_idx_from_bb_id(bb_id, fail_on_missing=True)
+            for bb_id, bb_set in zip(_bb_ids, self.bb_sets, strict=True)
+        ]
+        return sum([bb_idx * stride for bb_idx, stride in zip(_bb_idxs, self._bb_set_strides, strict=True)])
 
 
 class DELibrary(CombinatorialLibrary, BarcodedMixin[DELBarcodeSchema]):

@@ -726,6 +726,86 @@ class BuildingBlockSet(DeliDataLoadable):
         else:
             return self.building_blocks[_idx]
 
+    @overload
+    def get_bb_by_idx(self, query: int, fail_on_missing: Literal[False]) -> BuildingBlock | None: ...
+
+    @overload
+    def get_bb_by_idx(self, query: int, fail_on_missing: Literal[True]) -> BuildingBlock: ...
+
+    def get_bb_by_idx(self, query: int, fail_on_missing: bool = False) -> BuildingBlock | None:
+        """
+        Given the index of a building block in the set, return the corresponding building block
+
+        Notes
+        -----
+        Indexing in building block sets starts at 1 *not* 0.
+        In DELi, the 0 index is reserved for missing building blocks.
+
+        Parameters
+        ----------
+        query: int
+            bb_id index to query
+        fail_on_missing: bool, default False
+            if `True` raise a KeyError is no match is found
+            else return `None`
+
+        Returns
+        -------
+        Optional[BuildingBlock]
+            will be `None` if no matching building block is found
+            else the matching BuildingBlock object
+
+        """
+        if query <= 0:
+            raise ValueError(
+                f"building block index query must be a positive integer; got {query}. "
+                f"Indexing in building block sets starts at 1, not 0."
+            )
+        if query > len(self.building_blocks):
+            if fail_on_missing:
+                raise KeyError(f"BuildingBlock index '{query}' not found in BuildingBlockSet '{self.bb_set_id}'")
+            return None
+        else:
+            return self.building_blocks[query]
+
+    @overload
+    def get_idx_from_bb_id(self, query: str, fail_on_missing: Literal[False]) -> int | None: ...
+
+    @overload
+    def get_idx_from_bb_id(self, query: str, fail_on_missing: Literal[True]) -> int: ...
+
+    def get_idx_from_bb_id(self, query: str, fail_on_missing: bool = False) -> int | None:
+        """
+        Given a building block id, return the index of that building block in the set
+
+        Notes
+        -----
+        Indexing in building block sets starts at 1 *not* 0.
+        In DELi, the 0 index is reserved for missing building blocks.
+
+        Parameters
+        ----------
+        query: str
+            bb_id to query
+        fail_on_missing: bool, default False
+            if `True` raise a KeyError is no match is found
+            else return `None`
+
+        Returns
+        -------
+        Optional[int]
+            will be `None` if no matching building block is found
+            else the index of the matching BuildingBlock object
+
+        """
+        _idx = self._bb_lookup_table.get(query, None)
+        if _idx is None:
+            if fail_on_missing:
+                raise KeyError(f"BuildingBlock id '{query}' not found in BuildingBlockSet '{self.bb_set_id}'")
+            return None
+        else:
+            return _idx
+
     def _get_subset_lookup_table(self) -> dict[str, list[BuildingBlock]]:
         """Get the subset lookup table if it exists, else raise an error"""
         if self._bb_subset_lookup_table is None:

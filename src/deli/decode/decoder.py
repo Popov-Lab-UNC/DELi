@@ -135,6 +135,55 @@ class DecodedCompound(abc.ABC, Generic[C]):
         """
         raise NotImplementedError()
 
+    @abc.abstractmethod
+    def get_global_id(self) -> str:
+        """
+        Get a globally unique ID of the decoded compound
+
+        Notes
+        -----
+        This ID should be unique for each compound across all libraries
+        *used in the current decode run*.
+
+        Returns
+        -------
+        str
+            the unique ID of the decoded compound
+        """
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def get_id(self) -> str:
+        """
+        Get a library unique ID of the decoded compound
+
+        Notes
+        -----
+        This ID should be unique for each compound within a library.
+
+        Returns
+        -------
+        str
+            the library unique ID of the decoded compound
+        """
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def get_numeric_id(self) -> int:
+        """
+        Get a numeric ID for the decoded compound that is unique within the library
+
+        Notes
+        -----
+        Numeric IDs are are only unqiue inside of the library
+
+        Returns
+        -------
+        int
+            a numeric ID for the decoded compound
+        """
+        raise NotImplementedError()
+
 
 class DecodedDELCompound(DecodedCompound[DELCompound]):
     """
@@ -276,6 +325,59 @@ class DecodedDELCompound(DecodedCompound[DELCompound]):
         """
         return self.library.library_id
 
+    def get_global_id(self, delimiter: str = "-") -> str:
+        """
+        Get a globally unique ID of the decoded compound
+
+        Notes
+        -----
+        This ID should be unique for each compound across all libraries
+
+        Returns
+        -------
+        str
+            the unique ID of the decoded compound
+        """
+        return f"{self.get_library_id()}{delimiter}{self.get_id()}"
+
+    def get_id(self, delimiter: str = "-") -> str:
+        """
+        Get a library unique ID of the decoded compound
+
+        Notes
+        -----
+        This ID should be unique for each compound within a library.
+        For DELs, this can be constructed by concatenating the building block IDs in order.
+
+        Returns
+        -------
+        str
+            the library unique ID of the decoded compound
+        """
+        return delimiter.join(bb_call.obj.bb_id for bb_call in self.building_block_calls)
+
+    def get_numeric_id(self):
+        """
+        Get a numeric ID for the decoded compound that is unique within the library
+
+        These IDs can be useful in contexts like databases, where storing and sorting
+        of string IDs can be less efficient than numeric IDs.
+
+        Numeric IDs are linked to the order of the building blocks provided when the
+        library was initialized. These IDs are not guaranteed to be stable if
+        the order of the building blocks is not guaranteed to be the same between runs.
+
+        Notes
+        -----
+        Numeric IDs are are only unqiue inside of the library.
+
+        Returns
+        -------
+        int
+            a numeric ID for the decoded compound
+        """
+        return self.library.get_compound_numeric_id([bb_call.obj for bb_call in self.building_block_calls])
+
     def get_score(self) -> float:
         """
         Get the decode score of the decoded compound
@@ -398,6 +500,45 @@ class DecodedToolCompound(DecodedCompound[ToolCompound]):
             the library ID
         """
         return self.tool_compound.compound_id
+
+    def get_global_id(self):
+        """
+        Get a globally unique ID of the decoded compound
+
+        For tool compounds, this is the tool compound ID
+
+        Returns
+        -------
+        str
+            the unique ID of the decoded compound
+        """
+        return self.tool_compound.compound_id
+
+    def get_id(self):
+        """
+        Get a library unique ID of the decoded compound
+
+        For tool compounds, this is the same as the global ID since there is only one library
+
+        Returns
+        -------
+        str
+            the library unique ID of the decoded compound
+        """
+        return self.tool_compound.compound_id
+
+    def get_numeric_id(self):
+        """
+        Get a numeric ID for the decoded compound that is unique within the library
+
+        For tool compounds, since there is only one compound, this will always return 1
+
+        Returns
+        -------
+        int
+            a numeric ID for the decoded compound
+        """
+        return 1
 
     def get_score(self) -> float:
         """
