@@ -17,6 +17,7 @@ R = TypeVar("R")
 # DEFAULT SETTINGS
 _BB_MASK_TOKEN_DEFAULT = "###"
 _NUC_2_INT_DEFAULT = "A:0,T:1,C:2,G:3"
+_COMP_ID_SEP_DEFAULT = "-"
 
 # DEFAULT HAMMING CODE ORDERS
 _hamming_order_8_4 = "p0,p1,p2,d3,p4,d5,d6,d7"
@@ -37,6 +38,8 @@ DELI_DATA_SUB_DIRS: Final = ("libraries", "building_blocks", "reactions", "tool_
 DELI_DATA_EXTENSIONS: Final = ("json", "csv", "rxn", "json")
 
 DELI_CONFIG: "_DeliConfig | None" = None  # global to hold the loaded DELi config
+
+ID_RESERVERD_TOKENS = [",", "."]
 
 
 class DELiConfigError(Exception):
@@ -115,13 +118,15 @@ class _DeliConfig:
         nuc_2_int: dict[str, int],
         deli_data_dir: Optional[Path] = None,
         hamming_codes: Optional[dict[str, tuple[list[int], list[int]]]] = None,
+        comp_id_sep: str = _COMP_ID_SEP_DEFAULT,
     ):
-        # process deli data director
+        # process deli data directory
         self._deli_data_dir: Path | None = None
         if deli_data_dir is not None:
             self.deli_data_dir = deli_data_dir
         self._bb_mask: str = bb_mask
         self._nuc_2_int: dict[str, int] = nuc_2_int
+        self.comp_id_sep = comp_id_sep
 
         self.hamming_codes: dict[str, tuple[list[int], list[int]]]
         if hamming_codes is not None:
@@ -324,11 +329,18 @@ class _DeliConfig:
                     )
                 _codes[name] = (_true_order_nums, _real_order_nums)
 
+        # get the comp_id_sep
+        try:
+            _comp_id_sep = config.get("deli.compound", "comp_id_sep")
+        except (configparser.NoOptionError, configparser.NoSectionError):
+            _comp_id_sep = _COMP_ID_SEP_DEFAULT
+
         _config = cls(
             deli_data_dir=_deli_data_dir_path,
             bb_mask=_bb_mask,
             nuc_2_int=_nuc_2_int,
             hamming_codes=_codes,
+            comp_id_sep=_comp_id_sep,
         )
         _config.location = Path(path).resolve().absolute()
         return _config
@@ -495,7 +507,9 @@ def init_deli_config(
         f"hamming_order = {_hamming_order_15_4}\n"
         f"custom_order = {_custom_order_15_4}\n\n"
         f"[deli.buildingblocks]\n"
-        f"BB_MASK = {_BB_MASK_TOKEN_DEFAULT}\n"
+        f"BB_MASK = {_BB_MASK_TOKEN_DEFAULT}\n\n"
+        f"[deli.compound]\n"
+        f"comp_id_sep = {_COMP_ID_SEP_DEFAULT}\n"
     )
     with open(_path, "w") as f:
         f.write(_config)

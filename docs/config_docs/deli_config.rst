@@ -24,6 +24,7 @@ DELi looks for a handful of sections:
 - ``deli.data``: holds settings related to the DELi Data Directory
 - ``deli.buildingblocks``: holds settings related to how to handle building blocks
 - ``deli.hamming``: holds settings related to hamming encoding/decoding
+- ``deli.compound``: holds settings related to DEL compound ID generation
 
 .. warning::
     The config file is case sensitive.
@@ -66,3 +67,12 @@ how this works in the :ref:`custom hamming docs <deli-custom-hamming-docs>`.
     The ":" character is reserved for the :ref:`error correction parser <error-correction-docs>`,
     thus DELi will not allow the use of it in the names of hamming matrices. If you try to use it,
     DELi will raise a ``DELiConfigError``.
+
+``deli.compound``
+^^^^^^^^^^^^^^^^^
+This section has one key: ``comp_id_sep``. This is the separator DELi will use when creating
+component compound IDs from a library ID and building block IDs. The default is ``-``.
+
+.. note::
+    The ``comp_id_sep`` token must not be present in library IDs or building block IDs,
+    otherwise component compound IDs may not be uniquely reversible.
