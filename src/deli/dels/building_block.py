@@ -5,7 +5,13 @@ import warnings
 from collections import defaultdict
 from typing import Literal, Optional, Sequence, overload
 
-from deli.configure import DeliDataLoadable, check_id_for_reserved_tokens, resolve_deli_data_name, validate_path_exists
+from deli.configure import (
+    DeliDataLoadable,
+    check_id_for_reserved_tokens,
+    get_deli_config,
+    resolve_deli_data_name,
+    validate_path_exists,
+)
 from deli.utils.mol_utils import SmilesMixin
 
 
@@ -193,6 +199,13 @@ class BuildingBlock(SmilesMixin):
             raise ValueError(
                 f"building block id '{bb_id}' contains a reserved token: {ID_RESERVERD_TOKENS}. "
                 f"remove reserved tokens from building block ids. See the docs for more details."
+            )
+
+        if self.bb_id == get_deli_config().bb_mask:
+            raise ValueError(
+                f"building block id '{bb_id}' cannot be the same as the building block mask value. "
+                f"change the building block id or the building block mask value in the DELi config. "
+                "See the docs for more details."
             )
 
     def __eq__(self, other):
