@@ -128,6 +128,10 @@ class _DeliConfig:
         self._nuc_2_int: dict[str, int] = nuc_2_int
         self.comp_id_sep = comp_id_sep
 
+        # The comp_id_sep is also a reserved token amoung any IDs in DELi
+        global ID_RESERVERD_TOKENS
+        ID_RESERVERD_TOKENS.append(comp_id_sep)
+
         self.hamming_codes: dict[str, tuple[list[int], list[int]]]
         if hamming_codes is not None:
             self.hamming_codes = hamming_codes
@@ -698,3 +702,23 @@ class DeliDataLoadable(abc.ABC):
     def load(cls, name_or_path: str):
         """Load the file into the object"""
         raise NotImplementedError()
+
+
+def check_id_for_reserved_tokens(id_: str) -> bool:
+    """
+    Check that an ID does not contain any reserved tokens
+
+    Parameters
+    ----------
+    id_: str
+        the ID to check
+
+    Returns
+    -------
+    bool
+        True if it contains any reserved tokens, False otherwise
+    """
+    for token in ID_RESERVERD_TOKENS:
+        if token in id_:
+            return True
+    return False

@@ -1,12 +1,11 @@
 """define building block classes"""
 
-import abc
 import os
 import warnings
 from collections import defaultdict
 from typing import Literal, Optional, Sequence, overload
 
-from deli.configure import DeliDataLoadable, resolve_deli_data_name, validate_path_exists
+from deli.configure import DeliDataLoadable, check_id_for_reserved_tokens, resolve_deli_data_name, validate_path_exists
 from deli.utils.mol_utils import SmilesMixin
 
 
@@ -165,23 +164,7 @@ class BuildingBlockSetError(Exception):
     pass
 
 
-class BaseBuildingBlock(abc.ABC):
-    """Base class for all BuildingBlock objects"""
-
-    def __init__(self):
-        self.bb_id = None
-
-    @abc.abstractmethod
-    def __eq__(self, other):
-        """Determine if two building blocks are equal"""
-        raise NotImplementedError
-
-    def __str__(self):
-        """Cast to str as the bb_id"""
-        return self.bb_id
-
-
-class BuildingBlock(BaseBuildingBlock, SmilesMixin):
+class BuildingBlock(SmilesMixin):
     """
     Define building block that has a chemical structure associated with it
     """
@@ -200,14 +183,29 @@ class BuildingBlock(BaseBuildingBlock, SmilesMixin):
         if building block belongs to a subset, the subset id
         else None
         """
-        super().__init__()
         self.bb_id = bb_id
         self._smiles = smiles
         self.subset_id = str(subset_id) if subset_id else None  # stringify
 
+        if check_id_for_reserved_tokens(bb_id):
+            from deli.configure import ID_RESERVERD_TOKENS
+
+            raise ValueError(
+                f"building block id '{bb_id}' contains a reserved token: {ID_RESERVERD_TOKENS}. "
+                f"remove reserved tokens from building block ids. See the docs for more details."
+            )
+
     def __eq__(self, other):
         """Two building blocks are equal if their ID is equal"""
         return self.bb_id == other.bb_id if isinstance(other, BuildingBlock) else False
+
+    def __str__(self):
+        """Cast to str as the bb_id"""
+        return self.bb_id
+
+    def __repr__(self):
+        """Return a string representation of the object."""
+        return f"BuildingBlock(bb_id='{self.bb_id}')"
 
     @classmethod
     def from_dict(cls, data: dict[str, str]):
