@@ -284,11 +284,14 @@ workflow {
     prefix_ch = extract.selection_id
         .splitText()
         .map { it.trim() }
+        .filter { it }
         .map { final_prefix ?: it }
+        .first()
 
     fastq_chunks = extract.files
         .splitText()
         .map { it.trim() }
+        .filter { it }
         .map { file(it) }
         .splitFastq(by: params.chunk_size, file: true)
 
