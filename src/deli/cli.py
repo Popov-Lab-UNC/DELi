@@ -763,8 +763,8 @@ def run_decode(
             f"{[tool.compound_id for tool_lib in selection.tool_compounds for tool in tool_lib.compounds]}"
         )
 
-    if not hasattr(selection, "sequence_reader"):
-        if len(sequence_files) == 0:
+    if len(sequence_files) == 0:
+        if not hasattr(selection, "sequence_reader"):
             msg = (
                 f"No sequence files provided and no sequence files found in selection file '{selection_file}'; "
                 "cannot decode sequences without sequence files"
@@ -773,11 +773,11 @@ def run_decode(
             click.echo(msg)
             sys.exit(1)
         else:
-            sequence_reader = get_reader(sequence_files)
-            logger.debug(f"using provided sequence files: {sequence_reader.sequence_files}")
+            sequence_reader = selection.sequence_reader
+            logger.debug(f"using sequence files from selection file: {sequence_reader.sequence_files}")
     else:
-        sequence_reader = selection.sequence_reader
-        logger.debug(f"using sequence files from selection file: {sequence_reader.sequence_files}")
+        sequence_reader = get_reader(sequence_files)
+        logger.debug(f"using provided sequence files: {sequence_reader.sequence_files}")
 
     # deal with prefix
     if prefix is None or prefix == "":
