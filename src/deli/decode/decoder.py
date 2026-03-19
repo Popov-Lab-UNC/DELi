@@ -1353,12 +1353,20 @@ class DecodingSettings:
             try:
                 return cls(**yaml.safe_load(open(path, "r")))
             except Exception as e:
-                raise RuntimeError(f"Failed to load decode settings from {path}") from e
+                raise RuntimeError(
+                    f"Failed to load decode settings from {path} "
+                    f"(no 'decode_settings' key found, tried loading top-level keys): "
+                    f"{type(e).__name__}: {e}"
+                ) from e
         else:
             try:
                 return cls(**_data["decode_settings"])
             except Exception as e:
-                raise RuntimeError(f"Failed to load decode settings from {path}") from e
+                raise RuntimeError(
+                    f"Failed to load decode settings from {path} "
+                    f"(loaded from 'decode_settings' sub-key): "
+                    f"{type(e).__name__}: {e}"
+                ) from e
 
 
 class SelectionDecoder:
