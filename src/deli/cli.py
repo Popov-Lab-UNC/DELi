@@ -837,7 +837,7 @@ def run_decode(
         decode_settings = DecodingSettings.from_file(selection_file)
         logger.info(f"loaded decoding settings from selection file: '{selection_file}'")
     except Exception as e:
-        logger.debug(f"failed to load decoding settings from selection file '{selection_file}': {e}")
+        logger.warning(f"failed to load decoding settings from selection file '{selection_file}': {e}")
 
     if decode_settings_file:
         if decode_settings is not None:
@@ -847,6 +847,9 @@ def run_decode(
             )
         decode_settings = DecodingSettings.from_file(decode_settings_file)
         logger.info(f"loaded decoding settings from: '{decode_settings_file}'")
+
+    if decode_settings is None:
+        logger.warning("no decoding settings found; using default settings")
 
     logger.debug(f"loaded decoding settings: {decode_settings}")
 
