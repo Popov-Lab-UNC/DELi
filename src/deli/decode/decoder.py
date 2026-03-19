@@ -904,10 +904,14 @@ class DELibraryDecoder(_SequenceDecoder):
             umi_start = called_sec_spans[self._section_before_umi][1] + self._section_dist_before_umi
             umi_stop = umi_start + len(self.library.barcode_schema.umi_section.section_tag)
             umi_call = aligned_sequence.sequence.sequence[umi_start:umi_stop]
+            if not umi_call and len(self.library.barcode_schema.umi_section.section_tag) > 0:
+                return UMIContainsINDEL(sequence=aligned_sequence.sequence, umi_sequence=umi_call)
         elif self._section_after_umi is not None:
             umi_stop = called_sec_spans[self._section_after_umi][0] - self._section_dist_after_umi
             umi_start = umi_stop - len(self.library.barcode_schema.umi_section.section_tag)
             umi_call = aligned_sequence.sequence.sequence[umi_start:umi_stop]
+            if not umi_call and len(self.library.barcode_schema.umi_section.section_tag) > 0:
+                return UMIContainsINDEL(sequence=aligned_sequence.sequence, umi_sequence=umi_call)
         else:
             return FailedDecodeAttempt(aligned_sequence.sequence, "No sections to determine UMI location")
 
