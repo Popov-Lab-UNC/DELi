@@ -231,6 +231,11 @@ class _DeliConfig:
     def nuc_2_int(self):
         raise RuntimeError("Cannot delete 'nuc_2_int'")
 
+    @property
+    def int_2_nuc(self) -> dict[int, str]:
+        """Return the integer to nucleotide mapping as the inverse of nuc_2_int"""
+        return {v: k for k, v in self._nuc_2_int.items()}
+
     @classmethod
     def load_config(cls, path: str | Path) -> "_DeliConfig":
         """Helper func to load in config data"""
