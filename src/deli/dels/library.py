@@ -3,7 +3,7 @@
 import abc
 from typing import Generic, Iterator, Sequence, TypeVar
 
-from deli.configure import check_id_for_reserved_tokens
+from deli.configure import check_id_for_reserved_tokens, get_reserved_id_tokens
 
 from .compound import Compound
 
@@ -19,10 +19,8 @@ class Library(Generic[C], abc.ABC):
     def __init__(self, library_id: str):
         self.library_id: str = library_id
         if check_id_for_reserved_tokens(library_id):
-            from deli.configure import ID_RESERVERD_TOKENS
-
             raise ValueError(
-                f"library id '{library_id}' contains a reserved token: {ID_RESERVERD_TOKENS}. "
+                f"library id '{library_id}' contains a reserved token: {get_reserved_id_tokens()}. "
                 f"remove reserved tokens from library ids. See the docs for more details."
             )
 

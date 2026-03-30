@@ -39,7 +39,7 @@ DELI_DATA_EXTENSIONS: Final = ("json", "csv", "rxn", "json")
 
 DELI_CONFIG: "_DeliConfig | None" = None  # global to hold the loaded DELi config
 
-ID_RESERVERD_TOKENS = [",", "."]
+_ID_RESERVED_TOKENS: Final[frozenset[str]] = frozenset({",", "."})
 
 
 class DELiConfigError(Exception):
@@ -126,11 +126,8 @@ class _DeliConfig:
             self.deli_data_dir = deli_data_dir
         self._bb_mask: str = bb_mask
         self._nuc_2_int: dict[str, int] = nuc_2_int
-        self.comp_id_sep = comp_id_sep
 
-        # The comp_id_sep is also a reserved token amoung any IDs in DELi
-        global ID_RESERVERD_TOKENS
-        ID_RESERVERD_TOKENS.append(comp_id_sep)
+        self._comp_id_sep: str = comp_id_sep
 
         self.hamming_codes: dict[str, tuple[list[int], list[int]]]
         if hamming_codes is not None:
@@ -235,6 +232,40 @@ class _DeliConfig:
     def int_2_nuc(self) -> dict[int, str]:
         """Return the integer to nucleotide mapping as the inverse of nuc_2_int"""
         return {v: k for k, v in self._nuc_2_int.items()}
+
+    @property
+    def comp_id_sep(self) -> str:
+        return self._comp_id_sep
+
+    @comp_id_sep.setter
+    def comp_id_sep(self, value):
+        if self._comp_id_sep == value:
+            return  # no change, so no need to validate
+        if not isinstance(value, str):
+            raise DELiConfigError(f"'comp_id_sep' must be a string, found type '{type(value)}'")
+        if len(value) == 0:
+            raise DELiConfigError("'comp_id_sep' cannot be an empty string")
+        if len(value) > 1:
+            raise DELiConfigError("'comp_id_sep' must be a single character")
+        if value in self.get_reserved_id_tokens():
+            raise DELiConfigError(
+                f"'comp_id_sep' cannot be any of the reserved tokens: {self.get_reserved_id_tokens()}"
+            )
+        self._comp_id_sep = value
+
+    def get_reserved_id_tokens(self) -> set[str]:
+        """Return the reserved ID tokens for this config instance."""
+        tokens = set(_ID_RESERVED_TOKENS)
+        if self._comp_id_sep:
+            tokens.add(self._comp_id_sep)
+        return tokens
+
+    def check_id_for_reserved_tokens(self, id_: str) -> bool:
+        """Check that an ID contains none of this config instance's reserved tokens."""
+        for token in self.get_reserved_id_tokens():
+            if token in id_:
+                return True
+        return False
 
     @classmethod
     def load_config(cls, path: str | Path) -> "_DeliConfig":
@@ -709,7 +740,7 @@ class DeliDataLoadable(abc.ABC):
         raise NotImplementedError()
 
 
-def check_id_for_reserved_tokens(id_: str) -> bool:
+def check_id_for_reserved_tokens(id_: str, config: Optional["_DeliConfig"] = None) -> bool:
     """
     Check that an ID does not contain any reserved tokens
 
@@ -718,12 +749,23 @@ def check_id_for_reserved_tokens(id_: str) -> bool:
     id_: str
         the ID to check
 
+    config: Optional[_DeliConfig], default = None
+        the config instance to use for reserved tokens;
+        if None, use the currently loaded global DELi config
+
     Returns
     -------
     bool
         True if it contains any reserved tokens, False otherwise
     """
-    for token in ID_RESERVERD_TOKENS:
+    for token in get_reserved_id_tokens(config=config):
         if token in id_:
             return True
     return False
+
+
+def get_reserved_id_tokens(config: Optional["_DeliConfig"] = None) -> set[str]:
+    """Get reserved ID tokens for a given config (or the active global config if omitted)."""
+    if config is None:
+        config = get_deli_config()
+    return config.get_reserved_id_tokens()

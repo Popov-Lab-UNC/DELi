@@ -19,7 +19,7 @@ from tqdm import tqdm
 from deli import __version__
 from deli.configure import DeliDataDirError
 from deli.dels.combinatorial import CombinatorialLibrary
-from deli.selection import load_selection, Selection
+from deli.selection import Selection, load_selection
 
 
 # Suppress RDKit warnings at module level
@@ -337,28 +337,12 @@ def with_deli_quote(f):
 
 
 @click.group()
-@click.version_option(
-    str(__version__),
-    "--version",
-    "-v",
-)
+@click.version_option(str(__version__), "--version", "-v")
 @click.option("--debug", is_flag=True, help="Enable debug mode")
 @click.option("--disable-logging", is_flag=True, help="Turn off DELi logging")
 @click.option("--stream-logs", is_flag=True, help="Stream logs to stdout in addition to saving to deli.log")
-@click.option(
-    "--deli-data-dir",
-    type=click.Path(),
-    required=False,
-    default=None,
-    help="The DELi data directory to use; overrides all other settings",
-)
-@click.option(
-    "--config-file",
-    type=click.Path(exists=True, dir_okay=False),
-    required=False,
-    default=None,
-    help="Path to DELi config file to use; if not provided, will use default at ~/.deli",
-)
+@click.option("--deli-data-dir", type=click.Path(), required=False, default=None, help="The DELi data directory to use; overrides all other settings")
+@click.option("--config-file", type=click.Path(exists=True, dir_okay=False), required=False, default=None, help="Path to DELi config file to use; if not provided, will use default at ~/.deli")
 @click.option("--quote", "-q", is_flag=True, help="Output a random deli related quote after the program finishes")
 @click.pass_context
 def cli(ctx, debug, disable_logging, stream_logs, deli_data_dir, config_file, quote):
@@ -470,12 +454,7 @@ def data(ctx):
 
 @data.command(name="init")
 @suppress_warnings
-@click.argument(
-    "path",
-    type=click.Path(),
-    required=False,
-    default="./deli_data",
-)
+@click.argument("path", type=click.Path(), required=False, default="./deli_data")
 @click.option("--fix-missing", "-f", is_flag=True, help="Add missing sub-directories to a DELi Data Directory")
 @click.option("--overwrite", "-o", is_flag=True, help="Overwrite any existing data directories")
 def click_init_deli_data_dir(path, fix_missing, overwrite):
@@ -530,12 +509,7 @@ def click_which_deli_data_dir(ctx):
 @data.command(name="set")
 @suppress_warnings
 @click.argument("path", type=click.Path(), required=True)
-@click.option(
-    "--update-config",
-    "-u",
-    is_flag=True,
-    help="Update the DELi config to use this data directory as default",
-)
+@click.option("--update-config", "-u", is_flag=True, help="Update the DELi config to use this data directory as default")
 @click.option("--force", "-f", is_flag=True, help="Force setting the data directory even if it fails validation")
 @click.pass_context
 def click_set_deli_data_dir(ctx, path, update_config, force):
@@ -1001,25 +975,46 @@ def collect_decodes(ctx, decoded_reads, score_threshold, out_loc, compress):
 
 @decode_group.command(name="count")
 @click.argument("collected-decodes", type=click.Path(exists=True), required=True)
+@click.option("--columns", "-c", type=click.STRING, required=False, default="lbc", help="Columns to include in output; see --help for details")
+@click.option("--comp-id-sep", "-d", type=click.STRING, required=False, default=None, help="Character to join library_id and bb_ids")
+@click.option("--validate-comp-id-sep", is_flag=True, help="Validate that the compound ID separator does not appear in library IDs or building block IDs; will exit with an error if it does")
 @click.option("--out-loc", "-o", type=click.Path(), required=False, default=None, help="Path to output file")
 @click.option("--cluster-umis", "-u", is_flag=True, help="Cluster UMIs to determine final count")
-@click.option("--keep-raw-count", "-r", is_flag=True, help="Keep raw count in output")
-@click.option("--keep-dedup-count", "-d", is_flag=True, help="Keep deduplicated count in output; ignored unless --cluster-umis is used")
 @click.option("--output-format", "-f", type=click.Choice(["tsv", "gzip", "parquet"]), default="tsv", help="Output file format")
 @click.option("--use-tqdm", "-t", is_flag=True, help="Use tqdm to show progress")
 @click.pass_context
 @with_deli_quote
-def count_compounds(ctx, collected_decodes, out_loc, cluster_umis, keep_raw_count, keep_dedup_count, output_format, use_tqdm):
+def count_compounds(ctx, collected_decodes, columns, comp_id_sep, validate_comp_id_sep, out_loc, cluster_umis, output_format, use_tqdm):
     """
     Count compounds from collected decoded file
 
     COLLECTED-DECODES is the path to the collected decodes NDJSON file
     generated using `deli decode collect` (can be gzip compressed if .gz suffix is present).
 
+    Desired columns can be specified with the --columns option. Columns include:
+    - l: library_id
+    - i: compound_id (library_id and bb_ids joined by the 'comp_id_sep' character specified)
+    - b: bb_ids (as a comma separated string *or* an array if using 'parquet' output format)
+    - c: count (after UMI clustering if --cluster-umis is used)
+    - r: raw count (sum of UMI counts)
+    - d: deduplicated count (if --cluster-umis is not used, this will be the same as 'count')
+
     NOTE: "gzip" output format will generate a gzip compressed TSV file. Writing to output occurs in batches.
     """
     from deli.decode.count import corrected_count
     import json
+
+    HEADER_DICT = {
+        "l": "library_id",
+        "i": "compound_id",
+        "b": "bb_ids",
+        "c": "count",
+        "r": "raw_count",
+        "d": "dedup_count",
+    }
+
+    if comp_id_sep is None:
+        comp_id_sep = ctx.obj["deli_config"].comp_id_sep
 
     # check conditional imports
     if output_format == "parquet":
@@ -1068,22 +1063,18 @@ def count_compounds(ctx, collected_decodes, out_loc, cluster_umis, keep_raw_coun
         else:
             out_file = gzip.open(out_loc, "wt")
         writer = lambda x: out_file.write("\n".join(["\t".join([str(val) for val in rd.values()]).strip() for rd in x]))
-        _header = ["library_id", "bb_ids", "count"]
-        if keep_raw_count:
-            _header.append("raw_count")
-        if keep_dedup_count and cluster_umis:
-            _header.append("dedup_count")
+        _header = [HEADER_DICT[c] for c in columns if c in HEADER_DICT]
         out_file.write("\t".join(_header) + "\n")
     elif output_format == "parquet":
-        fields = [
-            pa.field("library_id", pa.string()),
-            pa.field("bb_ids", pa.string()),
-            pa.field("count", pa.int32()),
-        ]
-        if keep_raw_count:
-            fields.append(pa.field("raw_count", pa.int32()))
-        if keep_dedup_count and cluster_umis:
-            fields.append(pa.field("dedup_count", pa.int32()))
+        TYPE_DICT = {
+            "library_id": pa.string(),
+            "compound_id": pa.string(),
+            "bb_ids": pa.list_(pa.string()),
+            "count": pa.int32(),
+            "raw_count": pa.int32(),
+            "dedup_count": pa.int32(),
+        }
+        fields = [pa.field(HEADER_DICT[c], TYPE_DICT[HEADER_DICT[c]]) for c in columns if c in HEADER_DICT]
         table_schema = pa.schema(fields)
         table_schema = table_schema.remove_metadata()  # Remove None fields
         pq_writer = pq.ParquetWriter(out_loc, table_schema)
@@ -1100,8 +1091,19 @@ def count_compounds(ctx, collected_decodes, out_loc, cluster_umis, keep_raw_coun
     with _open_text_file(Path(collected_decodes)) as in_file:
         for line in tqdm(in_file, desc="Counting compounds", disable=not use_tqdm):
             _ticker += 1
-            #cpd_info = ast.literal_eval(line)
             cpd_info = json.loads(line)
+            if "i" in columns:
+                _flattened_fields = [cpd_info["library_id"]] + cpd_info["bb_ids"].split(",")
+                if validate_comp_id_sep:
+                    if any([comp_id_sep in _flattened_fields]):
+                        msg = (
+                            f"compound ID separator '{comp_id_sep}' appears in library_id or bb_ids "
+                            f"for compound with library_id '{cpd_info['library_id']}'"
+                        )
+                        logger.error(msg)
+                        click.echo(msg)
+                        sys.exit(1)
+                cpd_info["compound_id"] = comp_id_sep.join(_flattened_fields)
             # calculate counts
             raw_count = sum([count_struct["c"] for count_struct in cpd_info["umi_counts"]])
             dedup_count = len(cpd_info["umi_counts"])
@@ -1113,12 +1115,12 @@ def count_compounds(ctx, collected_decodes, out_loc, cluster_umis, keep_raw_coun
             # prepare output info
             row = {
                 "library_id": cpd_info["library_id"],
-                "bb_ids": cpd_info["bb_ids"],
+                "bb_ids": cpd_info["bb_ids"].split(",") if output_format == "parquet" else cpd_info["bb_ids"],
                 "count": count,
             }
-            if keep_raw_count:
+            if "r" in columns:
                 row["raw_count"] = raw_count
-            if keep_dedup_count and cluster_umis:
+            if "d" in columns: # this will be the same as 'count' if not clustering, but can be different if clustering
                 row["dedup_count"] = dedup_count
             _batch.append(row)
 
@@ -1157,8 +1159,8 @@ def generate_report(ctx, decode_stats_file, selection_file, out_loc):
 
     DECODE_STATS_FILE are the paths to the decoding statistics JSON files.
     """
-    from deli.decode.stats import DecodeStatistics
     from deli.decode.report import build_decoding_report
+    from deli.decode.stats import DecodeStatistics
 
     logger = ctx.obj["logger"]
 
@@ -1339,23 +1341,32 @@ def summarize_decoding(ctx, counted_compounds_file, decode_stats_file, out_loc):
             indent=4,
         )
 
-@cli.command(name="cubify")
-@click.argument("aggregated-compounds", type=click.Path(exists=True), required=True)
-@click.option("--output", "-o", type=click.Path(), required=False, default="./cube", help="Location to save results to")
-@click.option("--cube-format", "-f", type=click.STRING, default="lbc", help="Cube format string; see DELi documentation for details")
+
+@cli.group(name="cube")
+@click.pass_context
+def cube_group(ctx):
+    """Group for cube related commands"""
+    pass
+
+
+@cube_group.command(name="cubify")
+@click.argument("counted-compounds", type=click.Path(exists=True), required=True)
+@click.option("--output", "-o", type=click.Path(), required=False, default="./cube.tsv", help="Location to save results to, will infer output type from extension (.tsv or .parquet). Defaults to 'tsv' if no extension provided.")
 @click.option("--overwrite", "-w", is_flag=True, help="Overwrite existing cube file if it exists")
+@click.option("--cube-format-string", "-f", type=click.STRING, default="lbc", help="Cube format string; see DELi documentation for details")
+@click.option("--id-delimiter", "-d", type=click.STRING, default="-", help="Delimiter to use when joining fields to create compound ID (if 'i' is included in cube format string)")
+@click.option("--bbs-as-array", "-a", is_flag=True, default=False, help="Whether to treat building block IDs as arrays in the output cube file (not supported in tsv output)")
 @click.option("--corrected-count-threshold", "-E", type=click.INT, default=0, help="Threshold to include compounds in Cube based on error-corrected count")
 @click.option("--dedup-count-threshold", "-D", type=click.INT, default=0, help="Threshold to include compounds in Cube based on deduped count")
-@click.option( "--raw-count-threshold","-R", type=click.INT, default=0, help="Threshold to include compounds in Cube based on raw count")
-@click.option("--use-tqdm", "-t", is_flag=True, help="Show tqdm progress bar")
-@click.option("--selection", "-s", type=click.Path(exists=True), required=False, default=None, help="Path to DELi selection file to use for compound ID generation")
+@click.option("--raw-count-threshold","-R", type=click.INT, default=0, help="Threshold to include compounds in Cube based on raw count")
 @click.pass_context
-def run_cubify(ctx, aggregated_compounds, output, cube_format, overwrite, corrected_count_threshold, dedup_count_threshold, raw_count_threshold, use_tqdm, selection):
+def run_cubify(ctx, counted_compounds, output, cube_format_string, overwrite, corrected_count_threshold, dedup_count_threshold, raw_count_threshold, use_tqdm, selection):
     """
-    Covert aggregated decoded compounds (in NDJSON format) into a formated "Cube" file.
+    Covert counted compounds (in TSV or Parquet format) into a formated "Cube" file.
 
     Cube formats can include:
     - i: compound id
+    - n: numeric compound id (See the DELi documentation for more details on numeric compound IDs)
     - l: library id
     - s: compound SMILES
     - b: building block ids (one column per cycle)
@@ -1364,16 +1375,18 @@ def run_cubify(ctx, aggregated_compounds, output, cube_format, overwrite, correc
     - d: deduplicated count
     - r: raw count
 
-
-
     For example; to just include the compound ID and its error-corrected count, use the format string "ie".
 
-    NOTE: DELi considers Compounds IDs to be irreversible; that is, the compound ID cannot be used to
+    See the DELi documentation for details of how these fields are defined and named in the cube file.
+    It is not always straight forward to understand what fields (and their data types) a given cube format will
+    produce.
+
+    NOTE: DELi considers compound IDs to be irreversible; that is, the compound ID cannot be used to
     retrieve the original building block IDs or library information. Be aware that excluding library ID
     and building block IDs from the Cube file will prevent DELi from being able to map back to the original
-    compound / DEL information in any future uses of the Cube file.
+    compound / DEL information in any future uses of the cube file.
 
-    See the DELi documentation for more information on how to specify Cube files.
+    See the DELi documentation for more information on Cube files.
     """
     pass
 

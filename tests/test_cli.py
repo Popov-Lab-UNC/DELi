@@ -23,7 +23,13 @@ from deli.cli import (
     run_decode,
     summarize_decoding,
 )
-from deli.configure import _DeliConfig, get_deli_config, set_deli_data_dir, validate_deli_data_dir
+from deli.configure import (
+    _DeliConfig,
+    check_id_for_reserved_tokens,
+    get_deli_config,
+    set_deli_data_dir,
+    validate_deli_data_dir,
+)
 
 
 @pytest.fixture()
@@ -136,7 +142,26 @@ def test_deli_config_init(monkeypatch, tmpdir, runner):
     result = runner.invoke(click_init_deli_config, [str(custom_config_path)])
     assert result.exit_code == 0
     assert custom_config_path.exists()
-    _DeliConfig.load_config(custom_config_path)
+    custom_config = _DeliConfig.load_config(custom_config_path)
+    assert custom_config.comp_id_sep == "-"
+
+
+def test_comp_id_sep_config_loading():
+    """Test comp_id_sep loading from config and fallback when section is absent."""
+    _config = _DeliConfig.load_config(Path(__file__).parent / "data" / ".deli")
+    assert _config.comp_id_sep == "-"
+
+
+def test_reserved_tokens_are_scoped_per_config_instance():
+    """Ensure reserved-token checks are tied to a config object, not shared global mutable state."""
+    base_map = {"A": 0, "T": 1, "C": 2, "G": 3}
+    underscore_config = _DeliConfig(bb_mask="###", nuc_2_int=base_map, comp_id_sep="_")
+    dash_config = _DeliConfig(bb_mask="###", nuc_2_int=base_map, comp_id_sep="-")
+
+    assert check_id_for_reserved_tokens("LIB_A", config=underscore_config)
+    assert not check_id_for_reserved_tokens("LIB_A", config=dash_config)
+    assert check_id_for_reserved_tokens("LIB-A", config=dash_config)
+    assert not check_id_for_reserved_tokens("LIB-A", config=underscore_config)
 
 
 def test_deli_data_init(tmpdir, runner):
@@ -374,8 +399,8 @@ def test_decode_count(tmpdir, runner, collected_file_path):
             "--output-format",
             "tsv",
             "-u",
-            "-r",
-            "-d",
+            "--columns",
+            "libcrd",
         ],
         obj={
             "deli_config": _DeliConfig.load_config(Path(__file__).parent / "data" / ".deli"),

@@ -9,6 +9,7 @@ from deli.configure import (
     DeliDataLoadable,
     check_id_for_reserved_tokens,
     get_deli_config,
+    get_reserved_id_tokens,
     resolve_deli_data_name,
     validate_path_exists,
 )
@@ -194,10 +195,8 @@ class BuildingBlock(SmilesMixin):
         self.subset_id = str(subset_id) if subset_id else None  # stringify
 
         if check_id_for_reserved_tokens(bb_id):
-            from deli.configure import ID_RESERVERD_TOKENS
-
             raise ValueError(
-                f"building block id '{bb_id}' contains a reserved token: {ID_RESERVERD_TOKENS}. "
+                f"building block id '{bb_id}' contains a reserved token: {get_reserved_id_tokens()}. "
                 f"remove reserved tokens from building block ids. See the docs for more details."
             )
 

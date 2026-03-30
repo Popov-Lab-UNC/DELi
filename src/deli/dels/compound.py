@@ -3,7 +3,6 @@
 import abc
 from typing import TYPE_CHECKING
 
-from deli.configure import check_id_for_reserved_tokens
 from deli.utils import SmilesMixin
 
 
@@ -53,13 +52,6 @@ class Compound(abc.ABC, SmilesMixin):
 
     def __init__(self, compound_id: str):
         self.compound_id = compound_id
-        if check_id_for_reserved_tokens(compound_id):
-            from deli.configure import ID_RESERVERD_TOKENS
-
-            raise ValueError(
-                f"compound id '{compound_id}' contains a reserved token: {ID_RESERVERD_TOKENS}. "
-                f"remove reserved tokens from compound ids. See the docs for more details."
-            )
 
     def __eq__(self, other):
         """Check if two Compound objects are equal (share the same compound_id)"""
