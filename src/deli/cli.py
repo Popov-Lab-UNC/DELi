@@ -1342,14 +1342,13 @@ def summarize_decoding(ctx, counted_compounds_file, decode_stats_file, out_loc):
         )
 
 
-@cli.group(name="cube")
+@cli.group(name="analyze")
 @click.pass_context
-def cube_group(ctx):
+def analysis_group(ctx):
     """Group for cube related commands"""
     pass
 
-
-@cube_group.command(name="cubify")
+@analysis_group.command(name="cubify")
 @click.argument("counted-compounds", type=click.Path(exists=True), required=True)
 @click.option("--output", "-o", type=click.Path(), required=False, default="./cube.tsv", help="Location to save results to, will infer output type from extension (.tsv or .parquet). Defaults to 'tsv' if no extension provided.")
 @click.option("--overwrite", "-w", is_flag=True, help="Overwrite existing cube file if it exists")
