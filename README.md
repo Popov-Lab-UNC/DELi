@@ -40,3 +40,9 @@ We hope to someday write a Rust version of DELi (at least for decoding and enume
 
 **Note for developers:** DELi is built using poetry. You can use `poetry build` to build from source after
 cloning the repo. Be on the lookout for contribution docs in the near future!
+
+## Citation
+
+If you use DELi in your research, please cite our paper:
+
+> Wellnitz J, Novy B, Maxfield T, Lin S-H, Zhilinskaya I, Axtman M, Leisner T, Merten E, Norris-Drouin JL, Hardy BP, Pearce KH, Popov KI. (2025). *Open-Source DNA-Encoded Library informatics Package for Design, Decoding, and Analysis: DELi*. bioRxiv. https://doi.org/10.1101/2025.02.25.640184
