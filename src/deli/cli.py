@@ -1342,52 +1342,50 @@ def summarize_decoding(ctx, counted_compounds_file, decode_stats_file, out_loc):
         )
 
 
-@cli.group(name="analyze")
+@cli.group(name="cube")
 @click.pass_context
-def analysis_group(ctx):
+def cube_group(ctx):
     """Group for cube related commands"""
     pass
 
-@analysis_group.command(name="cubify")
+@cube_group.command(name="cubify")
 @click.argument("counted-compounds", type=click.Path(exists=True), required=True)
 @click.option("--output", "-o", type=click.Path(), required=False, default="./cube.tsv", help="Location to save results to, will infer output type from extension (.tsv or .parquet). Defaults to 'tsv' if no extension provided.")
 @click.option("--overwrite", "-w", is_flag=True, help="Overwrite existing cube file if it exists")
-@click.option("--cube-format-string", "-f", type=click.STRING, default="lbc", help="Cube format string; see DELi documentation for details")
+@click.option("--extra-columns", "-f", type=click.STRING, default="lbc", help="Cube format string; see DELi documentation for details")
 @click.option("--id-delimiter", "-d", type=click.STRING, default="-", help="Delimiter to use when joining fields to create compound ID (if 'i' is included in cube format string)")
-@click.option("--bbs-as-array", "-a", is_flag=True, default=False, help="Whether to treat building block IDs as arrays in the output cube file (not supported in tsv output)")
-@click.option("--corrected-count-threshold", "-E", type=click.INT, default=0, help="Threshold to include compounds in Cube based on error-corrected count")
+@click.option("--count-threshold", "-C", type=click.INT, default=0, help="Threshold to include compounds in Cube based on count")
 @click.option("--dedup-count-threshold", "-D", type=click.INT, default=0, help="Threshold to include compounds in Cube based on deduped count")
 @click.option("--raw-count-threshold","-R", type=click.INT, default=0, help="Threshold to include compounds in Cube based on raw count")
 @click.pass_context
-def run_cubify(ctx, counted_compounds, output, cube_format_string, overwrite, corrected_count_threshold, dedup_count_threshold, raw_count_threshold, use_tqdm, selection):
+def run_cubify(ctx, counted_compounds, output, extra_columns, id_delimiter, bbs_as_array, overwrite, count_threshold, dedup_count_threshold, raw_count_threshold):
     """
     Covert counted compounds (in TSV or Parquet format) into a formated "Cube" file.
 
-    Cube formats can include:
-    - i: compound id
-    - n: numeric compound id (See the DELi documentation for more details on numeric compound IDs)
-    - l: library id
-    - s: compound SMILES
-    - b: building block ids (one column per cycle)
-    - B: building block SMILES (one column per cycle)
-    - e: error-corrected count
-    - d: deduplicated count
-    - r: raw count
+    By default, the cube format will include the columns:
+    - library_id: library ID
+    - compound_id: compound ID
+    - bb<##>_id: building block IDs (one column per cycle where ## is the cycle number starting from 1)
+    - count: the count
 
-    For example; to just include the compound ID and its error-corrected count, use the format string "ie".
+    However you can include additional columns using `--extra_columns`:
+    - n: "numeric_compound_id" (See the DELi documentation for more details on numeric compound IDs)
+    - s: "smiles"
+        Requires the librarys in the counted compounds files are in the DELi data directory as well as
+        the corisponding building block sets (with SMILES) and have reaction information defined
+    - b: "bb<##>_smiles" (one column per cycle where ## is the cycle number starting from 1)
+        Requires the librarys in the counted compounds files are in the DELi data directory as well as
+        the corisponding building block sets with SMILES
+    - d: "deduplicated_count" (if present in the counted compounds file)
+    - r: "raw_count" (if present in the counted compounds file)
 
-    See the DELi documentation for details of how these fields are defined and named in the cube file.
-    It is not always straight forward to understand what fields (and their data types) a given cube format will
-    produce.
-
-    NOTE: DELi considers compound IDs to be irreversible; that is, the compound ID cannot be used to
-    retrieve the original building block IDs or library information. Be aware that excluding library ID
-    and building block IDs from the Cube file will prevent DELi from being able to map back to the original
-    compound / DEL information in any future uses of the cube file.
+    For example to include the compounds SMILES and building block smiles in the cube file,
+    you would use `--extra_columns sb`.
 
     See the DELi documentation for more information on Cube files.
     """
     pass
+
 
 
 @cli.command(name="enumerate")
