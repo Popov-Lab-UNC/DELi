@@ -1,0 +1,90 @@
+general:
+  data: "DEL005_cube_config_sample.csv"
+  lib_size: 850000
+  output_dir: "DEL005_sample_analysis"
+  ID_col: "DEL_ID"
+
+indexes:
+  target_A: ["corrected_index1", "corrected_index2"]
+  target_A_plus_peptide: ["corrected_index3", "corrected_index4"]
+  target_B: ["corrected_index6", "corrected_index7"]
+  target_C: ["corrected_index8"]
+
+control_cols:
+  target_A: ["corrected_index9"]
+  target_A_plus_peptide: ["corrected_index9"]
+  target_B: ["corrected_index9"]
+  target_C: ["corrected_index9"]
+
+raw_indexes:
+  target_A: ["raw_index1", "raw_index2"]
+  target_A_plus_peptide: ["raw_index3", "raw_index4"]
+  target_B: ["raw_index6", "raw_index7"]
+  target_C: ["raw_index8"]
+
+flags:
+  SD_min: True
+  NSC_values: True
+  MLE: True
+  Z_score: True
+  z_score_log_data: True
+  normalized_data: True
+  disynthon_data: true
+  polyO: True
+  trisynthon_overlap: True
+  disynthon_overlap: True
+  disynthon_threshold: "auto"
+  simple_spotfire_version: true
+  ml_fingerprints_to_RF_reg: true
+  ml_fingerprints_to_RF_clf: true
+  clf_thresh: 7
+  gnn_classifier: false
+  gnn_threshold: 10
+  gnn_arch: "GAT"
+  top_hits: 20
+  top_hits_metric: "avg"
+  monosynthon_chemical_space:
+    experiments: ["target_A", "target_A_plus_peptide", "target_B", "target_C"]
+  report: true
+
+  top_disynthons:
+    comparisons:
+      - comparison: "exp2"
+        exp_name: "target_A"
+        exp2_name: "target_A_plus_peptide"
+        control_name: "target_A"
+        top_count: 10
+        comparison_metric: "avg"
+      - comparison: "exp2"
+        exp_name: "target_A"
+        exp2_name: "target_C"
+        control_name: "target_A"
+        top_count: 10
+        comparison_metric: "avg"
+      - comparison: "exp2"
+        exp_name: "target_A_plus_peptide"
+        exp2_name: "target_C"
+        control_name: "target_A_plus_peptide"
+        top_count: 10
+        comparison_metric: "avg"
+      - comparison: "exp2"
+        exp_name: "target_B"
+        exp2_name: "target_C"
+        control_name: "target_B"
+        top_count: 10
+        comparison_metric: "avg"
+
+  top_delta_compounds:
+    comparisons:
+      - exp_name: "target_A"
+        control_name: "target_A_plus_peptide"
+        metric: "avg"
+        top_count: 20
+      - exp_name: "target_A"
+        control_name: "target_C"
+        metric: "avg"
+        top_count: 20
+      - exp_name: "target_B"
+        control_name: "target_C"
+        metric: "avg"
+        top_count: 20

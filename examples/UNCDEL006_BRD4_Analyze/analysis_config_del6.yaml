@@ -2,13 +2,7 @@ general:
   data: "UNCDEL006_BRD4.csv"
   lib_size: 850000
   output_dir: "DEL6"
-
-# If indexes are not provided, raw_indexes will be used. If only indexes are provided, SD_min and NSC_values cannot be calculated
-# due to the necessity of raw reads for depth. You can still run the analysis, but the top of the report will display NA for these values.
-# Control columns are necessary for MLE and Z-scores calculations.
-# The id_col is used to specify the identifier column. If DEL_ID is not specified, the first column will be used by default.
-
-id_col: "DEL_ID"
+  ID_col: "DEL_ID"
 
 indexes:
   elution1: ["corrected_index2", "corrected_index3", "corrected_index4"]
@@ -42,15 +36,23 @@ flags:
   gnn_threshold: 10
   gnn_arch: "GAT"
   top_hits: 20
-  top_hits_metric: "avg" #enter any metric calculated for enumerated library members
-  monosynthon_chemical_space: true
+  top_hits_metric: "avg"
+  monosynthon_chemical_space:
+    experiments: ["elution1", "elution2"]
   report: true
 
   top_disynthons:
-    enabled: True
-    comparison: "control"       # Type of comparison: "control" or "exp2" or "none"
-    exp_name: "elution1"
-    exp2_name: "elution2"
-    control_name: "elution1"
-    top_count: 10               # Number of top disynthons to pull
-    comparison_metric: "avg"
+    comparisons:
+      - comparison: "control"
+        exp_name: "elution1"
+        exp2_name: "elution2"
+        control_name: "elution1"
+        top_count: 10
+        comparison_metric: "avg"
+
+  top_delta_compounds:
+    comparisons:
+      - exp_name: "elution1"
+        control_name: "elution2"
+        metric: "avg"
+        top_count: 20

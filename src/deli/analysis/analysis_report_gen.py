@@ -13,37 +13,44 @@ def encode_image_to_base64(image_path):
         return base64.b64encode(image_file.read()).decode("utf-8")
 
 
-def get_plot_files(directory, file_extensions=[".png", ".svg"]):
-    """Retrieve plots from a given directory, returning name and data (base64 for png, text for svg)."""
+def get_plot_files(directory, file_extensions=[".svg"]):
+    """Retrieve plots from a given directory (SVG only for report embedding)."""
     if os.path.exists(directory) and os.path.isdir(directory):
         plots = []
-        # Sort files to ensure consistent order
         files = sorted([f for f in os.listdir(directory) if any(f.endswith(ext) for ext in file_extensions)])
         for f in files:
             file_path = os.path.join(directory, f)
-            if f.endswith(".svg"):
-                with open(file_path, "r", encoding="utf-8") as svg_file:
-                    plots.append({
-                        "name": f,
-                        "data": svg_file.read(),
-                        "type": "svg"
-                    })
-            else:
+            with open(file_path, "r", encoding="utf-8") as svg_file:
                 plots.append({
                     "name": f,
-                    "data": encode_image_to_base64(file_path),
-                    "type": "png"
+                    "data": svg_file.read(),
+                    "type": "svg"
                 })
         return plots
     return []
 
 
-def get_html_files(directory):
+def _plot_order_key(filename: str) -> tuple:
+    synthon_order = {"AB": 0, "AC": 1, "BC": 2}
+    parts = filename.split("_")
+    synthon = next((p for p in parts if p in synthon_order), "ZZ")
+    # keep comparison cohorts together while preserving AB/AC/BC ordering
+    if filename.startswith("top_"):
+        cohort = filename.replace("top_AB_", "").replace("top_AC_", "").replace("top_BC_", "")
+    else:
+        cohort = filename.replace("AB_", "").replace("AC_", "").replace("BC_", "")
+    return (cohort, synthon_order.get(synthon, 99), filename)
+
+
+def get_html_files(directory, name_prefixes=None, include_fn=None):
     """Retrieve HTML files as text from a given directory."""
     if os.path.exists(directory) and os.path.isdir(directory):
         html_files = []
-        # Sort files to ensure consistent order
         files = sorted([f for f in os.listdir(directory) if f.endswith(".html")])
+        if name_prefixes:
+            files = [f for f in files if any(f.startswith(prefix) for prefix in name_prefixes)]
+        if include_fn:
+            files = [f for f in files if include_fn(f)]
         for f in files:
             with open(os.path.join(directory, f), 'r', encoding='utf-8') as file:
                 html_files.append({
@@ -66,7 +73,15 @@ def get_experiment_info(indexes, control_cols):
 
 
 def generate_report(
-    base_dir, indexes, control_cols, nsc_max_dict=None, sd_min_dict=None, sampling_depth_dict=None
+    base_dir,
+    indexes,
+    control_cols,
+    nsc_max_dict=None,
+    sd_min_dict=None,
+    sampling_depth_dict=None,
+    top_disynthon_specs=None,
+    top_delta_specs=None,
+    disynthon_thresholds=None,
 ):
     today_date = datetime.today().strftime("%Y%m%d")
     analysis_dir = os.path.join(base_dir, f"{today_date}_analysis")
@@ -77,6 +92,7 @@ def generate_report(
         "trisynthon_plots": os.path.join(analysis_dir, "trisynthon"),
         "top_disynthons_plots": os.path.join(analysis_dir, "top_disynthons"),
         "top_hits_plots": os.path.join(analysis_dir, "top_hits"),
+        "top_delta_plots": os.path.join(analysis_dir, "top_deltas"),
         "ml_fingerprints_to_RF_plots": os.path.join(analysis_dir, "ml_fingerprints_to_RF"),
         "ml_fingerprints_to_clf_plots": os.path.join(analysis_dir, "ml_fingerprints_to_clf"),
         "gnn_classifier_plots": os.path.join(analysis_dir, "gnn"),
@@ -87,15 +103,21 @@ def generate_report(
     plot_data = {}
     for key, path in plot_dirs.items():
         if key == "monosynthon_chemical_space_plots":
-            # Retrieve HTML files directly
-            html_files = get_html_files(path)
+            html_files = get_html_files(
+                path,
+                ["monosynthon_"],
+                include_fn=lambda name: len(name.split("_")) >= 5 and "comparison" not in name,
+            )
             # Add a type field to distinguish in template
             for item in html_files:
                 item["type"] = "html"
             plot_data[key] = html_files
         else:
             # Handle PNG and SVG files for other plots
-            plot_data[key] = get_plot_files(path, [".png", ".svg"])
+            plots = get_plot_files(path, [".svg"])
+            if key in {"disynthon_plots", "top_disynthons_plots"}:
+                plots = sorted(plots, key=lambda x: _plot_order_key(x["name"]))
+            plot_data[key] = plots
 
     experiment_info = get_experiment_info(indexes, control_cols)
 
@@ -123,6 +145,9 @@ def generate_report(
         experiment_info=experiment_info,
         sampling_depth_values=sampling_depth_values,
         sampling_depth_only=sampling_depth_values_only,
+        top_disynthon_specs=top_disynthon_specs or [],
+        top_delta_specs=top_delta_specs or [],
+        disynthon_thresholds=disynthon_thresholds,
         now_date=datetime.now().strftime("%Y-%m-%d"),
         now_year=datetime.now().year,
         **plot_data,  # Inject base64 plot data

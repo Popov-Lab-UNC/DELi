@@ -47,7 +47,7 @@ class DELi_Cube:
                     'protein_withinhibitor_replicates': 'control_col2'
                 }
             lib_size (int, optional): The size of the library.
-            raw_indexes (dict, optional): A dictionary mapping experimental IDs to raw index ranges, used for SD calculation.
+            raw_indexes (dict, optional): Optional; retained for compatibility. NSC/SD use ``indexes`` (UMI-corrected).
         """
         self.data = data
         self.id_col = id_col
@@ -55,6 +55,7 @@ class DELi_Cube:
         self.control_cols = control_cols
         self.lib_size = lib_size
         self.raw_indexes = raw_indexes
+        self._exclude_control_cols_from_spotfire = False
 
         if not all(col in self.data.columns for col in ["ID_A", "ID_B", "ID_C"]):
             first_row_id = self.data[self.id_col].iloc[0]
@@ -103,16 +104,11 @@ class DELi_Cube:
             raise ValueError(
                 "Library size must be provided during initialization to run SD_min method."
             )
-        if self.raw_indexes is None:
-            raise ValueError(
-                "Raw indexes must be provided during initialization to run SD_min method."
-            )
-
         NSC_max_dict = {}
         SD_min_dict = {}
         sampling_depth_dict = {}
 
-        for exp_name, columns in self.raw_indexes.items():
+        for exp_name, columns in self.indexes.items():
             row_sum = self.data[columns].sum(axis=1)
             total_sampling_depth = row_sum.sum() / self.lib_size
 
@@ -141,19 +137,14 @@ class DELi_Cube:
             raise ValueError(
                 "Library size must be provided during initialization to run NSC_values method."
             )
-        if self.raw_indexes is None:
-            raise ValueError(
-                "Raw indexes must be provided during initialization to run NSC_values method."
-            )
-
-        for exp_name, columns in self.raw_indexes.items():
+        for exp_name, columns in self.indexes.items():
             row_sum = self.data[columns].sum(axis=1)
             total_sampling_depth = row_sum.sum() / self.lib_size
 
             exp_row_sum = self.data[columns].sum(axis=1)
             exp_NSC = exp_row_sum / total_sampling_depth
 
-            # self.data[f"{exp_name}_sum"] = exp_row_sum <- this is raw sum
+            self.data[f"{exp_name}_sum"] = exp_row_sum
             self.data[f"{exp_name}_NSC"] = exp_NSC
 
         return self.data
@@ -179,10 +170,13 @@ class DELi_Cube:
             raise ValueError("Input must be a DataFrame returned from NSC_values method.")
 
         df = nsc_df.copy()
-        for exp_name in self.indexes.keys():
-            mean_seq_count = df[f"{exp_name}_sum"].sum(axis=0) / self.lib_size
-            df[f"{exp_name}_NSC+"] = ((df[f"{exp_name}_sum"] + 1) ** 0.5 + 1) ** 2 / mean_seq_count
-            df[f"{exp_name}_NSC-"] = ((df[f"{exp_name}_sum"] + 1) ** 0.5 - 1) ** 2 / mean_seq_count
+        for exp_name, columns in self.indexes.items():
+            sum_col = f"{exp_name}_sum"
+            if sum_col not in df.columns:
+                df[sum_col] = df[columns].sum(axis=1)
+            mean_seq_count = df[sum_col].sum() / self.lib_size
+            df[f"{exp_name}_NSC+"] = ((df[sum_col] + 1) ** 0.5 + 1) ** 2 / mean_seq_count
+            df[f"{exp_name}_NSC-"] = ((df[sum_col] + 1) ** 0.5 - 1) ** 2 / mean_seq_count
         self.data = df
         return self.data
 
@@ -224,68 +218,32 @@ class DELi_Cube:
 
     def z_score(self):
         """
-        Calculate the normalized z-score (zn) for each experimental group compared to the control column.
+        Normalized z-score (zn) under a uniform library null: expected fraction p = 1 / lib_size.
 
-        The z-score is calculated using the observed count (C) and expected count (E), with
-        standard deviation from a binomial distribution. The final zn is further normalized by sqrt(n).
-
-        DOI: 10.1021/acscombsci.8b00116
-
-        Raises
-        ------
-            ValueError: If control columns are missing or contain only zeros.
-
-        Returns
-        -------
-            pd.DataFrame: DataFrame with sum, average, and normalized z-score columns.
+        Uses UMI-corrected counts (``indexes``). DOI: 10.1021/acscombsci.8b00116
         """
-        if not self.control_cols:
+        if self.lib_size is None or self.lib_size <= 0:
             raise ValueError(
-                "Control columns must be provided during initialization to run z_score method."
+                "Positive library size (lib_size) is required to run z_score method."
             )
 
         df = self.data.copy()
+        p = 1.0 / self.lib_size
 
         for exp_name, columns in self.indexes.items():
-            control_cols = self.control_cols.get(exp_name)
-
-            if control_cols is None:
-                raise ValueError(f"Missing control columns for experiment '{exp_name}'.")
-
-            # single control column (NTC) per experiment
-            control_col = (
-                control_cols[0] if isinstance(control_cols, (list, tuple)) else control_cols
-            )
-            if control_col not in df.columns:
-                raise ValueError(f"Control column '{control_col}' is missing in data.")
-
-            # Observed counts in experiment per library member
             df[f"{exp_name}_C"] = df[columns].sum(axis=1)
-
-            control_total = df[control_col].sum()
             selection_total = df[columns].sum(axis=1).sum()
 
-            if control_total == 0 or selection_total == 0:
+            if selection_total == 0:
                 raise ValueError(
-                    f"Total sum for experiment '{exp_name}' or its control is zero, cannot compute z-score."
+                    f"Total selection reads for experiment '{exp_name}' is zero, cannot compute z-score."
                 )
 
-            # Control frequency p_i with a tiny pseudocount (alpha) to prevent zero variance when control counts are zero,
-            alpha = 1e-12
-            p_i = (df[control_col] + alpha) / (control_total + alpha)
+            df[f"{exp_name}_E"] = selection_total * p
+            sigma = np.sqrt(selection_total * p * (1.0 - p))
+            df[f"{exp_name}_sigma"] = sigma
 
-            # Expected counts under control baseline, scaled to experimental depth
-            df[f"{exp_name}_E"] = selection_total * p_i
-
-            # Binomial standard deviation using experimental n and control-derived p_i
-            df[f"{exp_name}_sigma"] = np.sqrt(selection_total * p_i * (1 - p_i))
-
-            # raw z-score: z = (C - E) / σ (from SI in paper)
-            df[f"{exp_name}_z_score"] = (df[f"{exp_name}_C"] - df[f"{exp_name}_E"]) / df[
-                f"{exp_name}_sigma"
-            ]
-
-            # normalized z-score: zn = z / sqrt(n_exp_total) (from SI in paper)
+            df[f"{exp_name}_z_score"] = (df[f"{exp_name}_C"] - df[f"{exp_name}_E"]) / sigma
             df[f"{exp_name}_norm_z_score"] = df[f"{exp_name}_z_score"] / np.sqrt(selection_total)
 
         self.data = df
@@ -373,9 +331,11 @@ class DELi_Cube:
         -------
             pd.DataFrame: The updated DataFrame with PolyO scores.
         """
-        polyo = PolyO(
-            self.data, self.indexes, self.raw_indexes, self.lib_size, feature_mode=feature_mode
-        )
+        if self.lib_size is None or self.lib_size <= 0:
+            raise ValueError(
+                "Positive library size (lib_size) is required to run PolyO method."
+            )
+        polyo = PolyO(self.data, self.indexes, self.lib_size, feature_mode=feature_mode)
         polyo.calculate_polyOraw()
         polyo.find_Ccpd()
         polyo.calculate_Cread()
@@ -431,6 +391,7 @@ class DELi_Cube:
         # normalized_df.drop(columns=list(control_cols_to_drop), inplace=True, axis=1)
 
         self.data = normalized_df
+        self._exclude_control_cols_from_spotfire = True
         return self.data
 
     def disynthonize(self, df: pd.DataFrame = None, synthon_ids: list = None) -> tuple:
@@ -723,6 +684,22 @@ class DELi_Cube:
             )
         ]
 
+        if getattr(self, "_exclude_control_cols_from_spotfire", False) and self.control_cols:
+            exclude = set()
+            for _exp, ctrl in self.control_cols.items():
+                if ctrl is None:
+                    continue
+                for col in ctrl if isinstance(ctrl, (list, tuple)) else [ctrl]:
+                    if not col:
+                        continue
+                    raw_col = str(col).replace("corrected", "raw")
+                    for name in df.columns:
+                        if name == col or name == raw_col or name.endswith(f"_{col}") or name.endswith(
+                            f"_{raw_col}"
+                        ):
+                            exclude.add(name)
+            cols_to_keep = [c for c in cols_to_keep if c not in exclude]
+
         for exp_name, index_range in self.indexes.items():
             sum_col_name = f"{exp_name}_sum"
             if sum_col_name not in df.columns:
@@ -834,7 +811,7 @@ class DELi_Cube:
         output_dir: str = None,
         disynthon_data: pd.DataFrame = None,
         disynth_exp_dict: dict = None,
-        threshold: float = 0.0,
+        threshold=0.0,
     ) -> None:
         """
         Create overlap diagrams for disynth experiments using normalized data and corrected indexes.
@@ -861,8 +838,31 @@ class DELi_Cube:
             output_dir = "."
 
         valid_experiments = 0  # Track number of valid experiments
+        overlap_stats = []
 
         for exp_name, indices in disynth_exp_dict.items():
+            if isinstance(threshold, dict) and "mode" in threshold:
+                mode = str(threshold.get("mode", "manual")).lower()
+                if mode == "auto":
+                    percentile = float(threshold.get("percentile", 90))
+                    vals = disynthon_data[indices].to_numpy().ravel()
+                    vals = vals[np.isfinite(vals)]
+                    vals = vals[vals > 0]
+                    exp_threshold = float(np.percentile(vals, percentile)) if len(vals) else 0.0
+                else:
+                    exp_threshold = float(threshold.get("value", 0.0))
+            elif isinstance(threshold, dict):
+                exp_threshold = float(threshold.get(exp_name, 0.0))
+            elif isinstance(threshold, str):
+                if threshold.lower() == "auto":
+                    vals = disynthon_data[indices].to_numpy().ravel()
+                    vals = vals[np.isfinite(vals)]
+                    vals = vals[vals > 0]
+                    exp_threshold = float(np.percentile(vals, 90)) if len(vals) else 0.0
+                else:
+                    exp_threshold = float(threshold)
+            else:
+                exp_threshold = float(threshold)
             # Filter valid indices that exist in the dataframe
             valid_indices = [idx for idx in indices if idx in disynthon_data.columns]
             num_valid_indices = len(valid_indices)
@@ -879,8 +879,19 @@ class DELi_Cube:
 
             valid_experiments += 1
 
-            mask = disynthon_data[valid_indices].gt(threshold).any(axis=1)
+            mask = disynthon_data[valid_indices].gt(exp_threshold).any(axis=1)
             filtered_data = disynthon_data[mask]
+            corr_df = filtered_data[valid_indices].corr()
+            corr_vals = corr_df.values[np.triu_indices_from(corr_df.values, k=1)]
+            mean_autocorr = float(np.nanmean(corr_vals)) if len(corr_vals) else np.nan
+            overlap_stats.append(
+                {
+                    "experiment": exp_name,
+                    "threshold": exp_threshold,
+                    "mean_pairwise_autocorr": mean_autocorr,
+                    "n_rows": int(len(filtered_data)),
+                }
+            )
 
             disynthon_type = exp_name.split("_")[0]
             if disynthon_type not in filtered_data.columns:
@@ -889,21 +900,25 @@ class DELi_Cube:
                 )
                 continue
 
-            set_a = set(filtered_data[filtered_data[valid_indices[0]] > threshold][disynthon_type])
-            set_b = set(filtered_data[filtered_data[valid_indices[1]] > threshold][disynthon_type])
+            set_a = set(
+                filtered_data[filtered_data[valid_indices[0]] > exp_threshold][disynthon_type]
+            )
+            set_b = set(
+                filtered_data[filtered_data[valid_indices[1]] > exp_threshold][disynthon_type]
+            )
 
             # Use consistent figure size/DPI and margins across disynthon plots
             fig, ax = plt.subplots(figsize=(10, 6), dpi=150)
             if num_valid_indices == 3:
                 set_c = set(
-                    filtered_data[filtered_data[valid_indices[2]] > threshold][disynthon_type]
+                    filtered_data[filtered_data[valid_indices[2]] > exp_threshold][disynthon_type]
                 )
                 v = venn3(
                     [set_a, set_b, set_c],
                     set_labels=(valid_indices[0], valid_indices[1], valid_indices[2]),
                 )
                 plt.title(
-                    f"Venn Diagram for {exp_name} (Three Indices) \n Threshold = {threshold}",
+                    f"Venn Diagram for {exp_name} (Three Indices) \n Threshold = {exp_threshold}, Mean autocorr = {mean_autocorr:.3f}",
                     fontsize=18,
                     pad=20
                 )
@@ -914,7 +929,7 @@ class DELi_Cube:
             else:
                 v = venn2([set_a, set_b], set_labels=(valid_indices[0], valid_indices[1]))
                 plt.title(
-                    f"Venn Diagram for {exp_name} (Two Indices) \n Threshold = {threshold}",
+                    f"Venn Diagram for {exp_name} (Two Indices) \n Threshold = {exp_threshold}, Mean autocorr = {mean_autocorr:.3f}",
                     fontsize=18,
                     pad=20
                 )
@@ -935,6 +950,9 @@ class DELi_Cube:
             raise ValueError(
                 "No experiments had at least two valid indices. Cannot generate overlap diagrams."
             )
+        pd.DataFrame(overlap_stats).to_csv(
+            os.path.join(output_dir, "disynthon_overlap_stats.csv"), index=False
+        )
 
     def ml_fingerprints_to_RF(self, output_dir: str = None) -> None:
         """
@@ -1268,6 +1286,71 @@ class DELi_Cube:
             except ImportError:
                 pass
 
+    def top_delta_compounds(self, comparisons: list[dict], output_dir: str = None) -> None:
+        """
+        Plot top compounds by delta metric between experiment and control.
+        """
+        if output_dir is None:
+            output_dir = "."
+        os.makedirs(output_dir, exist_ok=True)
+
+        for spec in comparisons:
+            exp_name = spec.get("exp_name")
+            control_name = spec.get("control_name")
+            metric = spec.get("metric", "avg")
+            top_count = int(spec.get("top_count", 20))
+
+            if exp_name not in self.indexes:
+                raise ValueError(f"Experiment '{exp_name}' not found in indexes.")
+            if control_name not in self.control_cols:
+                raise ValueError(f"Control mapping '{control_name}' not found in control_cols.")
+
+            if metric in ["sum", "avg"]:
+                exp_vals = self.data[self.indexes[exp_name]].sum(axis=1)
+                if metric == "avg":
+                    exp_vals = exp_vals / max(len(self.indexes[exp_name]), 1)
+            else:
+                exp_metric_col = f"{exp_name}_{metric}"
+                if exp_metric_col not in self.data.columns:
+                    raise ValueError(
+                        f"Metric column '{exp_metric_col}' not found. Run that analysis step first."
+                    )
+                exp_vals = self.data[exp_metric_col]
+
+            control_cols = self.control_cols[control_name]
+            control_vals = self.data[control_cols].sum(axis=1)
+            if metric == "avg":
+                control_vals = control_vals / max(len(control_cols), 1)
+
+            delta_col = f"{exp_name}_minus_{control_name}_{metric}_delta"
+            plot_df = self.data[[self.id_col, "SMILES"]].copy()
+            plot_df[delta_col] = exp_vals - control_vals
+            top_n = plot_df.nlargest(top_count, delta_col)
+
+            mols = [Chem.MolFromSmiles(smiles) for smiles in top_n["SMILES"]]
+            legends = [
+                f"{row[self.id_col]}\n\nDelta {metric}: {row[delta_col]:.2f}"
+                for _, row in top_n.iterrows()
+            ]
+
+            dopts = rdMolDraw2D.MolDrawOptions()
+            dopts.legendFontSize = 24
+            dopts.bondLineWidth = 1.5
+            dopts.minFontSize = 12
+            dopts.addAtomIndices = False
+
+            svg_string = Draw.MolsToGridImage(
+                mols,
+                molsPerRow=4,
+                subImgSize=(300, 300),
+                legends=legends,
+                drawOptions=dopts,
+                useSVG=True,
+            )
+            file_name = f"{exp_name}_vs_{control_name}_top_{top_count}_{metric}_deltas.svg"
+            with open(f"{output_dir}/{file_name}", "w") as f:
+                f.write(svg_string)
+
     def positive_control_finder(self, positive_control_ID=None):
         """_summary_
 
@@ -1309,7 +1392,7 @@ class DELi_Cube:
     def top_disynthons_diff_from_competitor(self):
         pass
 
-    def monosynthon_chemical_space(self, output_dir: str = None) -> None:
+    def monosynthon_chemical_space(self, output_dir: str = None, experiments: list[str] = None) -> None:
         """
         Create t-SNE chemical space visualizations for monosynthons (A, B, C) colored by average enrichment.
 
@@ -1346,7 +1429,8 @@ class DELi_Cube:
             else:
                 return None
 
-        # Process each monosynthon type (A, B, C)
+        experiment_list = experiments if experiments else list(self.indexes.keys())
+        # Process each monosynthon type (A, B, C) per experiment
         for synthon_type in ["A", "B", "C"]:
             synthon_col = f"ID_{synthon_type}"
 
@@ -1363,133 +1447,206 @@ class DELi_Cube:
                 )
                 continue
 
-            # Calculate average enrichment for each monosynthon across all experiments
-            synthon_data = []
-
-            for synthon in unique_synthons:
-                # Get all compounds with this monosynthon
-                synthon_compounds = self.data[self.data[synthon_col] == synthon]
-
-                if len(synthon_compounds) == 0:
+            for exp_name in experiment_list:
+                if exp_name not in self.indexes:
                     continue
-
-                # Calculate average enrichment across all experimental indexes
-                total_enrichment = 0
-                total_experiments = 0
-
-                for exp_name, indexes in self.indexes.items():
-                    # Sum across replicates for this experiment
-                    exp_sum = synthon_compounds[indexes].sum(axis=1)
-                    # Average across compounds with this monosynthon
+                synthon_data = []
+                for synthon in unique_synthons:
+                    synthon_compounds = self.data[self.data[synthon_col] == synthon]
+                    if len(synthon_compounds) == 0:
+                        continue
+                    exp_sum = synthon_compounds[self.indexes[exp_name]].sum(axis=1)
                     avg_enrichment = exp_sum.mean()
-                    total_enrichment += avg_enrichment
-                    total_experiments += 1
-
-                if total_experiments > 0:
-                    avg_enrichment = total_enrichment / total_experiments
-
-                    # Get a representative SMILES (first one found)
                     representative_smiles = synthon_compounds["SMILES"].iloc[0]
-
                     synthon_data.append(
                         {
                             "synthon": synthon,
                             "smiles": representative_smiles,
                             "avg_enrichment": avg_enrichment,
                             "count": len(synthon_compounds),
+                            "exp_name": exp_name,
                         }
                     )
+                if len(synthon_data) < 2:
+                    continue
+                df_synthons = pd.DataFrame(synthon_data)
+                print(
+                    f"Generating fingerprints for {len(df_synthons)} {synthon_type} monosynthons in {exp_name}..."
+                )
+                df_synthons["fingerprint"] = [
+                    smiles_to_fingerprint(smiles) for smiles in tqdm(df_synthons["smiles"])
+                ]
+                df_synthons = df_synthons.dropna(subset=["fingerprint"])
+                if len(df_synthons) < 2:
+                    continue
+                X = np.array([list(fp) for fp in df_synthons["fingerprint"]])
+                print(f"Running t-SNE for {synthon_type} monosynthons in {exp_name}...")
+                tsne = TSNE(
+                    n_components=2, random_state=42, perplexity=min(30, len(df_synthons) - 1)
+                )
+                tsne_results = tsne.fit_transform(X)
 
-            if len(synthon_data) < 2:
-                print(f"Skipping {synthon_type} - not enough valid monosynthons after processing")
+                fig = px.scatter(
+                    x=tsne_results[:, 0],
+                    y=tsne_results[:, 1],
+                    color=df_synthons["avg_enrichment"],
+                    hover_data={
+                        "synthon": df_synthons["synthon"],
+                        "avg_enrichment": df_synthons["avg_enrichment"],
+                        "count": df_synthons["count"],
+                        "exp_name": df_synthons["exp_name"],
+                    },
+                    color_continuous_scale="viridis",
+                    title=f"{synthon_type} Monosynthon Chemical Space ({exp_name})",
+                    labels={"x": "t-SNE 1", "y": "t-SNE 2", "color": "Avg Enrichment"},
+                )
+
+                # Update hover template
+                fig.update_traces(
+                    hovertemplate="<b>%{customdata[0]}</b><br>"
+                    + "Avg Enrichment: %{customdata[1]:.2f}<br>"
+                    + "Count: %{customdata[2]}<br>"
+                    + "<extra></extra>"
+                )
+
+                # Update layout
+                fig.update_layout(
+                    width=800,
+                    height=600,
+                    showlegend=False,
+                    plot_bgcolor="white",
+                    paper_bgcolor="white",
+                    xaxis=dict(showticklabels=False, showgrid=False),
+                    yaxis=dict(showticklabels=False, showgrid=False),
+                )
+
+                # Save HTML file
+                output_file = os.path.join(
+                    clusters_dir, f"monosynthon_{synthon_type}_{exp_name}_chemical_space.html"
+                )
+                fig.write_html(output_file)
+                print(f"Saved {synthon_type} monosynthon chemical space to {output_file}")
+
+                # Create Matplotlib figure for SVG
+                plt.figure(figsize=(10, 8))
+                sc = plt.scatter(
+                    tsne_results[:, 0],
+                    tsne_results[:, 1],
+                    c=df_synthons["avg_enrichment"],
+                    cmap="viridis",
+                    alpha=0.7,
+                )
+                plt.colorbar(sc, label="Avg Enrichment")
+                plt.title(f"{synthon_type} Monosynthon Chemical Space ({exp_name})")
+                plt.xlabel("t-SNE 1")
+                plt.ylabel("t-SNE 2")
+                plt.xticks([])
+                plt.yticks([])
+                plt.tight_layout()
+
+                output_file_svg = os.path.join(
+                    clusters_dir, f"monosynthon_{synthon_type}_{exp_name}_chemical_space.svg"
+                )
+                plt.savefig(output_file_svg, dpi=300)
+                plt.close()
+                print(f"Saved {synthon_type} monosynthon chemical space SVG to {output_file_svg}")
+
+        print(f"Monosynthon chemical space visualizations saved to {clusters_dir}")
+
+    def trisynthon_comparison_space(
+        self, comparisons: list[dict], output_dir: str = None, max_points: int = 3000
+    ) -> None:
+        try:
+            import plotly.express as px
+            from sklearn.manifold import TSNE
+            from rdkit.Chem.rdFingerprintGenerator import GetMorganGenerator
+        except ImportError as e:
+            raise ImportError("trisynthon_comparison_space requires plotly and scikit-learn") from e
+
+        if output_dir is None:
+            output_dir = "."
+        clusters_dir = os.path.join(output_dir, "clusters")
+        os.makedirs(clusters_dir, exist_ok=True)
+
+        def smiles_to_fingerprint(smiles, radius=3, n_bits=2048):
+            mol = Chem.MolFromSmiles(smiles)
+            if mol:
+                try:
+                    Chem.SanitizeMol(mol)
+                    fpgen = GetMorganGenerator(radius=radius, fpSize=n_bits)
+                    return fpgen.GetFingerprint(mol)
+                except Exception:
+                    return None
+            return None
+
+        for comp in comparisons:
+            exp1 = comp.get("exp1")
+            exp2 = comp.get("exp2")
+            metric = comp.get("metric", "avg")
+            n_points = int(comp.get("max_points", max_points))
+            if exp1 not in self.indexes or exp2 not in self.indexes:
                 continue
 
-            # Convert to DataFrame
-            df_synthons = pd.DataFrame(synthon_data)
+            work = self.data[[self.id_col, "SMILES"] + self.indexes[exp1] + self.indexes[exp2]].copy()
+            if metric == "sum":
+                work["exp1_enrichment"] = work[self.indexes[exp1]].sum(axis=1)
+                work["exp2_enrichment"] = work[self.indexes[exp2]].sum(axis=1)
+            else:
+                work["exp1_enrichment"] = work[self.indexes[exp1]].mean(axis=1)
+                work["exp2_enrichment"] = work[self.indexes[exp2]].mean(axis=1)
 
-            # Generate fingerprints
-            print(f"Generating fingerprints for {len(df_synthons)} {synthon_type} monosynthons...")
-            df_synthons["fingerprint"] = [
-                smiles_to_fingerprint(smiles) for smiles in tqdm(df_synthons["smiles"])
-            ]
+            work = work[[self.id_col, "SMILES", "exp1_enrichment", "exp2_enrichment"]]
+            if len(work) > n_points:
+                work = work.nlargest(n_points, "exp1_enrichment")
 
-            # Remove any that failed fingerprint generation
-            df_synthons = df_synthons.dropna(subset=["fingerprint"])
-
-            if len(df_synthons) < 2:
-                print(f"Skipping {synthon_type} - not enough valid fingerprints")
+            work["fingerprint"] = [smiles_to_fingerprint(sm) for sm in work["SMILES"]]
+            work = work.dropna(subset=["fingerprint"])
+            if len(work) < 2:
                 continue
 
-            # Convert fingerprints to array for t-SNE
-            X = np.array([list(fp) for fp in df_synthons["fingerprint"]])
+            X = np.array([list(fp) for fp in work["fingerprint"]])
+            tsne = TSNE(n_components=2, random_state=42, perplexity=min(30, len(work) - 1))
+            coords = tsne.fit_transform(X)
+            work["x"] = coords[:, 0]
+            work["y"] = coords[:, 1]
 
-            # Run t-SNE
-            print(f"Running t-SNE for {synthon_type} monosynthons...")
-            tsne = TSNE(n_components=2, random_state=42, perplexity=min(30, len(df_synthons) - 1))
-            tsne_results = tsne.fit_transform(X)
+            comp_df = pd.concat(
+                [
+                    work[[self.id_col, "x", "y", "exp1_enrichment"]]
+                    .rename(columns={"exp1_enrichment": "enrichment"})
+                    .assign(source=exp1),
+                    work[[self.id_col, "x", "y", "exp2_enrichment"]]
+                    .rename(columns={"exp2_enrichment": "enrichment"})
+                    .assign(source=exp2),
+                ],
+                ignore_index=True,
+            )
+            comp_df["size"] = np.log1p(comp_df["enrichment"].clip(lower=0)) + 1
 
-            # Create plotly figure
             fig = px.scatter(
-                x=tsne_results[:, 0],
-                y=tsne_results[:, 1],
-                color=df_synthons["avg_enrichment"],
-                hover_data={
-                    "synthon": df_synthons["synthon"],
-                    "avg_enrichment": df_synthons["avg_enrichment"],
-                    "count": df_synthons["count"],
-                },
-                color_continuous_scale="viridis",
-                title=f"{synthon_type} Monosynthon Chemical Space",
-                labels={"x": "t-SNE 1", "y": "t-SNE 2", "color": "Avg Enrichment"},
+                comp_df,
+                x="x",
+                y="y",
+                color="source",
+                size="size",
+                hover_data={self.id_col: True, "enrichment": True, "source": True},
+                title=f"Trisynthon Comparison Space ({exp1} vs {exp2})",
+                labels={"x": "t-SNE 1", "y": "t-SNE 2"},
             )
+            fig.update_layout(plot_bgcolor="white", paper_bgcolor="white")
+            fig.write_html(os.path.join(clusters_dir, f"trisynthon_comparison_{exp1}_vs_{exp2}.html"))
 
-            # Update hover template
-            fig.update_traces(
-                hovertemplate="<b>%{customdata[0]}</b><br>"
-                + "Avg Enrichment: %{customdata[1]:.2f}<br>"
-                + "Count: %{customdata[2]}<br>"
-                + "<extra></extra>"
-            )
-
-            # Update layout
-            fig.update_layout(
-                width=800,
-                height=600,
-                showlegend=False,
-                plot_bgcolor="white",
-                paper_bgcolor="white",
-                xaxis=dict(showticklabels=False, showgrid=False),
-                yaxis=dict(showticklabels=False, showgrid=False),
-            )
-
-            # Save HTML file
-            output_file = os.path.join(
-                clusters_dir, f"monosynthon_{synthon_type}_chemical_space.html"
-            )
-            fig.write_html(output_file)
-            print(f"Saved {synthon_type} monosynthon chemical space to {output_file}")
-
-            # Create Matplotlib figure for SVG
             plt.figure(figsize=(10, 8))
-            sc = plt.scatter(
-                tsne_results[:, 0],
-                tsne_results[:, 1],
-                c=df_synthons['avg_enrichment'],
-                cmap='viridis',
-                alpha=0.7
-            )
-            plt.colorbar(sc, label='Avg Enrichment')
-            plt.title(f"{synthon_type} Monosynthon Chemical Space")
+            for src in [exp1, exp2]:
+                src_df = comp_df[comp_df["source"] == src]
+                plt.scatter(src_df["x"], src_df["y"], s=src_df["size"] * 8, alpha=0.6, label=src)
+            plt.title(f"Trisynthon Comparison Space ({exp1} vs {exp2})")
             plt.xlabel("t-SNE 1")
             plt.ylabel("t-SNE 2")
-            # Remove ticks to match plotly style
-            plt.xticks([])
-            plt.yticks([])
+            plt.legend()
             plt.tight_layout()
-
-            output_file_svg = os.path.join(clusters_dir, f"monosynthon_{synthon_type}_chemical_space.svg")
-            plt.savefig(output_file_svg, dpi=300)
+            plt.savefig(
+                os.path.join(clusters_dir, f"trisynthon_comparison_{exp1}_vs_{exp2}.svg"),
+                dpi=300,
+            )
             plt.close()
-            print(f"Saved {synthon_type} monosynthon chemical space SVG to {output_file_svg}")
-        
-        print(f"Monosynthon chemical space visualizations saved to {clusters_dir}")

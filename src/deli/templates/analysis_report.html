@@ -335,6 +335,7 @@
             {% if disynthon_plots %}<li><a href="#disynthon">Disynthon Overlap</a></li>{% endif %}
             {% if top_disynthons_plots %}<li><a href="#top-disynthon">Top Disynthon Enrichment</a></li>{% endif %}
             <li><a href="#top-hits">Top Hit Compounds</a></li>
+            {% if top_delta_plots %}<li><a href="#top-deltas">Top Delta Compounds</a></li>{% endif %}
             {% if monosynthon_chemical_space_plots %}<li><a href="#monosynthon-space">Monosynthon Space</a></li>{% endif %}
             {% if ml_fingerprints_to_RF_plots %}<li><a href="#ml-rf">ML Fingerprints (RF)</a></li>{% endif %}
             {% if ml_fingerprints_to_clf_plots %}<li><a href="#ml-clf">Classifiers</a></li>{% endif %}
@@ -486,6 +487,24 @@
             {% endif %}
         </section>
 
+        {% if top_delta_plots %}
+        <section id="top-deltas">
+            <h2>Top Delta Compounds</h2>
+            <div class="figure-grid">
+                {% for plot in top_delta_plots %}
+                <div class="figure-item">
+                    {% if plot.type == 'svg' %}
+                        <div class="svg-container">{{ plot.data|safe }}</div>
+                    {% else %}
+                        <img src="data:image/png;base64,{{ plot.data }}" alt="{{ plot.name }}">
+                    {% endif %}
+                    <div class="caption">{{ plot.name }}</div>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+
         <!-- Monosynthon Feature Space Section -->
         {% if monosynthon_chemical_space_plots %}
         <section id="monosynthon-space">
@@ -599,6 +618,16 @@
                 var w = window.open("");
                 w.document.write(img.outerHTML);
             }
+        });
+
+        // Enable click-to-open for inline SVG plots
+        document.querySelectorAll('.figure-item .svg-container svg').forEach(svg => {
+            svg.style.cursor = 'zoom-in';
+            svg.onclick = function() {
+                const w = window.open("");
+                const svgMarkup = new XMLSerializer().serializeToString(svg);
+                w.document.write(svgMarkup);
+            };
         });
     </script>
 </body>
