@@ -6,6 +6,7 @@ from datetime import datetime
 from cube_class import DELi_Cube
 import analysis_report_gen as report
 import ast
+from typing import Any
 
 
 def create_output_dir(output_dir):
@@ -41,6 +42,30 @@ def read_dict_from_file(file_path):
     with open(file_path, "r") as f:
         content = f.read()
         return ast.literal_eval(content)
+
+
+def _normalize_comparison_block(block: Any, defaults: dict) -> list[dict]:
+    """
+    Normalize config that can be either:
+    - a single comparison dict, or
+    - a dict with `comparisons: [...]`.
+    """
+    if not block:
+        return []
+    if isinstance(block, dict) and isinstance(block.get("comparisons"), list):
+        out = []
+        for item in block["comparisons"]:
+            if not isinstance(item, dict):
+                continue
+            merged = defaults.copy()
+            merged.update(item)
+            out.append(merged)
+        return out
+    if isinstance(block, dict):
+        merged = defaults.copy()
+        merged.update(block)
+        return [merged]
+    return []
 
 
 def main():
@@ -110,24 +135,31 @@ def main():
             print(disynth_exp_dict)
         if "polyO" in flags and flags.get("polyO", False):
             cube.PolyO()
+        top_disynthon_specs = []
         if "top_disynthons" in flags and flags.get("top_disynthons", False):
-            comparison_type = flags.get("top_disynthons", {}).get("comparison", "control")
-            exp_name = flags.get("top_disynthons", {}).get("exp_name", "None")
-            exp2_name = flags.get("top_disynthons", {}).get("exp2_name", "None")
-            control_name = flags.get("top_disynthons", {}).get("control_name", "None")
-            top_count = int(flags.get("top_disynthons", {}).get("top_count", 10))
-            comparison_metric = flags.get("top_disynthons", {}).get("comparison_metric", "avg")
-            top_disynthons_dir = create_output_dir(os.path.join(output_dir, "top_disynthons"))
-            cube.get_top_disynthons(
-                disynthon_data=disynthon_data,
-                exp_name1=exp_name,
-                comparison_type=comparison_type,
-                exp_name2=exp2_name,
-                control_name=control_name,
-                comparison_metric=comparison_metric,
-                top_count=top_count,
-                output_dir=top_disynthons_dir,
+            top_disynthon_specs = _normalize_comparison_block(
+                flags.get("top_disynthons", {}),
+                {
+                    "comparison": "control",
+                    "exp_name": "None",
+                    "exp2_name": "None",
+                    "control_name": "None",
+                    "top_count": 10,
+                    "comparison_metric": "avg",
+                },
             )
+            top_disynthons_dir = create_output_dir(os.path.join(output_dir, "top_disynthons"))
+            for spec in top_disynthon_specs:
+                cube.get_top_disynthons(
+                    disynthon_data=disynthon_data,
+                    exp_name1=spec["exp_name"],
+                    comparison_type=spec["comparison"],
+                    exp_name2=spec.get("exp2_name"),
+                    control_name=spec.get("control_name"),
+                    comparison_metric=spec.get("comparison_metric", "avg"),
+                    top_count=int(spec.get("top_count", 10)),
+                    output_dir=top_disynthons_dir,
+                )
         if "trisynthon_overlap" in flags and flags.get("trisynthon_overlap", False):
             trisynthon_dir = create_output_dir(os.path.join(output_dir, "trisynthon"))
             cube.trisynthon_overlap(output_dir=trisynthon_dir)
@@ -137,7 +169,7 @@ def main():
                 output_dir=disynthon_dir,
                 disynthon_data=disynthon_data,
                 disynth_exp_dict=disynth_exp_dict,
-                threshold=int(flags.get("disynthon_threshold", 20)),
+                threshold=flags.get("disynthon_threshold", 20),
             )
         if "normalized_data" in flags and flags.get("normalized_data", False):
             cube.normalize()
@@ -172,10 +204,29 @@ def main():
                 flags.get("top_hits_metric", "sum"),
                 output_dir=top_hits_dir,
             )
-        if "monosynthon_chemical_space" in flags and flags.get(
-            "monosynthon_chemical_space", False
-        ):
-            cube.monosynthon_chemical_space(output_dir=output_dir)
+        top_delta_specs = []
+        if "top_delta_compounds" in flags and flags.get("top_delta_compounds", False):
+            top_delta_specs = _normalize_comparison_block(
+                flags.get("top_delta_compounds", {}),
+                {
+                    "exp_name": "None",
+                    "control_name": "None",
+                    "metric": "avg",
+                    "top_count": 20,
+                },
+            )
+            top_delta_dir = create_output_dir(os.path.join(output_dir, "top_deltas"))
+            cube.top_delta_compounds(top_delta_specs, output_dir=top_delta_dir)
+        if "monosynthon_chemical_space" in flags and flags.get("monosynthon_chemical_space", False):
+            mono_cfg = flags.get("monosynthon_chemical_space")
+            if isinstance(mono_cfg, dict):
+                mono_experiments = mono_cfg.get("experiments")
+                cube.monosynthon_chemical_space(
+                    output_dir=output_dir,
+                    experiments=mono_experiments,
+                )
+            else:
+                cube.monosynthon_chemical_space(output_dir=output_dir)
         if "report" in flags and flags.get("report", False):
             nsc_max_dict = (
                 nsc_max_dict if "SD_min" in flags and flags.get("SD_min", False) else None
@@ -191,6 +242,9 @@ def main():
                 nsc_max_dict,
                 sd_min_dict,
                 sampling_depth_dict,
+                top_disynthon_specs=top_disynthon_specs,
+                top_delta_specs=top_delta_specs,
+                disynthon_thresholds=flags.get("disynthon_threshold"),
             )
             print("Report generation completed!")
             today_date = datetime.now().strftime("%Y%m%d")
