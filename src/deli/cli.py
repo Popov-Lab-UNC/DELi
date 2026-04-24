@@ -763,8 +763,8 @@ def run_decode(
             f"{[tool.compound_id for tool_lib in selection.tool_compounds for tool in tool_lib.compounds]}"
         )
 
-    if not hasattr(selection, "sequence_reader"):
-        if len(sequence_files) == 0:
+    if len(sequence_files) == 0:
+        if not hasattr(selection, "sequence_reader"):
             msg = (
                 f"No sequence files provided and no sequence files found in selection file '{selection_file}'; "
                 "cannot decode sequences without sequence files"
@@ -773,11 +773,11 @@ def run_decode(
             click.echo(msg)
             sys.exit(1)
         else:
-            sequence_reader = get_reader(sequence_files)
-            logger.debug(f"using provided sequence files: {sequence_reader.sequence_files}")
+            sequence_reader = selection.sequence_reader
+            logger.debug(f"using sequence files from selection file: {sequence_reader.sequence_files}")
     else:
-        sequence_reader = selection.sequence_reader
-        logger.debug(f"using sequence files from selection file: {sequence_reader.sequence_files}")
+        sequence_reader = get_reader(sequence_files)
+        logger.debug(f"using provided sequence files: {sequence_reader.sequence_files}")
 
     # deal with prefix
     if prefix is None or prefix == "":
@@ -837,7 +837,7 @@ def run_decode(
         decode_settings = DecodingSettings.from_file(selection_file)
         logger.info(f"loaded decoding settings from selection file: '{selection_file}'")
     except Exception as e:
-        logger.debug(f"failed to load decoding settings from selection file '{selection_file}': {e}")
+        logger.warning(f"failed to load decoding settings from selection file '{selection_file}': {e}")
 
     if decode_settings_file:
         if decode_settings is not None:
@@ -847,6 +847,9 @@ def run_decode(
             )
         decode_settings = DecodingSettings.from_file(decode_settings_file)
         logger.info(f"loaded decoding settings from: '{decode_settings_file}'")
+
+    if decode_settings is None:
+        logger.warning("no decoding settings found; using default settings")
 
     logger.debug(f"loaded decoding settings: {decode_settings}")
 
@@ -1067,7 +1070,7 @@ def count_compounds(ctx, collected_decodes, out_loc, cluster_umis, keep_raw_coun
             out_file = open(out_loc, "w")
         else:
             out_file = gzip.open(out_loc, "wt")
-        writer = lambda x: out_file.write("\n".join(["\t".join([str(val) for val in rd.values()]).strip() for rd in x]))
+        writer = lambda x: out_file.write("\n".join(["\t".join([str(val) for val in rd.values()]).strip() for rd in x]) + "\n")
         _header = ["library_id", "bb_ids", "count"]
         if keep_raw_count:
             _header.append("raw_count")
@@ -1142,7 +1145,7 @@ def count_compounds(ctx, collected_decodes, out_loc, cluster_umis, keep_raw_coun
 
 @decode_group.command(name="report")
 @click.argument("decode_stats_file", nargs=-1, type=click.Path(exists=True), required=True)
-@click.argument("selection_file", type=click.Path(exists=True), required=False, default=None)
+@click.option("--selection-file", "-s", type=click.Path(exists=True), required=False, default=None, help="Selection file used to generate the report")
 @click.option("--out-loc", "-o", type=click.Path(), required=False, default="./decode_report.html", help="Output location to save report to")
 @click.pass_context
 @with_deli_quote
