@@ -3,7 +3,7 @@
 import abc
 from typing import Generic, Iterator, Sequence, TypeVar
 
-from deli.configure import check_id_for_reserved_tokens, get_reserved_id_tokens
+from deli.config import get_deli_config
 
 from .compound import Compound
 
@@ -18,11 +18,7 @@ class Library(Generic[C], abc.ABC):
 
     def __init__(self, library_id: str):
         self.library_id: str = library_id
-        if check_id_for_reserved_tokens(library_id):
-            raise ValueError(
-                f"library id '{library_id}' contains a reserved token: {get_reserved_id_tokens()}. "
-                f"remove reserved tokens from library ids. See the docs for more details."
-            )
+        get_deli_config().check_id_for_reserved_tokens(library_id)
 
     def len(self) -> int:
         """Return the size of the library"""

@@ -28,6 +28,7 @@ class BarcodeSection:
     """
 
     def __init__(self, section_name: str, section_tag: str, section_overhang: Optional[str] = None):
+        """Initialize the barcode section"""
         self.section_name = section_name.replace(" ", "_").replace("-", "_")
         self.section_tag = section_tag.upper()
         self.section_overhang = section_overhang.upper() if section_overhang else None
@@ -115,6 +116,9 @@ class VariableBarcodeSection(BarcodeSection):
     expected to vary read from read (for example, in building block sections).
     All nucleotides in the section tag must be "N".
     The overhang (if included) must still be static.
+
+    The variable DNA in this section is not decodable by DELi, DELi will just ignore it during alignment
+    and matching.
     """
 
     def _validate(self):
@@ -170,7 +174,26 @@ class DecodeableBarcodeSection(VariableBarcodeSection):
 
 
 class BuildingBlockBarcodeSection(DecodeableBarcodeSection):
-    """Base class for all barcode sections encoding building block regions"""
+    """
+    Barcode section the encodes building block regions
+
+    Parameters
+    ----------
+    cycle_number: int
+        the cycle number for this building block
+        the first reactant is always cycle 0 and so on
+    section_name: str
+        barcode section name
+    section_tag: str
+        barcode section DNA tag
+        use "N" for variable or regions
+    section_overhang: str, optional
+        DNA of overhang directly after section tag
+        leave as `None` if no overhang
+    error_correction_mode: str, default="disable"
+        the error correction mode for the building block tags in this section
+        the default is no error correction
+    """
 
     def __init__(
         self,
@@ -180,26 +203,7 @@ class BuildingBlockBarcodeSection(DecodeableBarcodeSection):
         section_overhang: Optional[str] = None,
         error_correction_mode: str = "disable",
     ):
-        """
-        Initialize BuildingBlockBarcodeSection
-
-        Parameters
-        ----------
-        cycle_number: int
-            the cycle number for this building block
-            the first reactant is always cycle 0 and so on
-        section_name: str
-            barcode section name
-        section_tag: str
-            barcode section DNA tag
-            use "N" for variable or regions
-        section_overhang: str, optional
-            DNA of overhang directly after section tag
-            leave as `None` if no overhang
-        error_correction_mode: str, default="disable"
-            the error correction mode for the building block tags in this section
-            the default is no error correction
-        """
+        """Initialize BuildingBlockBarcodeSection"""
         self.cycle_number = cycle_number
         super().__init__(
             section_name=section_name,
@@ -221,13 +225,18 @@ class BuildingBlockBarcodeSection(DecodeableBarcodeSection):
 
 
 class UMIBarcodeSection(VariableBarcodeSection):
-    """Class for UMI barcode sections"""
+    """Barcode section for a UMI region"""
 
     pass
 
 
 class StaticBarcodeSection(BarcodeSection):
-    """Base class for all static barcode sections"""
+    """
+    A barcode sections that encodes static DNA
+
+    Static DNA is a DNA sequence that will not vary between any
+    reads utilizing the barcode schema the section is a part of.
+    """
 
     def _validate(self):
         """Validate that all nucleotides are known and valid"""
@@ -240,25 +249,51 @@ class StaticBarcodeSection(BarcodeSection):
 
 
 class PrimerBarcodeSection(StaticBarcodeSection):
-    """Class for Primer barcode sections"""
+    """
+    A special type of static barcode section to represent a primer
+
+    Currently primers are treated the same as static sections, however
+    future versions of DELi may have special functionality for primer sections.
+    If your region is a primer, it is recommended to use this class over a
+    ``StaticBarcodeSection`` to represent it in the barcode schema.
+    """
 
     pass
 
 
-class LibraryBarcodeSection(StaticBarcodeSection):
-    """Class for library barcode sections"""
+class IdentifierBarcodeSection(StaticBarcodeSection):
+    """
+    Barcode section that encodes the static section used to identify the barcode schema
+
+    DELi uses this section during decoding to determine the source of any given DNA read.
+    In the DELi library JSON specification this section can be defined using the keywords
+    "library" or "tool".
+    """
 
     pass
 
 
 class ToolCompoundRefBarcodeSection(StaticBarcodeSection):
-    """Class for tool compound reference barcode sections"""
+    """
+    Barcode section that encodes a reference to a tool compound
+
+    Tool compound reference barcode sections are a special type of static barcode section define
+    the a sequence of static DNA that DELi can align/match to when attempting to decode a DNA read
+    that was determined to be a tool compound.
+    """
 
     pass
 
 
 class MixedBarcodeSection(BarcodeSection):
-    """Mixed barcode sections can have both static and variable regions"""
+    """
+    Barcode sections that contain both static and variable nucleotides in the section tag
+
+    The variable DNA in this section is not decodable by DELi, DELi will just ignore it during alignment
+    and matching.
+
+    Note: this should not be used for sections that have overhangs, you the overhang attribute instead.
+    """
 
     pass
 
@@ -295,7 +330,7 @@ def _parse_sections_from_dict(data: dict) -> list[BarcodeSection]:
     for section_name, section_info in data.items():
         if re.match(r"^library$", section_name) or re.match(r"^tool$", section_name):
             _sections.append(
-                LibraryBarcodeSection(
+                IdentifierBarcodeSection(
                     section_name=section_name,
                     section_tag=section_info["tag"],
                     section_overhang=section_info.get("overhang"),
@@ -385,19 +420,30 @@ class BarcodeSchema(abc.ABC):
     Parameters
     ----------
     barcode_sections: list[BarcodeSection]
-        list of barcode sections *in order* for the barcode schema
+        list of barcode sections *in 5` -> 3` order* for the barcode schema
 
     Attributes
     ----------
-    library_section: LibraryBarcodeSection
-        the library barcode section
-    umi_section: Optional[UMIBarcodeSection]
-        the UMI barcode section if there is one, otherwise `None`
+    identifier_section: IdentifierBarcodeSection
+        the barcode section used to identify the given library.
+    umi_section: UMIBarcodeSection
+        the UMI barcode section
     static_sections: List[StaticBarcodeSection]
-        list of all static barcode sections (excluding library section)
+        list of all static barcode sections (excluding identifier section)
+    decodeable_sections: List[DecodeableBarcodeSection]
+        list of all decodeable barcode sections
+    min_length: int
+        the minimum length of a DNA read needed to decode all required sections of the barcode schema
+    section_spans: dict[str, slice]
+        a mapping of section names to their positions in the barcode schema
+    required_start: int
+        the starting index (DNA bases) of the first required section in the barcode schema
+    required_end: int
+        the ending index (DNA bases) of the last required section in the barcode schema
     """
 
     def __init__(self, barcode_sections: list[BarcodeSection]):
+        """Initialize the barcode schema"""
         self.barcode_sections = barcode_sections
 
         # check for uniqueness of barcode section names
@@ -418,19 +464,19 @@ class BarcodeSchema(abc.ABC):
         }
 
         # check for one library section
-        self.library_section: LibraryBarcodeSection
-        _library_sections = [
+        self.identifier_section: IdentifierBarcodeSection
+        _identifier_sections = [
             (i, section)
             for i, section in enumerate(self.barcode_sections)
-            if isinstance(section, LibraryBarcodeSection)
+            if isinstance(section, IdentifierBarcodeSection)
         ]
-        if len(_library_sections) == 0:
-            raise BarcodeSchemaError("barcode schemas must contain a library barcode section")
-        elif len(_library_sections) > 1:
-            raise BarcodeSchemaError("barcode schemas must contain only one library barcode section")
+        if len(_identifier_sections) == 0:
+            raise BarcodeSchemaError("barcode schemas must contain a identifier barcode section")
+        elif len(_identifier_sections) > 1:
+            raise BarcodeSchemaError("barcode schemas must contain only one identifier barcode section")
         else:
-            self.library_section = _library_sections[0][1]
-            self._library_section_idx = _library_sections[0][0]
+            self.identifier_section = _identifier_sections[0][1]
+            self._library_section_idx = _identifier_sections[0][0]
 
         # check for umi section (optional)
         self.umi_section: UMIBarcodeSection
@@ -451,7 +497,7 @@ class BarcodeSchema(abc.ABC):
         self.static_sections: list[StaticBarcodeSection] = list()
         self._static_sections_idxs: list[int] = list()
         for i, section in enumerate(self.barcode_sections):
-            if isinstance(section, StaticBarcodeSection) and not isinstance(section, LibraryBarcodeSection):
+            if isinstance(section, StaticBarcodeSection) and not isinstance(section, IdentifierBarcodeSection):
                 self.static_sections.append(section)
                 self._static_sections_idxs.append(i)
 
@@ -463,8 +509,9 @@ class BarcodeSchema(abc.ABC):
 
         # get the minimum length needed to extract info from a barcode match
         self.min_length: int
+
+        # get the required sections and their indexes/spans
         required_section_indexes = [self.barcode_sections.index(req_sec) for req_sec in self.get_required_sections()]
-        # position required
         start = min(required_section_indexes)
         end = max(required_section_indexes)
         self.min_length = sum([len(section) for section in self.barcode_sections[start : end + 1]])
@@ -593,7 +640,7 @@ class BarcodeSchema(abc.ABC):
         bool
         """
         # check for the same library tag length
-        if len(self.library_section) != len(other.library_section):
+        if len(self.identifier_section) != len(other.identifier_section):
             return False
 
         # get required sections
@@ -839,7 +886,7 @@ class BarcodeSchema(abc.ABC):
 
         Returns
         -------
-        distacne: int
+        distance: int
         """
         _section1 = self.get_section(section1)
         _section2 = self.get_section(section2)
@@ -923,22 +970,33 @@ class DELBarcodeSchema(BarcodeSchema):
     Parameters
     ----------
     barcode_sections: list[BarcodeSection]
-        list of barcode sections *in order* for the barcode schema
+        list of barcode sections *in 5` -> 3` order* for the barcode schema
 
     Attributes
     ----------
-    library_section: LibraryBarcodeSection
-        the library barcode section
+    identifier_section: IdentifierBarcodeSection
+        the barcode section used to identify the given library.
     building_block_sections: List[BuildingBlockBarcodeSection]
         the building block barcode sections
         order of appearance in barcode is preserved
-    umi_section: Optional[UMIBarcodeSection]
-        the UMI barcode section if there is one, otherwise `None`
+    umi_section: UMIBarcodeSection
+        the UMI barcode section
     static_sections: List[StaticBarcodeSection]
-        list of all static barcode sections (excluding library section)
+        list of all static barcode sections (excluding identifier section)
+    decodeable_sections: List[DecodeableBarcodeSection]
+        list of all decodeable barcode sections
+    min_length: int
+        the minimum length of a DNA read needed to decode all required sections of the barcode schema
+    section_spans: dict[str, slice]
+        a mapping of section names to their positions in the barcode schema
+    required_start: int
+        the starting index (DNA bases) of the first required section in the barcode schema
+    required_end: int
+        the ending index (DNA bases) of the last required section in the barcode schema
     """
 
     def __init__(self, barcode_sections: list[BarcodeSection]):
+        """Initialize the barcode schema"""
         # check for building block sections
         self.building_block_sections: list[BuildingBlockBarcodeSection] = list()
         self._building_block_section_idxs: list[int] = list()
@@ -974,7 +1032,7 @@ class DELBarcodeSchema(BarcodeSchema):
         list[str]
             list of required barcode section names
         """
-        required_sections: list[str] = [self.library_section.section_name]
+        required_sections: list[str] = [self.identifier_section.section_name]
         required_sections.extend([section.section_name for section in self.building_block_sections])
         if self.umi_section:
             required_sections.append(self.umi_section.section_name)
@@ -1019,16 +1077,37 @@ class ToolCompoundBarcodeSchema(BarcodeSchema):
     """
     Barcode schema class for tool compounds
 
-    In a somewhat confusing nature, DELi treats tool compounds as libraries
-    when it comes to barcodes and decoding. In a sense they are a library containing
-    a single compound. A side effect of this is that tool compound barcode schemas
-    must contain a `LibraryBarcodeSection` section. Further confusing this is that
-    in the Tool compound barcode schema JSON files, this section is called 'tool' rather
-    than 'library'. Under the hood, DELi will treat 'tool' and 'library' sections the same.
-    The name difference is just for user clarity.
+    When a tool compound is inserted into a DEL selection outside of a library
+    (in DELi terms it is *not* dopped) it will have its own barcode schema.
+    Barcode schemas for tool compounds are similar to DEL library schema but
+    vary in a few important ways (for example tool compounds don't have building
+    block barcode sections since they aren't combinatorial).
 
-    You can read more about this in the docs.
+    Parameters
+    ----------
+    barcode_sections: list[BarcodeSection]
+        list of barcode sections *in 5` -> 3` order* for the barcode schema
 
+    Attributes
+    ----------
+    identifier_section: IdentifierBarcodeSection
+        the barcode section used to identify the given library.
+    tool_compound_ref_section: ToolCompoundRefBarcodeSection
+        the barcode section used to link a tool compound to a library and building block combination
+    umi_section: UMIBarcodeSection
+        the UMI barcode section
+    static_sections: List[StaticBarcodeSection]
+        list of all static barcode sections (excluding identifier section)
+    decodeable_sections: List[DecodeableBarcodeSection]
+        list of all decodeable barcode sections
+    min_length: int
+        the minimum length of a DNA read needed to decode all required sections of the barcode schema
+    section_spans: dict[str, slice]
+        a mapping of section names to their positions in the barcode schema
+    required_start: int
+        the starting index (DNA bases) of the first required section in the barcode schema
+    required_end: int
+        the ending index (DNA bases) of the last required section in the barcode schema
     """
 
     def __init__(self, barcode_sections: list[BarcodeSection]):
@@ -1061,7 +1140,9 @@ class ToolCompoundBarcodeSchema(BarcodeSchema):
         list[str]
             list of required barcode section names
         """
-        required_sections: list[str] = [self.library_section.section_name, self.tool_compound_ref_section.section_name]
+        required_sections: list[str] = [
+            self.identifier_section.section_name, self.tool_compound_ref_section.section_name
+        ]
         if self.umi_section:
             required_sections.append(self.umi_section.section_name)
         return required_sections

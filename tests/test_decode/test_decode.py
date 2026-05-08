@@ -417,7 +417,7 @@ def _make_a_fake_3cycle_lib(lib_id: str, lib_tag: str) -> DELibrary:
     """Create a real DELibrary mock for testing"""
     from deli.dels.barcode import (
         BuildingBlockBarcodeSection,
-        LibraryBarcodeSection,
+        IdentifierBarcodeSection,
         StaticBarcodeSection,
         UMIBarcodeSection,
     )
@@ -428,7 +428,7 @@ def _make_a_fake_3cycle_lib(lib_id: str, lib_tag: str) -> DELibrary:
 
     sections = [
         StaticBarcodeSection(section_name="primer", section_tag="GTAGATCTTAGATTCGAGAGTC"),
-        LibraryBarcodeSection(section_name="library", section_tag=lib_tag),
+        IdentifierBarcodeSection(section_name="library", section_tag=lib_tag),
         StaticBarcodeSection(section_name="static1", section_tag="GTTTAGATCATGC"),
         BuildingBlockBarcodeSection(cycle_number=1, section_name="bb1", section_tag="NNNNNNNN", section_overhang="AG"),
         BuildingBlockBarcodeSection(cycle_number=2, section_name="bb2", section_tag="NNNNNNNN", section_overhang="GC"),
@@ -443,39 +443,39 @@ def _make_a_fake_3cycle_lib(lib_id: str, lib_tag: str) -> DELibrary:
     bb_set_1 = TaggedBuildingBlockSet(
         bb_set_id="bb1_TEST",
         building_blocks=[
-            TaggedBuildingBlock(bb_id="BB1_A", tag="AAAAAAAA"),
-            TaggedBuildingBlock(bb_id="BB1_B", tag="AAAATTTT"),
-            TaggedBuildingBlock(bb_id="BB1_C", tag="CCCCCCCC"),
-            TaggedBuildingBlock(bb_id="BB1_D", tag="GGGGGGGG"),
-            TaggedBuildingBlock(bb_id="BB1_E", tag="AACCGGTT"),
-            TaggedBuildingBlock(bb_id="BB1_F", tag="TTTTCCCC"),
-            TaggedBuildingBlock(bb_id="BB1_G", tag="AGAGAGAG"),
+            TaggedBuildingBlock(bb_id="BB1_A", tags="AAAAAAAA"),
+            TaggedBuildingBlock(bb_id="BB1_B", tags="AAAATTTT"),
+            TaggedBuildingBlock(bb_id="BB1_C", tags="CCCCCCCC"),
+            TaggedBuildingBlock(bb_id="BB1_D", tags="GGGGGGGG"),
+            TaggedBuildingBlock(bb_id="BB1_E", tags="AACCGGTT"),
+            TaggedBuildingBlock(bb_id="BB1_F", tags="TTTTCCCC"),
+            TaggedBuildingBlock(bb_id="BB1_G", tags="AGAGAGAG"),
             TaggedNullBuildingBlock(bb_id="BB1_NULL", tag="CTCTCTCT"),
         ],
     )
     bb_set_2 = TaggedBuildingBlockSet(
         bb_set_id="bb2_TEST",
         building_blocks=[
-            TaggedBuildingBlock(bb_id="BB2_A", tag="AAAAAAAA"),
-            TaggedBuildingBlock(bb_id="BB2_B", tag="AAAATTTT"),
-            TaggedBuildingBlock(bb_id="BB2_C", tag="CCCCCCCC"),
-            TaggedBuildingBlock(bb_id="BB2_D", tag="GGGGGGGG"),
-            TaggedBuildingBlock(bb_id="BB2_E", tag="AACCGGTT"),
-            TaggedBuildingBlock(bb_id="BB2_F", tag="TTTTCCCC"),
-            TaggedBuildingBlock(bb_id="BB2_G", tag="AGAGAGAG"),
+            TaggedBuildingBlock(bb_id="BB2_A", tags="AAAAAAAA"),
+            TaggedBuildingBlock(bb_id="BB2_B", tags="AAAATTTT"),
+            TaggedBuildingBlock(bb_id="BB2_C", tags="CCCCCCCC"),
+            TaggedBuildingBlock(bb_id="BB2_D", tags="GGGGGGGG"),
+            TaggedBuildingBlock(bb_id="BB2_E", tags="AACCGGTT"),
+            TaggedBuildingBlock(bb_id="BB2_F", tags="TTTTCCCC"),
+            TaggedBuildingBlock(bb_id="BB2_G", tags="AGAGAGAG"),
             TaggedNullBuildingBlock(bb_id="BB2_NULL", tag="CTCTCTCT"),
         ],
     )
     bb_set_3 = TaggedBuildingBlockSet(
         bb_set_id="bb3_TEST",
         building_blocks=[
-            TaggedBuildingBlock(bb_id="BB3_A", tag="AAAAAAAA"),
-            TaggedBuildingBlock(bb_id="BB3_B", tag="AAAATTTT"),
-            TaggedBuildingBlock(bb_id="BB3_C", tag="CCCCCCCC"),
-            TaggedBuildingBlock(bb_id="BB3_D", tag="GGGGGGGG"),
-            TaggedBuildingBlock(bb_id="BB3_E", tag="AACCGGTT"),
-            TaggedBuildingBlock(bb_id="BB3_F", tag="TTTTCCCC"),
-            TaggedBuildingBlock(bb_id="BB3_G", tag="AGAGAGAG"),
+            TaggedBuildingBlock(bb_id="BB3_A", tags="AAAAAAAA"),
+            TaggedBuildingBlock(bb_id="BB3_B", tags="AAAATTTT"),
+            TaggedBuildingBlock(bb_id="BB3_C", tags="CCCCCCCC"),
+            TaggedBuildingBlock(bb_id="BB3_D", tags="GGGGGGGG"),
+            TaggedBuildingBlock(bb_id="BB3_E", tags="AACCGGTT"),
+            TaggedBuildingBlock(bb_id="BB3_F", tags="TTTTCCCC"),
+            TaggedBuildingBlock(bb_id="BB3_G", tags="AGAGAGAG"),
             TaggedNullBuildingBlock(bb_id="BB3_NULL", tag="CTCTCTCT"),
         ],
     )
@@ -493,7 +493,7 @@ def _make_a_fake_2cycle_lib(lib_id: str, lib_tag: str) -> DELibrary:
     """Create a real DELibrary mock for testing"""
     from deli.dels.barcode import (
         BuildingBlockBarcodeSection,
-        LibraryBarcodeSection,
+        IdentifierBarcodeSection,
         StaticBarcodeSection,
         UMIBarcodeSection,
     )
@@ -504,7 +504,7 @@ def _make_a_fake_2cycle_lib(lib_id: str, lib_tag: str) -> DELibrary:
 
     sections = [
         StaticBarcodeSection(section_name="primer", section_tag="GTAGATCTTAGATTCGAGAGTC"),
-        LibraryBarcodeSection(section_name="library", section_tag=lib_tag),
+        IdentifierBarcodeSection(section_name="library", section_tag=lib_tag),
         StaticBarcodeSection(section_name="static1", section_tag="GTTTAGATCATGC"),
         BuildingBlockBarcodeSection(cycle_number=1, section_name="bb1", section_tag="NNNNNNNN", section_overhang="AG"),
         BuildingBlockBarcodeSection(cycle_number=2, section_name="bb2", section_tag="NNNNNNNN", section_overhang="GC"),
@@ -518,26 +518,26 @@ def _make_a_fake_2cycle_lib(lib_id: str, lib_tag: str) -> DELibrary:
     bb_set_1 = TaggedBuildingBlockSet(
         bb_set_id="bb1_TEST",
         building_blocks=[
-            TaggedBuildingBlock(bb_id="BB1_A", tag="AAAAAAAA"),
-            TaggedBuildingBlock(bb_id="BB1_B", tag="AAAATTTT"),
-            TaggedBuildingBlock(bb_id="BB1_C", tag="CCCCCCCC"),
-            TaggedBuildingBlock(bb_id="BB1_D", tag="GGGGGGGG"),
-            TaggedBuildingBlock(bb_id="BB1_E", tag="AACCGGTT"),
-            TaggedBuildingBlock(bb_id="BB1_F", tag="TTTTCCCC"),
-            TaggedBuildingBlock(bb_id="BB1_G", tag="AGAGAGAG"),
+            TaggedBuildingBlock(bb_id="BB1_A", tags="AAAAAAAA"),
+            TaggedBuildingBlock(bb_id="BB1_B", tags="AAAATTTT"),
+            TaggedBuildingBlock(bb_id="BB1_C", tags="CCCCCCCC"),
+            TaggedBuildingBlock(bb_id="BB1_D", tags="GGGGGGGG"),
+            TaggedBuildingBlock(bb_id="BB1_E", tags="AACCGGTT"),
+            TaggedBuildingBlock(bb_id="BB1_F", tags="TTTTCCCC"),
+            TaggedBuildingBlock(bb_id="BB1_G", tags="AGAGAGAG"),
             TaggedNullBuildingBlock(bb_id="BB1_NULL", tag="CTCTCTCT"),
         ],
     )
     bb_set_2 = TaggedBuildingBlockSet(
         bb_set_id="bb2_TEST",
         building_blocks=[
-            TaggedBuildingBlock(bb_id="BB2_A", tag="AAAAAAAA"),
-            TaggedBuildingBlock(bb_id="BB2_B", tag="AAAATTTT"),
-            TaggedBuildingBlock(bb_id="BB2_C", tag="CCCCCCCC"),
-            TaggedBuildingBlock(bb_id="BB2_D", tag="GGGGGGGG"),
-            TaggedBuildingBlock(bb_id="BB2_E", tag="AACCGGTT"),
-            TaggedBuildingBlock(bb_id="BB2_F", tag="TTTTCCCC"),
-            TaggedBuildingBlock(bb_id="BB2_G", tag="AGAGAGAG"),
+            TaggedBuildingBlock(bb_id="BB2_A", tags="AAAAAAAA"),
+            TaggedBuildingBlock(bb_id="BB2_B", tags="AAAATTTT"),
+            TaggedBuildingBlock(bb_id="BB2_C", tags="CCCCCCCC"),
+            TaggedBuildingBlock(bb_id="BB2_D", tags="GGGGGGGG"),
+            TaggedBuildingBlock(bb_id="BB2_E", tags="AACCGGTT"),
+            TaggedBuildingBlock(bb_id="BB2_F", tags="TTTTCCCC"),
+            TaggedBuildingBlock(bb_id="BB2_G", tags="AGAGAGAG"),
             TaggedNullBuildingBlock(bb_id="BB2_NULL", tag="CTCTCTCT"),
         ],
     )
@@ -554,7 +554,7 @@ def _make_a_fake_2cycle_lib(lib_id: str, lib_tag: str) -> DELibrary:
 def _make_a_fake_tagged_tool_compound(compound_id: str, compound_tag: str):
     """Create a real ToolCompound for testing"""
     from deli.dels.barcode import (
-        LibraryBarcodeSection,
+        IdentifierBarcodeSection,
         StaticBarcodeSection,
         ToolCompoundBarcodeSchema,
         ToolCompoundRefBarcodeSection,
@@ -564,7 +564,7 @@ def _make_a_fake_tagged_tool_compound(compound_id: str, compound_tag: str):
 
     sections = [
         StaticBarcodeSection(section_name="primer", section_tag="GTAGATCTTAGATTCGAGAGTC"),
-        LibraryBarcodeSection(section_name="library", section_tag=compound_tag),
+        IdentifierBarcodeSection(section_name="library", section_tag=compound_tag),
         StaticBarcodeSection(section_name="static1", section_tag="GTTTAGATCATGC"),
         ToolCompoundRefBarcodeSection(section_name="tool_compound_ref", section_tag="AGTCACTG", section_overhang="AG"),
         VariableBarcodeSection(section_name="bb2", section_tag="NNNNNNNN", section_overhang="GC"),
@@ -606,13 +606,13 @@ def test_del_selection():
 
     example_seqs = []
     for library in [lib1, lib2, lib3]:
-        dna_front = f"GTGTGTGTGTAGATCTTAGATTCGAGAGTC{library.barcode_schema.library_section.section_tag}GTTTAGATCATGC"
+        dna_front = f"GTGTGTGTGTAGATCTTAGATTCGAGAGTC{library.barcode_schema.identifier_section.section_tag}GTTTAGATCATGC"
         bb_chunks = itertools.product(library.bb_sets[0], library.bb_sets[1], library.bb_sets[2])
         dna_back = "CCTAGATTAGATTC" + "A" * 10  # static2 + umi
         example_seqs.extend([f"{dna_front}{bb_triple_to_dna(*bbs)}{dna_back}" for bbs in bb_chunks])
 
     for library in [lib_4]:
-        dna_front = f"GTGTGTGTGTAGATCTTAGATTCGAGAGTC{library.barcode_schema.library_section.section_tag}GTTTAGATCATGC"
+        dna_front = f"GTGTGTGTGTAGATCTTAGATTCGAGAGTC{library.barcode_schema.identifier_section.section_tag}GTTTAGATCATGC"
         bb_chunks = itertools.product(library.bb_sets[0], library.bb_sets[1])
         dna_back = "CCTAGATTAGATTC" + "A" * 10  # static2 + umi
         example_seqs.extend([f"{dna_front}{bb_double_to_dna(*bbs)}{dna_back}" for bbs in bb_chunks])

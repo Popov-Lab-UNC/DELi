@@ -12,7 +12,7 @@ from deli.dels.barcode import (
     BuildingBlockBarcodeSection,
     DecodeableBarcodeSection,
     DELBarcodeSchema,
-    LibraryBarcodeSection,
+    IdentifierBarcodeSection,
     MixedBarcodeSection,
     PrimerBarcodeSection,
     StaticBarcodeSection,
@@ -28,7 +28,7 @@ from deli.dels.barcode import (
 def del_schema():
     """Fixture for a DELBarcodeSchema object."""
     sections = [
-        LibraryBarcodeSection("library", "AGCT"),
+        IdentifierBarcodeSection("library", "AGCT"),
         StaticBarcodeSection("static1", "AGCT"),
         BuildingBlockBarcodeSection(1, "bb1", "NNNN"),
         VariableBarcodeSection("var1", "NNN"),
@@ -161,8 +161,8 @@ def test_parse_sections_from_dict():
     }
 
     section_types = [
-        LibraryBarcodeSection,
-        LibraryBarcodeSection,
+        IdentifierBarcodeSection,
+        IdentifierBarcodeSection,
         BuildingBlockBarcodeSection,
         BuildingBlockBarcodeSection,
         UMIBarcodeSection,
@@ -183,7 +183,7 @@ def test_parse_sections_from_dict():
 @pytest.fixture
 def library_barcode_section():
     """Fixture for a LibraryBarcodeSection instance."""
-    return LibraryBarcodeSection("library", "AGCT")
+    return IdentifierBarcodeSection("library", "AGCT")
 
 
 @pytest.fixture
@@ -287,7 +287,7 @@ class TestDELBarcodeSchema:
         assert len(schema) == 25  # test __len__
         assert len(schema.barcode_sections) == 6
         assert len(schema.building_block_sections) == 2
-        assert isinstance(schema.library_section, LibraryBarcodeSection)
+        assert isinstance(schema.identifier_section, IdentifierBarcodeSection)
         assert isinstance(schema.umi_section, UMIBarcodeSection)
         assert len(schema.static_sections) == 1
 
@@ -412,7 +412,7 @@ class TestDELBarcodeSchema:
         assert barcode_schema.is_schema_align_compatible(barcode_schema)
         # Different lengths
         other_sections = [
-            LibraryBarcodeSection("library", "AGCT"),
+            IdentifierBarcodeSection("library", "AGCT"),
             BuildingBlockBarcodeSection(1, "bb1", "NNNN"),
             UMIBarcodeSection("umi", "NNNNNN"),
         ]
@@ -420,7 +420,7 @@ class TestDELBarcodeSchema:
         assert not barcode_schema.is_schema_align_compatible(other_schema)
         # Different names
         other_sections2 = [
-            LibraryBarcodeSection("lib", "AGCT"),
+            IdentifierBarcodeSection("lib", "AGCT"),
             StaticBarcodeSection("static1", "AGCT"),
             BuildingBlockBarcodeSection(1, "bb1", "NNNN"),
             VariableBarcodeSection("var1", "NNN"),
@@ -436,7 +436,7 @@ class TestDELBarcodeSchema:
         assert barcode_schema.is_static_library_locate_compatible(barcode_schema, ["static1"])
         # Different static tag
         other_sections = [
-            LibraryBarcodeSection("library", "AGCT"),
+            IdentifierBarcodeSection("library", "AGCT"),
             StaticBarcodeSection("static1", "TTTT"),  # different tag
             BuildingBlockBarcodeSection(1, "bb1", "NNNN"),
             VariableBarcodeSection("var1", "NNN"),
@@ -447,7 +447,7 @@ class TestDELBarcodeSchema:
         assert not barcode_schema.is_static_library_locate_compatible(other_schema, ["static1"])
         # New tag but not between library and static1
         other_sections2 = [
-            LibraryBarcodeSection("library", "AGCT"),
+            IdentifierBarcodeSection("library", "AGCT"),
             StaticBarcodeSection("static1", "AGCT"),
             StaticBarcodeSection("extra", "AA"),  # not between library and static1
             BuildingBlockBarcodeSection(1, "bb1", "NNNN"),
@@ -459,7 +459,7 @@ class TestDELBarcodeSchema:
         assert barcode_schema.is_static_library_locate_compatible(other_schema2, ["static1"])
         # New tag between library and static1
         other_sections3 = [
-            LibraryBarcodeSection("library", "AGCT"),
+            IdentifierBarcodeSection("library", "AGCT"),
             StaticBarcodeSection("extra", "AA"),  # not between library and static1
             StaticBarcodeSection("static1", "AGCT"),
             BuildingBlockBarcodeSection(1, "bb1", "NNNN"),
@@ -471,7 +471,7 @@ class TestDELBarcodeSchema:
         assert barcode_schema.is_static_library_locate_compatible(other_schema3, ["static1"])
         # missing required section
         other_sections4 = [
-            LibraryBarcodeSection("library", "AGCT"),
+            IdentifierBarcodeSection("library", "AGCT"),
             StaticBarcodeSection("static2", "AGCT"),
             StaticBarcodeSection("extra", "AA"),  # not between library and static1
             BuildingBlockBarcodeSection(1, "bb1", "NNNN"),
@@ -484,7 +484,7 @@ class TestDELBarcodeSchema:
             barcode_schema.is_static_library_locate_compatible(other_schema4, ["static1"])
         # not static section
         other_sections5 = [
-            LibraryBarcodeSection("library", "AGCT"),
+            IdentifierBarcodeSection("library", "AGCT"),
             MixedBarcodeSection("static1", "AGCT"),
             StaticBarcodeSection("extra", "AA"),  # not between library and static1
             BuildingBlockBarcodeSection(1, "bb1", "NNNN"),
@@ -521,7 +521,7 @@ class TestToolCompoundBarcodeSchema:
     def test_tool_schema_construction_and_required_names(self):
         """Construct a ToolCompoundBarcodeSchema and verify attributes and required names."""
         sections = [
-            LibraryBarcodeSection("library", "AGCT"),
+            IdentifierBarcodeSection("library", "AGCT"),
             StaticBarcodeSection("prefix", "AA"),
             ToolCompoundRefBarcodeSection("tool_compound_ref", "TTTT"),
             BuildingBlockBarcodeSection(1, "bb1", "NNNN"),
@@ -538,7 +538,7 @@ class TestToolCompoundBarcodeSchema:
     def test_tool_schema_missing_tool_compound_ref_raises(self):
         """Missing tool_compound_ref section should raise BarcodeSchemaError."""
         sections = [
-            LibraryBarcodeSection("library", "AGCT"),
+            IdentifierBarcodeSection("library", "AGCT"),
             BuildingBlockBarcodeSection(1, "bb1", "NNNN"),
             UMIBarcodeSection("umi", "NNNNNN"),
         ]
@@ -548,7 +548,7 @@ class TestToolCompoundBarcodeSchema:
     def test_tool_schema_multiple_tool_compound_ref_raises(self):
         """Multiple tool_compound_ref sections should raise BarcodeSchemaError."""
         sections = [
-            LibraryBarcodeSection("library", "AGCT"),
+            IdentifierBarcodeSection("library", "AGCT"),
             ToolCompoundRefBarcodeSection("tool_compound_ref", "TTTT"),
             ToolCompoundRefBarcodeSection("tool_compound_ref_2", "CCCC"),
             BuildingBlockBarcodeSection(1, "bb1", "NNNN"),

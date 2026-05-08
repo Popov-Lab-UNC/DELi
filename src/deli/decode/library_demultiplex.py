@@ -72,7 +72,7 @@ class ToolCompoundLibrary_(Library[TaggedToolCompound], BarcodedMixin[BarcodeSch
 
     def __init__(self, compound: TaggedToolCompound, barcode_schema: BarcodeSchema):
         super().__init__(library_id=compound.compound_id)
-        self.library_tag: str = barcode_schema.library_section.section_tag
+        self.library_tag: str = barcode_schema.identifier_section.section_tag
         self.compound: TaggedToolCompound = compound
         self.barcode_schema = barcode_schema
 
@@ -303,7 +303,7 @@ class LibraryLocator(SectionSequenceMapper):
         """
         library_span = self.calculate_section_span("library", alignment_section_spans)
         library_codon = sequence.sequence[library_span[0] : library_span[1]]
-        library_tag_length = len(self.barcode_schema.library_section.section_tag)
+        library_tag_length = len(self.barcode_schema.identifier_section.section_tag)
         for length in [library_tag_length, library_tag_length - 1, library_tag_length + 1]:
             start = 0
             end = start + length

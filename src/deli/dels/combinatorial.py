@@ -1,15 +1,15 @@
 """defines DEL library functions and classes"""
-
+from deli.dels.linker import LinkerSet, TaggedLinkerSet
 import json
 import os
+import warnings
 from collections.abc import Iterator
 from functools import reduce
 from itertools import accumulate
 from operator import mul
 from pathlib import Path
-from typing import Any, Literal, Optional, Sequence, TypeVar, no_type_check, overload
+from typing import Any, Literal, Optional, Sequence, TypeVar, overload
 
-from deli.configure import DeliDataLoadable, resolve_deli_data_name, validate_path_exists
 from deli.enumeration.enumerator import EnumeratedDELCompound, Enumerator
 from deli.enumeration.reaction import ReactionTree
 from deli.utils import to_smi
@@ -21,105 +21,132 @@ from .library import Library, LibraryCollection
 from .tool_compound import DopedToolCompound, ToolCompound
 
 
-RESERVED_CONFIG_KEYS = [
-    "linker",
-    "truncated_linker",
-    "scaffold",
-    "reactions",
-    "barcode_schema",
-    "dna_barcode_on",
-    "bb_sets",
+# key name and whether it is required or not (in general, with DNA)
+_LIBRARY_JSON_KEYS = [
+    ("linker", False, False),
+    ("building_block_sets", True, True),
+    ("scaffold", False, False),
+    ("reaction_scheme", False, False),
+    ("barcode_schema", False, True),
+    ("dna_barcode_on", False, False),
+    ("doped", False, False),
 ]
 
 
-@no_type_check  # too much of a hassle for IO
-def _parse_library_json(data: dict, load_dna: bool, load_chemicals: bool = True) -> dict[str, Any]:
+def _validate_library_json_keys(data: dict[str, Any], expect_dna: bool) -> None:
+    """Validate that the library JSON data contains only expected keys."""
+    for key, required, dna_required in _LIBRARY_JSON_KEYS:
+        if key not in data:
+            if required or (dna_required and expect_dna):
+                raise LibraryBuildError(f"missing required key: {key}")
+    # check for extra sections that are not expected
+    for key in data:
+        if key not in [_[0] for _ in _LIBRARY_JSON_KEYS]:
+            warnings.warn(f"unexpected key in library JSON data: {key}", stacklevel=2)
+
+
+@overload
+def _parse_library_json_str(
+    json_str: str,
+    load_dna: Literal[True],
+    load_chemical_info: bool,
+    validate_smiles: bool,
+) -> "DELibrary": ...
+
+@overload
+def _parse_library_json_str(
+    json_str: str,
+    load_dna: Literal[False],
+    load_chemical_info: bool,
+    validate_smiles: bool
+) -> "CombinatorialLibrary": ...
+
+@overload
+def _parse_library_json_str(
+    json_str: str,
+    load_dna: bool,
+    load_chemical_info: bool,
+    validate_smiles: bool
+) -> "CombinatorialLibrary | DELibrary": ...
+
+def _parse_library_json_str(
+    json_str: str,
+    load_dna: bool,
+    load_chemical_info: bool = True,
+    validate_smiles: bool = False
+) -> "CombinatorialLibrary | DELibrary":
     """
-    Load from a JSON dict
+    Load a combinatorial library from a JSON string
+
+    If `load_dna` is True, will attempt to load the library as a DELibrary with DNA barcode information.
+    Will fail if DNA information is missing from *any* of the information (including building blocks).
+
+    If `load_chemical_info` is True, will load information related to chemistry (info that is not needed
+    for decoding). This includes the reaction scheme and any SMILES. Unlike load_dna this will not
+    fail if chemical information is missing from the JSON string or the other files it references.
+
+    If `validate_smiles` is True, will check that all SMILES in the library are valid. This can be time
+    consuming and memory intensive for large libraries. Will do nothing if `load_chemical_info` is False.
 
     Parameters
     ----------
-    data: dict
-        data read in from JSON
+    json_str: str
+        JSON string containing library information
     load_dna: bool
-        whether to load information about DNA barcodes
-    load_chemicals: bool, default = True
-        whether to load chemical information
-        this extends to any type of chemical info, including SMILES or Reaction info
+        Load information about DNA barcodes. If True DNA information must exist.
+    load_chemical_info: bool, default = True
+        Load chemical information.
+    validate_smiles: bool, default = True
+        Validate SMILES strings.
 
     Returns
     -------
-    dict[str, Any]
-        arguments to construct the library object
+    CombinatorialLibrary or DELibrary
+        If `load_dna` is True, will return a DELibrary; else will return a CombinatorialLibrary
     """
+    data = json.loads(json_str)
+
+    _validate_library_json_keys(data, load_dna)
+
     # load in barcode schema first
     barcode_schema = None
-    building_block_sections = []
     if load_dna:
         barcode_schema = DELBarcodeSchema.from_dict(data["barcode_schema"])
-        building_block_sections = barcode_schema.building_block_sections
 
-    # check for doped compounds and validate
-    tool_compounds: list[ToolCompound] = list()
+    # Check for doped compounds and validate
+    doped_compounds: list[ToolCompound] = list()
     if "doped" in data.keys():
-        for doped_bb in data["doped"]:
-            doped_compound_id = doped_bb.get("compound_id", None)
-            if doped_compound_id is None:
-                raise LibraryBuildError("doped building blocks must have a 'doped_compound_id' field")
-            smiles = doped_bb.get("smiles", None)
-            if load_dna:
-                _bb_tags: list[str] = list()
-                for bb_section in building_block_sections:
-                    bb_cycle_tag = doped_bb.get(bb_section.section_name, None)
-                    if bb_cycle_tag is not None:
-                        raise LibraryBuildError(
-                            f"doped compound {doped_compound_id} missing tag for decodable section "
-                            f"'{bb_section.section_name}'"
-                        )
-                tool_compounds.append(
-                    DopedToolCompound(
-                        compound_id=doped_compound_id,
-                        smiles=smiles if load_chemicals else None,
-                        bb_tags=tuple(_bb_tags),
-                    )
-                )
-            else:
-                tool_compounds.append(
-                    ToolCompound(
-                        compound_id=doped_compound_id,
-                        smiles=smiles if load_chemicals else None,
-                    )
-                )
+        doped_compounds = _load_doped_compounds(
+            barcode_schema=barcode_schema,
+            tool_compound_data=data["doped"],
+            load_smiles=load_chemical_info,
+        )
 
     # load bb sets and check for hamming decoding
-    _observed_sets: list[tuple[int, BuildingBlockSet | TaggedBuildingBlockSet]] = list()
-
+    _observed_sets: list[tuple[int, bool, BuildingBlockSet | TaggedBuildingBlockSet]] = list()
     for i, bb_data in enumerate(data["bb_sets"]):
+        bb_set_loc: str | None = bb_data.get("bb_set", None)
+        if bb_set_loc is None:
+            raise LibraryBuildError("building block sets must have a 'bb_set' field")
+        bb_set_name = Path(bb_set_loc).stem
+
         cycle = bb_data.get("cycle", None)
-        if cycle is None:
-            raise LibraryBuildError(f"build block sets require a cycle number;set at index {i} lacks a cycle")
-        bb_set_name = bb_data.get("bb_set_name", None)
-        file_path = bb_data.get("bb_set_path", None)
-        if file_path is None and bb_set_name is None:
-            raise LibraryBuildError(
-                f"either 'bb_set_name' or 'bb_set_path' must be provided "
-                f"for a building block set;"
-                f"set in index {i} lacks a both"
-            )
-        if file_path is None:
-            file_path = bb_set_name
-        if bb_set_name is None:
-            bb_set_name = os.path.basename(file_path).split(".")[0]
+        if cycle is not None:
+            try:
+                cycle = int(cycle)
+            except ValueError as e:
+                raise LibraryBuildError(
+                    f"building block set'{bb_set_name}' has non-numeric cycle number '{cycle}'"
+                ) from e
+            _explicit_cycle = True
+        else:
+            cycle = i + 1
+            _explicit_cycle = False
 
-        if bb_set_name in RESERVED_CONFIG_KEYS:
-            raise LibraryBuildError(
-                f"building block set name '{bb_set_name}' is a reserved keyword; please choose a different name"
-            )
-
-        # deal with doped compounds in the building block sets
         if load_dna:
+            # deal with doped compounds in the building block sets
             fake_tags: dict[str, str] = dict()
-            for doped_compound in tool_compounds:
+            for doped_compound in doped_compounds:
                 try:
                     fake_tags[f"{doped_compound.compound_id}"] = doped_compound.bb_tags[int(cycle) - 1]
                 except IndexError as e:
@@ -127,26 +154,39 @@ def _parse_library_json(data: dict, load_dna: bool, load_chemicals: bool = True)
                         f"doped compound {doped_compound.compound_id} missing tag for cycle {cycle}"
                     ) from e
             _observed_sets.append(
-                (cycle, TaggedBuildingBlockSet.load(file_path, include_fake_tags=fake_tags, load_smiles=load_chemicals))
+                (cycle, _explicit_cycle, TaggedBuildingBlockSet.load(
+                    bb_set_name,
+                    include_fake_tags=fake_tags,
+                    load_smiles=load_chemical_info
+                ))
             )
         else:
-            _observed_sets.append((cycle, BuildingBlockSet.load(file_path, load_smiles=load_chemicals)))
+            _observed_sets.append(
+                (cycle, _explicit_cycle, BuildingBlockSet.load(
+                    bb_set_name,
+                    load_smiles=load_chemical_info
+                ))
+            )
 
-    # check for right order of sets
-    _bb_cycles = [_[0] for _ in _observed_sets]
-    if _bb_cycles != list(range(1, len(_observed_sets) + 1)):
+    # validate the cycles
+    explicit_bools = [_[1] for _ in _observed_sets]
+    if not (all(explicit_bools) or (not any(explicit_bools))):
         raise LibraryBuildError(
-            f"building block sets must be in consecutive ascending "
-            f"order starting from 1 (1, 2, 3...); "
-            f"observed order: '{_bb_cycles}'"
+            "only some cycle numbers were explicitly given; cycle numbers must given or none given"
+        )
+    cycle_nums = sorted([_[0] for _ in _observed_sets])
+    if cycle_nums != list(range(1, len(_observed_sets) + 1)):
+        raise LibraryBuildError(
+            f"cycles need to be sequential and start from 1 (1, 2, 3...); "
+            f"observed cycles: '{cycle_nums}'"
         )
 
-    bb_sets: list[BuildingBlockSet] = [_[1] for _ in _observed_sets]
-    bb_set_ids = set([bb_set.bb_set_id for bb_set in bb_sets])
+    # sort sets for the library object
+    bb_sets = [bb_set for _, _, bb_set in sorted(_observed_sets, key=lambda x: x[0])]
 
-    # check for scaffold and linker
-    linker = data.get("linker", None)
-    truncated_linker = data.get("truncated_linker", None)
+    # parse the linkers if there are any
+    linkers: LinkerSet | TaggedLinkerSet | None = 
+
     scaffold = data.get("scaffold", None)
 
     if ("reactions" in data.keys()) and load_chemicals:
@@ -170,8 +210,8 @@ def _parse_library_json(data: dict, load_dna: bool, load_chemicals: bool = True)
         "scaffold": data.get("scaffold"),
     }
 
-    if len(tool_compounds) > 0:
-        res["tool_compounds"] = tool_compounds
+    if len(doped_compounds) > 0:
+        res["tool_compounds"] = doped_compounds
 
     if load_dna:
         res.update(
@@ -181,6 +221,67 @@ def _parse_library_json(data: dict, load_dna: bool, load_chemicals: bool = True)
             }
         )
     return res
+
+
+def _load_doped_compounds(
+    barcode_schema: DELBarcodeSchema | None,
+    tool_compound_data: list[dict[str, Any]],
+    load_smiles: bool
+) -> list[ToolCompound]:
+    """Extract tool compounds from the library JSON data."""
+    tool_compounds: list[ToolCompound] = list()
+    for doped_bb in tool_compound_data:
+        doped_compound_id = doped_bb.get("compound_id", None)
+        if doped_compound_id is None:
+            raise LibraryBuildError("doped building blocks must have a 'doped_compound_id' field")
+        smiles = doped_bb.get("smiles", None)
+        if barcode_schema is not None:
+            _bb_tags: list[str] = list()
+            for bb_section in barcode_schema.building_block_sections:
+                bb_cycle_tag = doped_bb.get(bb_section.section_name, None)
+                if bb_cycle_tag is not None:
+                    raise LibraryBuildError(
+                        f"doped compound {doped_compound_id} missing tag for decodable section "
+                        f"'{bb_section.section_name}'"
+                    )
+            tool_compounds.append(
+                DopedToolCompound(
+                    compound_id=doped_compound_id,
+                    smiles=smiles if load_smiles else None,
+                    bb_tags=tuple(_bb_tags),
+                )
+            )
+        else:
+            tool_compounds.append(
+                ToolCompound(
+                    compound_id=doped_compound_id,
+                    smiles=smiles if load_smiles else None,
+                )
+            )
+    return tool_compounds
+
+
+def _load_bb_sets(
+    bb_data, load_dna, load_smiles: bool, validate_smiles: bool
+) -> tuple[int, BuildingBlockSet | TaggedBuildingBlockSet]:
+    """Load a building block set from the library JSON data."""
+    bb_set_loc: str | None = bb_data.get("bb_set", None)
+    if bb_set_loc is None:
+        raise LibraryBuildError("building block sets must have a 'bb_set' field")
+    bb_set_name = Path(bb_set_loc).stem
+
+    cycle = bb_data.get("cycle", None)
+    if cycle is None:
+        raise LibraryBuildError(f"building block sets '{bb_set_name}' require a cycle number")
+    try:
+        cycle = int(cycle)
+    except ValueError as e:
+        raise LibraryBuildError(f"building block set '{bb_set_name}' has invalid cycle number '{cycle}'") from e
+
+    if load_dna:
+        return cycle, TaggedBuildingBlockSet.load(bb_set_loc, include_fake_tags=fake_tags, load_smiles=load_smiles)
+    else:
+        return cycle, BuildingBlockSet.load(bb_set_loc, load_smiles=load_smiles)
 
 
 class LibraryBuildError(Exception):
@@ -735,7 +836,7 @@ class DELibrary(CombinatorialLibrary, BarcodedMixin[DELBarcodeSchema]):
         self.linker = linker
         self.truncated_linker = truncated_linker
 
-        self.library_tag = self.barcode_schema.library_section.get_dna_sequence()
+        self.library_tag = self.barcode_schema.identifier_section.get_dna_sequence()
 
         self.number_of_barcodes = reduce(mul, [bb_set.num_tags for bb_set in self.bb_sets])
 

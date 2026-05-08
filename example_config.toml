@@ -1,0 +1,39 @@
+[deli_data]
+filesystem = "local"
+
+[deli_data.local]
+dir = "~/.deli/deli-data"
+
+[dna]
+A = 0
+G = 1
+T = 2
+C = 3
+
+[tokens]
+comp_id_sep = "-"
+
+[building_blocks]
+bb_mask = "###"
+bb_id_column = "id"
+bb_smiles_column = "smiles"
+bb_tag_column = "tag"
+bb_subset_id_column = "subset_id"
+bb_is_null_column = "is_null"
+bb_set_subset_id_sep = ":::" # separator for building block set ids and subset ids (used in reactions)
+
+[decode]
+ignore_tool_compounds = true
+demultiplexer_algorithm = "regex" # "cutadapt", "regex", "full"
+demultiplexer_mode = "single" # "library", "single", "flanking"
+realign = false
+library_error_tolerance = 1
+library_error_correction_mode_str = "levenshtein_dist:2,asymmetrical"
+min_library_overlap = 8
+revcomp = true
+library_wiggle = false
+wiggle = false
+decode_matching_approach = "first_perfect" # "greedy", "first_best", "first_perfect", "search_all"
+max_read_length = inf
+min_read_length = -inf
+default_error_correction_mode_str = "levenshtein_dist:1,asymmetrical"

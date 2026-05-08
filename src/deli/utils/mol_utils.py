@@ -31,8 +31,11 @@ class SmilesMixin:
     The RDKit Mol object is cached after first access to avoid repeated parsing.
     """
 
-    _smiles: None | str = None
-    _mol: None | Mol = None
+    def __init__(self, smiles: str | None = None, **kwargs):
+        super().__init__(**kwargs)
+        self._smiles = smiles
+        self._mol: None | Mol = None
+        self._inchi_key: None | str = None
 
     def has_smiles(self) -> bool:
         """Returns True if the compound has a non-null SMILES string"""
@@ -40,7 +43,7 @@ class SmilesMixin:
 
     @property
     def smi(self) -> str:
-        """The enumerated SMILES of the compound"""
+        """The SMILES of the compound"""
         if self._smiles is not None:
             return self._smiles
         else:
@@ -64,29 +67,52 @@ class SmilesMixin:
         if self._mol is None:
             if self._smiles is not None:
                 try:
-                    _mol = to_mol(self._smiles, fail_on_error=True)
-                    self._mol = _mol
+                    self._mol = to_mol(self._smiles, fail_on_error=True)
                 except ValueError as e:
                     raise ChemicalObjectError(f"Cannot create RDKit Mol from SMILES: {self._smiles}") from e
             else:
                 raise ChemicalObjectError(
                     f"{self.__class__.__name__} object missing SMILES string, cannot generate mol attribute"
                 )
-        else:
-            return self._mol
+        return self._mol
 
     @mol.setter
     def mol(self, value):
-        """No support for setting mol directly; any modification should be done outside DELi"""
+        """No support for setting mol directly"""
         raise ChemicalObjectError(
             f"Cannot change `mol` for {self.__class__.__name__} object directly; "
-            f"Derived from `smi` which can only be set at initialization\n"
+            f"Derived from SMILES which can only be set at initialization"
         )
 
     @mol.deleter
     def mol(self):
         """Delete the cache of the Mol object (if cached)"""
         self._mol = None
+
+    @property
+    def inchi_key(self) -> str:
+        """Get the Inchi key for the compound"""
+        if self._inchi_key is None:
+            try:
+                self._inchi_key = Chem.MolToInchiKey(self.mol)
+            except Exception as e:
+                raise ChemicalObjectError(
+                    "failed to generate an Inchi Key for compound; does it have a valid SMILES?"
+                ) from e
+        return self._inchi_key
+
+    @inchi_key.setter
+    def inchi_key(self, value):
+        """No support for setting inchi key directly"""
+        raise ChemicalObjectError(
+            f"Cannot change `inchi_key` for {self.__class__.__name__} object directly; "
+            f"Derived from SMILES which can only be set at initialization"
+        )
+
+    @inchi_key.deleter
+    def inchi_key(self):
+        """Clear the inchi_key cache"""
+        self._inchi_key = None
 
 
 @overload

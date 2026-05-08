@@ -39,7 +39,7 @@ def test_building_block_equality_and_subset_behavior():
 
 def test_tagged_building_block_tags_list():
     """Ensure TaggedBuildingBlock exposes tags as a list."""
-    t = TaggedBuildingBlock("id1", tag="AAAA")
+    t = TaggedBuildingBlock("id1", tags="AAAA")
     assert isinstance(t.tags, list)
     assert t.tags == ["AAAA"]
 

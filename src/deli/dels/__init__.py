@@ -8,7 +8,7 @@ from .barcode import (
     BuildingBlockBarcodeSection,
     DecodeableBarcodeSection,
     DELBarcodeSchema,
-    LibraryBarcodeSection,
+    IdentifierBarcodeSection,
     MixedBarcodeSection,
     PrimerBarcodeSection,
     StaticBarcodeSection,
@@ -60,7 +60,7 @@ __all__ = [
     "UMIBarcodeSection",
     "StaticBarcodeSection",
     "PrimerBarcodeSection",
-    "LibraryBarcodeSection",
+    "IdentifierBarcodeSection",
     "ToolCompoundRefBarcodeSection",
     "MixedBarcodeSection",
     "BarcodeSchema",
@@ -116,7 +116,7 @@ def load_from_component_id(component_id: str, id_separator: str | None = None) -
         the corresponding DELCompound object
     """
     if id_separator is None:
-        from deli.configure import get_deli_config
+        from deli.config import get_deli_config
 
         id_separator = get_deli_config().comp_id_sep
     comp_ids = component_id.split(id_separator)
