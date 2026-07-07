@@ -44,7 +44,23 @@ DELi is written in Python for two reasons:
 It is true that DELi would be faster as a compiled C++ or Rust program, but we have optimized the DELi enough that runtime isn't much of an issue.
 We hope to someday write a Rust version of DELi (at least for decoding and enumeration) but those plans are not yet in motion.
 
-**Note for developers:** DELi uses `uv` for builds and dependency management. After cloning the repo, install with `pip install -e .` or `uv sync`.
+**Note for developers:** DELi uses `uv` for builds and dependency management. After cloning the repo, install with `pip install -e .` or `uv sync`. See [Testing and coverage](https://dna-encoded-library-informatics-deli.readthedocs.io/en/latest/development_docs/testing.html) for current test coverage.
+
+## Test coverage
+
+Automated tests (`pytest`, 199 tests) cover **77.5%** of the `deli` source (statement coverage via `coverage.py`, DELi 0.2.1). Highest coverage is in decoding and DEL object modules (>80%); analysis modules are at **74%** overall.
+
+| Module | Coverage |
+|--------|----------|
+| `deli.dna` | 97.0% |
+| `deli.dels` | 85.2% |
+| `deli.decode` | 82.2% |
+| `deli.enumeration` | 80.7% |
+| `deli.analysis` | 73.6% |
+| `deli` (CLI, configure) | 68.8% |
+| `deli.utils` | 72.6% |
+
+Full tables, per-file analysis breakdown, and commands to regenerate: [Testing and coverage docs](https://dna-encoded-library-informatics-deli.readthedocs.io/en/latest/development_docs/testing.html).
 
 ## Citation
 

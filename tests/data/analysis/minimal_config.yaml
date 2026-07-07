@@ -1,0 +1,30 @@
+general:
+  data: minimal_cube.csv
+  lib_size: 1000
+  output_dir: output
+  ID_col: DEL_ID
+
+indexes:
+  sel: [corrected_idx1, corrected_idx2, corrected_idx3]
+
+control_cols: {}
+
+raw_indexes:
+  sel: [raw_idx1, raw_idx2, raw_idx3]
+
+flags:
+  SD_min: true
+  NSC_values: true
+  disynthon_data: true
+  top_disynthons:
+    comparisons:
+      - comparison: none
+        exp_name: sel
+        exp2_name: sel
+        control_name: none
+        top_count: 3
+        comparison_metric: avg
+  trisynthon_overlap: true
+  disynthon_overlap: true
+  disynthon_threshold: 1
+  report: true

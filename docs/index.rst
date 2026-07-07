@@ -66,6 +66,13 @@ End-to-end example workflows are in the `examples <https://github.com/Popov-Lab-
 
 .. toctree::
    :maxdepth: 2
+   :caption: Development
+
+   development_docs/testing
+   development_docs/faqs
+
+.. toctree::
+   :maxdepth: 2
    :caption: API Reference
 
    api/deli

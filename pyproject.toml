@@ -66,10 +66,12 @@ module-name = "deli"
 
 [dependency-groups]
 dev = [
+    "coverage>=7.15.0",
     "mypy>=1.19.1",
     "pre-commit>=4.5.1",
     "pyarrow>=23.0.1",
     "pytest>=9.0.2",
+    "pytest-cov>=7.1.0",
     "ruff>=0.15.1",
 ]
 docs = [
@@ -124,3 +126,14 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "-v --tb=short"
+markers = [
+    "ml: tests that require optional ML dependencies (torch, torch-geometric)",
+]
+
+[tool.coverage.run]
+source = ["deli"]
+omit = ["*/tests/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
