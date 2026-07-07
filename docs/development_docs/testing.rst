@@ -126,9 +126,8 @@ Figures below were generated on **2026-07-07** with **199 passing tests** (Pytho
 Interpreting these numbers
 ==========================
 
-- **Higher coverage** in ``decode`` and ``dels`` reflects mature unit tests around library definitions, barcodes, and decoding.
-- **Analysis coverage** exercises cube enrichment, disynthon plots, PolyO, Random Forest baselines, and GNN helpers; the full GNN training loop is partially covered via mocked tests to keep CI fast.
+- **Higher coverage** in ``decode`` and ``dels`` reflects unit tests around library definitions, barcodes, and decoding.
+- **Analysis coverage** exercises cube enrichment, disynthon plots, PolyO, Random Forest baselines, and GNN helpers; the GNN training loop is partially covered via mocked tests.
 - **`deli.design``** is not yet covered by automated tests.
-- Regenerate this table after major test additions: rerun the coverage command above and update the statement counts from the terminal or ``coverage.json`` output.
 
-For publication, cite the total percentage, test count, Python version, and DELi version used when the report was generated.
+In publications, we cite the total coverage percentage, test count, Python version, and DELi version used when the figures were generated.
