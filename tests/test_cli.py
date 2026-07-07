@@ -11,6 +11,7 @@ import yaml
 from click.testing import CliRunner
 
 from deli.cli import (
+    analyze,
     click_init_deli_config,
     click_init_deli_data_dir,
     click_set_deli_data_dir,
@@ -641,3 +642,10 @@ def test_decode_summarize_decoding(tmpdir, runner, mock_decode_stats_file, mock_
 
     assert result.exit_code == 0
     assert (temp_home_path / "decode_summary.json").exists()
+
+
+def test_deli_analyze_help(runner):
+    """Test that the `deli analyze` command is registered."""
+    result = runner.invoke(analyze, ["--help"])
+    assert result.exit_code == 0
+    assert "--config" in result.output

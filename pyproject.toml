@@ -1,6 +1,6 @@
 [project]
 name = "deli-chem"
-version = "0.2.0"
+version = "0.2.1"
 description = "DNA encoded library sequence analysis software with custom library design support"
 readme = "README.md"
 license = "MIT"
@@ -36,13 +36,25 @@ dependencies = [
     "dnaio>=1.2.3",
     "jinja2>=3.1.6",
     "levenshtein>=0.27.3",
+    "matplotlib>=3.9.3",
+    "matplotlib-venn>=0.11.10",
     "numba>=0.63.1",
+    "pandas>=2.2.3",
     "plotly>=6.5.2",
     "polars>=1.38.1",
     "pyyaml>=6.0.3",
     "rdkit>=2025.9.5",
     "regex>=2026.1.15",
+    "scikit-learn>=1.4.2",
+    "scipy>=1.14.1",
+    "seaborn>=0.12.2",
     "tqdm>=4.67.3",
+]
+
+[project.optional-dependencies]
+ml = [
+    "torch>=2.2.0",
+    "torch-geometric>=2.6.1",
 ]
 
 [build-system]

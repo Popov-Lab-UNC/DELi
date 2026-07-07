@@ -12,10 +12,16 @@ It incorporates the whole pipeline post base-calling/sequencing including:
 You can read the detailed documentation [here](https://dna-encoded-library-informatics-deli.readthedocs.io/en/latest/).
 
 ## Installing DELi
-You can install DELi using pip for any OS/Machine that supports Python 3.10+:
+You can install DELi using pip on Python 3.13 or newer:
 
 ```shell
 pip install deli-chem
+```
+
+Optional graph neural network (GNN) analysis dependencies:
+
+```shell
+pip install 'deli-chem[ml]'
 ```
 
 ## Getting Started
@@ -38,8 +44,7 @@ DELi is written in Python for two reasons:
 It is true that DELi would be faster as a compiled C++ or Rust program, but we have optimized the DELi enough that runtime isn't much of an issue.
 We hope to someday write a Rust version of DELi (at least for decoding and enumeration) but those plans are not yet in motion.
 
-**Note for developers:** DELi is built using poetry. You can use `poetry build` to build from source after
-cloning the repo. Be on the lookout for contribution docs in the near future!
+**Note for developers:** DELi uses `uv` for builds and dependency management. After cloning the repo, install with `pip install -e .` or `uv sync`.
 
 ## Citation
 

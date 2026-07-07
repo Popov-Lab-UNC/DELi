@@ -5,11 +5,15 @@ DELi Documentation
 Welcome to DELi's documentation!
 ================================
 
-DELi is a Python library for working with DNA-encoded libraries (DELs).
+DELi is a Python library for working with DNA-encoded libraries (DELs). It requires Python 3.13 or newer.
 
 You can install DELi using pip:
 ::
     pip install deli-chem
+
+Optional GNN analysis dependencies: ``pip install 'deli-chem[ml]'``
+
+End-to-end example workflows are in the `examples <https://github.com/Popov-Lab-UNC/DELi/tree/main/examples>`_ directory.
 
 
 .. toctree::

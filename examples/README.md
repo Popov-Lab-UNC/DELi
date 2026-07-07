@@ -1,6 +1,6 @@
 # DELi examples
-Here are some example for how to use DELi for decoding and analysis.
-NOTE: these are user provided, so they are not guaranteed to be up to date with current versions.
+
+Example workflows for enumeration, decoding, and analysis using DELi.
 
 ## Background
 
@@ -15,63 +15,51 @@ For benchmarking your results, note that in UNCDEL006 BRD4, the library member A
 
 ## Enumerate
 
-See `UNCDEL006_Enumerate` for an example of running enumeration using DELi. The folder includes three building block sets (A, B, C) with defined IDs and SMILES. The `enumerate.py` script is an example using DELi code to create building block sets and a reaction workflow for the enumeration of the library.
-
-Running the example is as simple as:
+See `UNCDEL006_Enumerate` for an example of enumerating DEL006. The folder includes three building block CSV files (A, B, C) with IDs, SMILES, and barcodes. The `enumerate.py` script loads the library from `example_deli_data_dir` and enumerates a single compound.
 
 ```bash
 cd UNCDEL006_Enumerate
 python enumerate.py
 ```
 
+You can also enumerate from the CLI using the library definition in `example_deli_data_dir`:
+
+```bash
+deli --deli-data-dir examples/example_deli_data_dir enumerate \
+  examples/example_deli_data_dir/libraries/DEL006.json \
+  -o DEL006_enumerated.csv
+```
+
 ## Decode
 
-Data for an example decoding run can be found in `UNCDEL006_BRD4_Decode`. To run this example using the
-command line interface for DELi, first make sure you have run `pip install deli-chem` to install DELi
-and can run `deli --help` without error. Then you can clone the repo and run the example:
+Data for an example decoding run can be found in `UNCDEL006_BRD4_Decode`. Point DELi at the example data directory, then run decode:
 
 ```shell
-git clone git@github.com:Popov-Lab-UNC/DELi.git
-cd deli/examples/UNCDEL006_BRD4_Decode
+cd UNCDEL006_BRD4_Decode
 
-deli config init  # unless you already have a .deli config
-deli data set -u ../example_deli_data_dir  # you could also do export DELI_DATA_DIR=FULL/PATH/TO/example_deli_data_dir
-
-deli decode --tqdm --prefix EXAMPLE ./example_decode.yaml ./UNCDEL006_BRD4.fastq.gz
+deli --deli-data-dir ../example_deli_data_dir decode run \
+  -t -p EXAMPLE -o ./output -f example_decode.yaml
 ```
-The output will default to the CWD.
 
-You could also run decoding from a python script:
-
-```python
-
-from deli.runners.decode import DecodingRunner
-
-runner = DecodingRunner.from_file(
-    "example_decode.yaml",
-    disable_logging=True
-)
-
-results = runner.run(use_tqdm=True)
-results.write_decode_statistics("./EXAMPLE_decode_statistics.json")
-results.write_cube("./EXAMPLE_cube.csv")
-results.write_decode_report("./EXAMPLE_decode_report.html")
-```
+Output files are written to `./output` (decoded TSV, statistics JSON, HTML report, and failed reads).
 
 ## Analyze
 
-The `UNCDEL006_BRD4.csv.gz` file in the `UNCDEL006_BRD4_Analyze/` directory is output from the DELi decode module, containing decoded DEL sequences with enrichment data from BRD4 binding experiments.
-
-To run analysis on this data:
+The `UNCDEL006_BRD4.csv.gz` file in `UNCDEL006_BRD4_Analyze/` is example cube data from a DEL006 BRD4 selection, with enrichment columns for analysis.
 
 ```bash
 cd UNCDEL006_BRD4_Analyze
 
-# First unzip the data file
-gunzip UNCDEL006_BRD4.csv.gz
-
-# Run analysis
+gunzip -k UNCDEL006_BRD4.csv.gz   # skip if already decompressed
 deli analyze --config analysis_config_del6.yaml
 ```
 
-This will generate a comprehensive analysis report with plots, statistics, and chemical space visualizations.
+A smaller DEL003 example is in `UNCDEL003_53bp1_Analyze/`:
+
+```bash
+cd UNCDEL003_53bp1_Analyze
+gunzip -k UNCDEL003_53bp1.csv.gz
+deli analyze --config analysis_config_del3.yaml
+```
+
+These commands generate HTML analysis reports with plots, statistics, and chemical space visualizations.

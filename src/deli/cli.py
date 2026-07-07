@@ -1404,5 +1404,32 @@ def enumerate_(library_file, out_path, use_tqdm, fail_on_error, drop_failed):
         separator=",",
         use_tqdm=use_tqdm,
         fail_on_error=fail_on_error,
-        drop_failed=drop_failed,
+        dropped_failed=drop_failed,
     )
+
+
+@cli.command(name="analyze")
+@suppress_warnings
+@click.option(
+    "--config",
+    type=click.Path(exists=True, dir_okay=False),
+    required=True,
+    help="Path to the YAML config file",
+)
+def analyze(config):
+    """
+    Perform DEL analysis based on the provided YAML configuration file.
+
+    CONFIG is the path to the YAML configuration file.
+    """
+    from deli.analysis.analysis_parse import run_analysis
+
+    logger = logging.getLogger("deli")
+    try:
+        output_dir = run_analysis(config)
+    except Exception as exc:
+        logger.error(f"Analysis failed: {exc}")
+        click.echo(f"Analysis failed: {exc}", err=True)
+        sys.exit(1)
+
+    click.echo(f"Analysis completed. Results saved to: {output_dir}")
