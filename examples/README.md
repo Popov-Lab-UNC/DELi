@@ -33,9 +33,11 @@ python enumerate.py
 You can also enumerate from the CLI using the library definition in `example_deli_data_dir`:
 
 ```bash
-deli --deli-data-dir example_deli_data_dir enumerate \
-  example_deli_data_dir/libraries/DEL006.json \
-  -o UNCDEL006_Enumerate/DEL006_enumerated.csv
+cd UNCDEL006_Enumerate
+
+deli --deli-data-dir ../example_deli_data_dir enumerate \
+  ../example_deli_data_dir/libraries/DEL006.json \
+  -o DEL006_enumerated.csv
 ```
 
 ## Decode
