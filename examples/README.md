@@ -2,6 +2,14 @@
 
 Example workflows for enumeration, decoding, and analysis using DELi.
 
+## Setup
+
+Before running the examples, ensure that the example data directory is fully initialized (empty directories like `reactions` and `tool_compounds` are not tracked by Git). From the repository root, run:
+
+```bash
+deli data init --fix-missing examples/example_deli_data_dir
+```
+
 ## Background
 
 **UNCDEL003** is a methyl-lysine reader focused DNA encoded library of around 60k members. This particular data provided was from a selection performed in triplicate with no NTC or naive, conducted on an Illumina sequencer. For more information, see this publication:
@@ -25,9 +33,9 @@ python enumerate.py
 You can also enumerate from the CLI using the library definition in `example_deli_data_dir`:
 
 ```bash
-deli --deli-data-dir examples/example_deli_data_dir enumerate \
-  examples/example_deli_data_dir/libraries/DEL006.json \
-  -o DEL006_enumerated.csv
+deli --deli-data-dir example_deli_data_dir enumerate \
+  example_deli_data_dir/libraries/DEL006.json \
+  -o UNCDEL006_Enumerate/DEL006_enumerated.csv
 ```
 
 ## Decode
