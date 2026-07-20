@@ -474,6 +474,7 @@ def test_decode_generate_report(tmpdir, runner, mock_decode_stats_file, selectio
         generate_report,
         [
             str(mock_decode_stats_file),
+            "--selection-file",
             str(selection_file_path),
             "--out-loc",
             str(output_report),
@@ -494,6 +495,7 @@ def test_decode_generate_report(tmpdir, runner, mock_decode_stats_file, selectio
         generate_report,
         [
             str(mock_decode_stats_file),
+            "--selection-file",
             str(selection_file_path),
             "--out-loc",
             str(output_dir),

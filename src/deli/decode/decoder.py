@@ -904,10 +904,14 @@ class DELibraryDecoder(_SequenceDecoder):
             umi_start = called_sec_spans[self._section_before_umi][1] + self._section_dist_before_umi
             umi_stop = umi_start + len(self.library.barcode_schema.umi_section.section_tag)
             umi_call = aligned_sequence.sequence.sequence[umi_start:umi_stop]
+            if not umi_call and len(self.library.barcode_schema.umi_section.section_tag) > 0:
+                return UMIContainsINDEL(sequence=aligned_sequence.sequence, umi_sequence=umi_call)
         elif self._section_after_umi is not None:
             umi_stop = called_sec_spans[self._section_after_umi][0] - self._section_dist_after_umi
             umi_start = umi_stop - len(self.library.barcode_schema.umi_section.section_tag)
             umi_call = aligned_sequence.sequence.sequence[umi_start:umi_stop]
+            if not umi_call and len(self.library.barcode_schema.umi_section.section_tag) > 0:
+                return UMIContainsINDEL(sequence=aligned_sequence.sequence, umi_sequence=umi_call)
         else:
             return FailedDecodeAttempt(aligned_sequence.sequence, "No sections to determine UMI location")
 
@@ -1353,12 +1357,20 @@ class DecodingSettings:
             try:
                 return cls(**yaml.safe_load(open(path, "r")))
             except Exception as e:
-                raise RuntimeError(f"Failed to load decode settings from {path}") from e
+                raise RuntimeError(
+                    f"Failed to load decode settings from {path} "
+                    f"(no 'decode_settings' key found, tried loading top-level keys): "
+                    f"{type(e).__name__}: {e}"
+                ) from e
         else:
             try:
                 return cls(**_data["decode_settings"])
             except Exception as e:
-                raise RuntimeError(f"Failed to load decode settings from {path}") from e
+                raise RuntimeError(
+                    f"Failed to load decode settings from {path} "
+                    f"(loaded from 'decode_settings' sub-key): "
+                    f"{type(e).__name__}: {e}"
+                ) from e
 
 
 class SelectionDecoder:
