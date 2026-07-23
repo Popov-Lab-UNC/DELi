@@ -894,7 +894,7 @@ class DELibraryDecoder(_SequenceDecoder):
         if (self._section_after_umi is not None) and (self._section_before_umi is not None):
             umi_start = called_sec_spans[self._section_before_umi][1] + self._section_dist_before_umi
             umi_stop = called_sec_spans[self._section_before_umi][0] - self._section_dist_after_umi
-            if (umi_stop - umi_start) != len(self.library.barcode_schema.umi_section.section_tag):
+            if not self.library.barcode_schema.umi_section.is_valid_umi_length(umi_stop - umi_start):
                 return UMIContainsINDEL(
                     sequence=aligned_sequence.sequence,
                     umi_sequence=aligned_sequence.sequence.sequence[umi_start:umi_stop],

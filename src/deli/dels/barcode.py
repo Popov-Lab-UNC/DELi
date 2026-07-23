@@ -223,7 +223,25 @@ class BuildingBlockBarcodeSection(DecodeableBarcodeSection):
 class UMIBarcodeSection(VariableBarcodeSection):
     """Class for UMI barcode sections"""
 
-    pass
+    def __init__(
+        self,
+        section_name: str,
+        section_tag: str,
+        section_overhang: Optional[str] = None,
+        umi_allowed_lengths: Optional[frozenset] = None,
+    ):
+        super().__init__(
+            section_name=section_name,
+            section_tag=section_tag,
+            section_overhang=section_overhang,
+        )
+        self.umi_allowed_lengths: Optional[frozenset] = umi_allowed_lengths
+
+    def is_valid_umi_length(self, length: int) -> bool:
+        """Return True if `length` is an accepted UMI length for this section."""
+        if self.umi_allowed_lengths is not None:
+            return length in self.umi_allowed_lengths
+        return length == len(self.section_tag)
 
 
 class StaticBarcodeSection(BarcodeSection):
@@ -321,13 +339,30 @@ def _parse_sections_from_dict(data: dict) -> list[BarcodeSection]:
                 )
             )
         elif re.match(r"^umi$", section_name):
-            _sections.append(
-                UMIBarcodeSection(
-                    section_name=section_name,
-                    section_tag=section_info["tag"],
-                    section_overhang=section_info.get("overhang"),
+            if "tag" in section_info:
+                _sections.append(
+                    UMIBarcodeSection(
+                        section_name=section_name,
+                        section_tag=section_info["tag"],
+                        section_overhang=section_info.get("overhang"),
+                    )
                 )
-            )
+            elif "length" in section_info:
+                lengths = section_info["length"]
+                if not isinstance(lengths, list) or not all(isinstance(x, int) for x in lengths):
+                    raise BarcodeSchemaError("UMI 'length' must be a list of integers")
+                if len(lengths) < 1:
+                    raise BarcodeSchemaError("UMI 'length' must contain at least one value")
+                _sections.append(
+                    UMIBarcodeSection(
+                        section_name=section_name,
+                        section_tag="N" * max(lengths),
+                        section_overhang=section_info.get("overhang"),
+                        umi_allowed_lengths=frozenset(lengths),
+                    )
+                )
+            else:
+                raise BarcodeSchemaError("UMI section must specify either 'tag' or 'length'")
         elif re.match(r"^tool_compound_ref$", section_name):
             _sections.append(
                 ToolCompoundRefBarcodeSection(
