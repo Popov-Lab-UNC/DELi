@@ -70,6 +70,8 @@ def _parse_library_json(data: dict, load_dna: bool, load_chemicals: bool = True)
                 _bb_tags: list[str] = list()
                 for bb_section in building_block_sections:
                     bb_cycle_tag = doped_bb.get(bb_section.section_name, None)
+                    # BUG: condition is inverted — raises when tag IS found, not when missing.
+                    # Should be `if bb_cycle_tag is None`.
                     if bb_cycle_tag is not None:
                         raise LibraryBuildError(
                             f"doped compound {doped_compound_id} missing tag for decodable section "
