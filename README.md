@@ -66,4 +66,4 @@ Full tables, per-file analysis breakdown, and commands to regenerate: [Testing a
 
 If you use DELi in your research, please cite our paper:
 
-> Wellnitz J, Novy B, Maxfield T, Lin S-H, Zhilinskaya I, Axtman M, Leisner T, Merten E, Norris-Drouin JL, Hardy BP, Pearce KH, Popov KI. (2025). *Open-Source DNA-Encoded Library informatics Package for Design, Decoding, and Analysis: DELi*. bioRxiv. https://doi.org/10.1101/2025.02.25.640184
+> Wellnitz, J., Novy, B., Lin, S.-H., Maxfield, T., Axtman, M., Leisner, T. M., Merten, E. M., Zhilinskaya, I., Shell, D. J., Schroeder, K. M., Norris-Drouin, J. L., Hardy, P. B., Pearce, K. H., & Popov, K. I. (2026). Open-source DNA-encoded library informatics package for design, decoding, and analysis: DELi. Journal of Cheminformatics. https://doi.org/10.1186/s13321-026-01296-1
